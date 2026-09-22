@@ -1,0 +1,460 @@
+# AGENTS.md
+
+Guide for coding agents working on this repository. Read it fully before touching code.
+Working name: **`urtorrentd`**.
+
+Before any design work, also read these files in the sibling library repo `../urtorrent`:
+
+| File | Why |
+|---|---|
+| `AGENTS.md` | The library's charter. Its rules 1-3 bind this repo too (section 1). |
+| `docs/config.md` | **The line between the library and a frontend.** This daemon is that frontend. |
+| `docs/resume.md` | How a torrent survives a restart. The daemon's persistence builds on it. |
+| `crates/session/src/api.rs` | The whole public API in one file: `Session`, `AddTorrent`, snapshots, events. |
+| `crates/session/tests/daemon.rs` | What 0.8.0 added for a daemon, used the way a daemon would use it. |
+| `docs/quirks.md` Q13, Q26, Q27 | Magnet metadata handling, the queue (qBittorrent-style pause/resume/force), live settings. |
+
+## 1. What this project is
+
+A BitTorrent **daemon** for Linux, written in Rust and built on the `urtorrent` library
+(`../urtorrent`). It is controlled through an **HTTP API served with `axum`**. The API works
+the way qBittorrent's WebAPI does: authenticated sessions, torrents addressed by info-hash,
+bulk actions, and incremental sync for polling clients. It offers **every feature
+qBittorrent's WebAPI offers that `urtorrent` supports**.
+
+**qBittorrent is a feature checklist, not a compatibility target.** Its WebAPI (section 2)
+is how we make sure no feature is missed. Endpoint names, parameters, response shapes,
+status codes, error texts and version strings are **ours to design** (section 4.3). We do
+not emulate qBittorrent's responses, report its versions, or aim to work with qBittorrent
+frontends or clients.
+
+The urtorrent roadmap planned this ("then the daemon itself (a separate crate/repo)",
+`../urtorrent/AGENTS.md` section 8). Library 0.8.0 ("daemon readiness") and 0.9.0 (live
+settings) added what a daemon needs.
+
+### Non-goals
+
+- **Engine work in the daemon.** The daemon does no peer wire, tracker traffic, piece
+  picking or torrent file I/O. Anything that needs engine state or timing belongs in the
+  library (`docs/config.md`, "the rule").
+- **Features urtorrent excludes** (`../urtorrent/AGENTS.md` section 1): torrent creation,
+  search, proxies, UPnP / NAT-PMP, I2P, SSL torrents, share mode, super-seeding,
+  IP-filter file formats, BEP 52 (v2 / hybrid). They are listed as unsupported in the
+  checklist, with the reason.
+- **Compatibility with qBittorrent clients**: its WebUI, VueTorrent, the *arr apps,
+  `qbittorrent-api`. Do not bend our API design to fit them.
+- **A web UI.** The daemon is API-only. A UI is a separate client of the API.
+- **Other operating systems.** urtorrent is Linux-only on io_uring, and so is this daemon.
+
+### Non-negotiable rules
+
+1. **Accounting is always truthful** (library rule 1). Every counter, ratio, progress and
+   time the API reports comes from library snapshots, or from the daemon's own
+   observations of them. No endpoint, setting or test helper can fake one. Policies such
+   as share limits may pause or remove a torrent. They never edit a number. There is no
+   "skip hash check" (`docs/config.md` says why).
+2. **Private torrents are sacred** (library rule 2). The library already keeps DHT, PEX
+   and LSD off private torrents. The daemon must never add trackers, web seeds or peers
+   to a private torrent on its own, for example from an "add these trackers to new
+   torrents" setting or a duplicate-add tracker merge. An explicit per-torrent API call
+   from the user is the user's choice.
+3. **No feature is silently missed.** Every qBittorrent WebAPI endpoint, parameter and
+   preference key in the reference (section 2) appears in the coverage docs (`docs/api.md`,
+   `docs/settings.md`). Each one is either mapped to our API or marked unsupported with
+   its reason: library non-goal, library gap, or out of scope for the daemon. A feature
+   that is unsupported is absent from our API. It is never a flag that is accepted and
+   ignored, and never a field that reports a fake value.
+4. **Tests never touch the public internet** (library rule 3). The library's DHT bootstrap
+   defaults are public, so tests pass an empty list or lab routers. URL-add tests use a
+   local HTTP server. Any qBittorrent instance used in tests or for reference runs in an
+   isolated network namespace.
+5. **Respect the library boundary.** Use only the public API of the `urtorrent` facade
+   crate, never its internal crates. The engine owns torrent content. The daemon never
+   reads, writes, moves or deletes content files itself: it calls `move_storage`,
+   `remove_torrent_with_files` or `rename_file` instead. It never parses or edits the
+   engine's resume files either. When the library lacks something, record it in
+   `docs/gaps.md` and raise it upstream. Do not hack around it.
+6. **Do not weaken, skip or delete a failing test to get green.** Fix the code or escalate.
+7. **Never copy qBittorrent code.** qBittorrent is GPL. Reading its source and running it
+   to learn what a feature does is fine. Our implementation and API are our own.
+
+## 2. The feature reference
+
+The checklist comes from the qBittorrent build urtorrent already pins as its oracle
+(`../urtorrent/testkit/oracle.lock`): `qbittorrent-nox` 5.2.3 with libtorrent 2.0.14,
+cached at `~/.cache/urtorrent/oracle/`. Nothing in our API depends on that version.
+When urtorrent moves its pin, re-check the reference for new features.
+
+- **Endpoints.** The WebAPI has about 110 actions in 10 scopes: `auth`, `app`, `log`,
+  `sync`, `transfer`, `torrents`, `rss`, `search`, `torrentcreator` and `clientdata`.
+  Section 3 lists them.
+- **Settings.** `app/preferences` has 223 keys. `docs/settings.md` maps every one.
+- **Parameters.** Endpoints such as `torrents/add` have many parameters, and each one is
+  a feature (section 4.7).
+- **How to look something up.** Read qBittorrent's source (rule 7). To see what a feature
+  actually does, run the pinned build in a fresh network namespace with only loopback
+  (`sudo unshare -n`, `ip link set lo up`, then `sudo -u $USER qbittorrent-nox
+  --profile=<tmpdir>`), with DHT / LSD / PEX / UPnP off in `qBittorrent.conf`. Its
+  temporary WebUI password is printed on stdout. urtorrent's `testkit` also launches it
+  in its netns lab.
+
+Features the reference has that are easy to miss: API keys (`Authorization: Bearer`,
+rotate / delete) next to cookie sessions, a temporary password printed at startup when
+none is set, login bans after repeated failures, rid-based incremental sync for torrents
+*and* for one torrent's peers, per-source peer counts (DHT / PEX / LSD) shown next to
+trackers, tracker endpoint detail, piece hashes and per-piece availability, `.torrent`
+export, the log of banned peers, and a metadata preview before adding (`parseMetadata`,
+`fetchMetadata`).
+
+## 3. Coverage: the reference against the library
+
+Legend: **L** a `Session` call does it. **D** daemon-owned: `docs/config.md` puts it on the
+frontend side, and it is built on snapshots and public operations. **P** partial, with the
+gap named. **U** unsupported, with the reason. The names are qBittorrent's (the checklist);
+our endpoints are named in `docs/api.md`, which keeps the full, current table.
+
+| Scope | Endpoints | Status |
+|---|---|---|
+| `auth` | `login`, `logout` | D |
+| `app` | `version`, `webapiVersion`, `buildInfo`, `processInfo` | D (our own version and build info) |
+| `app` | `defaultSavePath`, `getDirectoryContent`, `networkInterfaceList`, `networkInterfaceAddressList`, `cookies`, `setCookies`, `rotateAPIKey`, `deleteAPIKey` | D |
+| `app` | `shutdown` | L `shutdown` (after persisting, 4.8) |
+| `app` | `preferences`, `setPreferences` | P: key by key in `docs/settings.md` (4.9) |
+| `app` | `sendTestEmail` | U until notifications exist (D later) |
+| `log` | `main`, `peers` | D (the daemon's own ring buffers) |
+| `sync` | `maindata` | D over L snapshots (4.6) |
+| `sync` | `torrentPeers` | L `peers` (no GeoIP country data) |
+| `transfer` | `info` | L `stats` (connectability derived from incoming connections) |
+| `transfer` | `downloadLimit`, `uploadLimit`, `setDownloadLimit`, `setUploadLimit` | L `set_rate_limits` |
+| `transfer` | `speedLimitsMode`, `setSpeedLimitsMode`, `toggleSpeedLimitsMode` | D (alternative limits, scheduler → `set_rate_limits`) |
+| `transfer` | `banPeers` | L `ban_ip` (per IP) |
+| `torrents` | `count`, `info`, `properties`, `files`, `trackers`, `webseeds`, `pieceStates`, `pieceHashes`, `pieceAvailability`, `export` | L `statuses` / `status` / `files` / `trackers` / `pieces` / `torrent_file`, plus metainfo parsing of the `.torrent` |
+| `torrents` | `add` | L `add_torrent`, plus D for URL fetch, category, tags, stop condition, content layout, add-to-top, share limits, automatic management, download path and rename (4.7) |
+| `torrents` | `start`, `stop`, `setForceStart`, `delete`, `recheck`, `reannounce` | L `resume` / `pause` / `force_resume` + `set_auto_managed` / `remove_torrent(_with_files)` / `force_recheck` / `force_reannounce` |
+| `torrents` | `topPrio`, `bottomPrio`, `increasePrio`, `decreasePrio` | L `move_in_queue` |
+| `torrents` | `filePrio`, `renameFile`, `toggleSequentialDownload`, `setLocation`, `setSavePath` | L `set_file_priorities` / `rename_file` / `set_sequential` / `move_storage` |
+| `torrents` | `renameFolder` | P: one `rename_file` per file, not atomic |
+| `torrents` | `setDownloadPath` | D (download to one path, `move_storage` on `TorrentFinished`) |
+| `torrents` | `uploadLimit`, `downloadLimit`, `setUploadLimit`, `setDownloadLimit` | L `set_torrent_rate_limits` |
+| `torrents` | `setShareLimits` | D (ratio / seeding time / inactive time policy) |
+| `torrents` | `addTrackers`, `editTracker`, `removeTrackers`, `addWebSeeds`, `editWebSeed`, `removeWebSeeds`, `addPeers` | L `add_tracker` / `remove_tracker` / `add_web_seed` / `remove_web_seed` / `add_peer` (edit = remove + add at the same tier) |
+| `torrents` | `categories`, `createCategory`, `editCategory`, `removeCategories`, `setCategory`, `tags`, `createTags`, `deleteTags`, `addTags`, `removeTags`, `setTags`, `rename`, `setComment`, `setAutoManagement` | D. **`setAutoManagement` is qBittorrent's Automatic Torrent Management (save path from category), not urtorrent's `auto_managed` (the queue).** |
+| `torrents` | `parseMetadata` | L (metainfo parsing only, nothing added) |
+| `torrents` | `fetchMetadata`, `saveMetadata` | P: the library has no metadata-only fetch (`docs/gaps.md`) |
+| `torrents` | `toggleFirstLastPiecePrio` | U: library gap (candidate `set_piece_priorities`, `docs/config.md`) |
+| `torrents` | `setSuperSeeding`, `SSLParameters`, `setSSLParameters` | U: library non-goals |
+| `rss` | all | D, later milestone (`docs/config.md` lists RSS as frontend work). U until then |
+| `search` | all | U: non-goal |
+| `torrentcreator` | all | U: library non-goal (open question in section 8) |
+| `clientdata` | `load`, `store` | D, later: a small key-value store for client UIs |
+
+## 4. Architecture
+
+### 4.1 Layout (starting point; split crates only when a boundary earns it)
+
+```
+Cargo.toml              workspace: crates/urtorrentd, xtask
+rust-toolchain.toml     the same pin as ../urtorrent (1.98.1, edition 2024)
+crates/urtorrentd/src/
+  main.rs               CLI, config, tokio runtime, signals, startup / shutdown order
+  daemon/               the core: owns the urtorrent Session
+    registry.rs         info-hash <-> TorrentId, the per-torrent daemon record
+    events.rs           the single event pump (4.4)
+    policy/             share limits, alternative speed + scheduler, download-path moves,
+                        stop conditions, automatic torrent management
+    store.rs            persistence, atomic writes (4.8)
+  api/                  axum router, one module per feature group (auth, app, log, sync,
+                        transfer, torrents, ...), request / response types, ApiError
+  sync.rs               snapshots and revision diffs
+xtask/                  check, it
+docs/api.md             our API: every endpoint, plus the checklist mapping (section 3)
+docs/settings.md        every qBittorrent preference key: our setting / fixed / unsupported
+docs/gaps.md            what the daemon needs from urtorrent and does not have yet
+docs/adr/               design decisions
+```
+
+Depend on the facade only: `urtorrent = { path = "../urtorrent/crates/urtorrent" }` during
+development. CI checks both repos out side by side. Switch to a pinned git revision or a
+crates.io version once one is published. The library is `0.x`, so a minor bump is
+breaking: pin the minor. The facade re-exports what the daemon needs, including
+`urtorrent::Torrent::parse` and `urtorrent::MagnetLink::parse` for info-hashes before an
+add, and `Profile` for identity.
+
+### 4.2 Runtime model
+
+- `#[tokio::main]` with the multi-threaded runtime runs axum, persistence, URL downloads
+  and timers. The engine runs on its own io_uring threads (`urt-net`, `urt-disk`, hash
+  pool). `Session` is `Clone + Send + Sync`. Every call is a channel message the engine
+  answers (library 5.6).
+- Library rule 4 (no epoll reactors, tokio `sync` only) polices the **library's**
+  dependency graph. The daemon's graph contains tokio's runtime and mio through axum, and
+  that is expected. The boundary still holds: tokio never owns a peer socket or a torrent
+  file, and nothing tokio owns is handed to the engine.
+- `Session::builder().build()` fails hard without io_uring (`Error::Unavailable`). Exit
+  with that message. There is no fallback. Deployment docs must cover kernel 6.1+,
+  `kernel.io_uring_disabled` and container seccomp profiles (library 7.2).
+- SIGTERM and SIGINT take the same path as the shutdown endpoint (4.8).
+
+### 4.3 API conventions (ours; record the final shape in ADR 0001 during D0)
+
+- Everything lives under a versioned base path (`/api/v1/...`), grouped by feature like the
+  reference's scopes, so the checklist maps cleanly.
+- JSON request and response bodies. A `.torrent` upload is the one binary input
+  (multipart or a raw body).
+- **One unit per kind of value across the whole API:** bytes, bytes per second, seconds,
+  unix timestamps (UTC). Unknown or unlimited is `null`, never a magic number (qBittorrent
+  uses `-1`, `0` and `8640000` inconsistently; do not copy that).
+- Torrents are addressed by lowercase hex v1 info-hash. Bulk actions take a list of hashes,
+  or an explicit "all". Unknown hashes in a bulk request are reported back, not dropped
+  silently.
+- Errors use proper HTTP status codes and one JSON shape with a stable machine-readable
+  code and a human message. Map library errors deliberately: `NoSuchTorrent` → 404,
+  `InvalidArgument` → 400, `Busy` / `Duplicate` → 409, `Shutdown` → 503.
+- `docs/api.md` documents every endpoint with an example, and changes in the same PR as
+  the endpoint.
+
+### 4.4 Addressing, snapshots, caches and the event pump
+
+- `TorrentId` is per process: it never appears in the API or on disk. The registry maps
+  hash → (`TorrentId`, daemon record). Parse before adding (`Torrent::parse` /
+  `MagnetLink::parse`) so the hash is known before `add_torrent`.
+- `statuses()` is the cheap list snapshot. It leaves out trackers and files. Never answer
+  a list endpoint with one `status(id)` or `trackers(id)` per torrent: urtorrent handles
+  10 000 torrents in a session, and the daemon must not be the bottleneck.
+- Per-torrent detail that listings need (the current tracker, tracker count, scrape
+  counts, availability) comes from caches. Refresh them from events (`TrackerReply`,
+  `TrackerError`, `ScrapeReply`, `PieceFinished`, `MetadataReceived`, ...) and from
+  on-demand detail calls. Wanting a field in `statuses()` is a `docs/gaps.md` entry, not
+  an N+1 loop.
+- **One** task consumes `Session::events()`. It updates caches, feeds the main log, runs
+  event-driven policies (stop conditions, download-path moves, magnet persistence) and
+  on `Event::Lagged` does a full resync from `statuses()`. Other code subscribes to the
+  daemon, not to the engine.
+
+### 4.5 Long operations
+
+`force_recheck`, `move_storage`, `set_file_priorities` and `scrape` resolve only when the
+work is done. A request that starts one of these returns as soon as the operation is
+accepted. The operation runs as a tracked background task. Its progress shows in the
+torrent's state (`checking`, `moving`) and its failure goes to the main log.
+
+### 4.6 Incremental sync
+
+Polling clients need what `sync/maindata` and `sync/torrentPeers` give qBittorrent's: a
+full snapshot first, then only what changed since a revision the client holds. That
+includes removals (torrents, categories, tags) and the session's transfer state.
+
+- Keep the last snapshot per client session (cookie or API key) and bound what is kept. An
+  unknown or expired revision gets a full snapshot.
+- Build one shared snapshot per tick however many clients poll, and diff it per client.
+- Polling with revisions is the default. Server-sent events (axum supports them) can be
+  added on top later. Decide in an ADR.
+
+### 4.7 Feature notes (what the reference offers, sourced from the library)
+
+- **States.** The library's `TorrentState` (fetching metadata, queued for checking,
+  checking, downloading, seeding, queued, paused, error) plus flags the daemon derives:
+  *stalled* (running with no payload flowing), *forced* (running, not auto-managed),
+  *moving*. The reference filters its list by these (downloading, seeding, completed,
+  stopped, running, active, inactive, stalled, checking, moving, errored), and so must
+  ours. A "missing files" error needs an error kind the library does not expose yet
+  (`docs/gaps.md`).
+- **Queue semantics are already qBittorrent's** (library Q26). Stop = `pause` (leaves the
+  queue). Start = `resume` (rejoins it). Force start = `force_resume`, undone with
+  `set_auto_managed(true)`. The queue position comes from `queue_position`.
+- **Listing data.** Size, completed, left and progress use the wanted totals
+  (`total_wanted`, `total_wanted_done`, `wanted_progress`), not the full torrent. Wasted
+  bytes = `corrupt + redundant`. Leechers = `peers - seeds`. Also provide the connection
+  cap, per-session counters (the daemon subtracts a baseline taken at add or at daemon
+  start), ratio, ETA, popularity, magnet URI, content path, and per-file piece ranges
+  (computed from the metainfo). Peer counts per discovery source come from
+  `PeerInfo::source` (`Dht`, `Pex`, `Lsd`). Facts the library does not track (last seen
+  complete, last activity) are `null` or honestly derived, and listed in `docs/gaps.md`.
+- **File priorities.** The library takes `0` (skip) and `1..=7`. Expose skip / normal /
+  high / maximum and pick the mapping once, in `docs/api.md`. File indexes follow the
+  library's content-file order, and padding files (BEP 47) are never listed.
+- **Add parameters with no library switch.**
+  - Content layout: add paused, `rename_file`, then start.
+  - Stop condition: pause on `MetadataReceived` / `Checked`.
+  - Add to top of queue: `move_in_queue(Top)`.
+  - Rename, category, tags and share limits: the daemon record.
+  - Record each of these in `docs/api.md`.
+  - First/last piece priority and skip-checking are unsupported. They are rejected, not
+    ignored.
+- **Adding from a URL.** The daemon fetches `http(s)` URLs itself with a cookie jar, over
+  rustls (no OpenSSL, as in the library). The `User-Agent` is the `user_agent` field of
+  the active identity `Profile`, never a hardcoded string. Private trackers see these
+  requests.
+
+### 4.8 Persistence and restart
+
+The daemon restarts from three things (`docs/config.md`, "Daemon persistence"):
+
+1. **The metainfo.** Write `<hash>.torrent` from `torrent_file(id)`. For a magnet, persist
+   the URI until `MetadataReceived`, then write the `.torrent` and drop the URI:
+   `torrent_file` is `None` until the metadata arrives.
+2. **Resume data.** Default: engine-managed `resume_dir` (atomic, periodic, flushed on
+   shutdown). Caller-held blobs (`resume_data(id)` / `AddTorrent::resume_data`, polled via
+   `needs_resume_save`) are the alternative. Record the choice in an ADR. With `resume_dir`,
+   plain `remove_torrent` **leaves `<hash>.resume` behind** (the engine writes a final one
+   when the torrent stops). The daemon deletes it, or a later re-add would restore stale
+   state. `remove_torrent_with_files` deletes it itself.
+3. **The daemon's own record** per torrent: save path, stopped or running, category, tags,
+   display-name override, share limits, download path, added-by-URL source, and anything
+   else the resume data does not hold (`docs/resume.md`, "Not in the blob"). Categories,
+   settings and API key hashes live in their own files.
+
+- Every write is atomic: tmp file, `fsync`, rename, directory `fsync`. After `kill -9` at
+  any point, a restart must bring every torrent back.
+- Startup order: load settings → build the `Session` (listen, identity profile, limits,
+  queue limits, `dht_state`) → re-add every torrent (paused where recorded, in queue
+  order) → start the API. Shutdown order: stop taking API requests → save `dht_state()`
+  → (blobs mode: fetch `resume_data`) → `session.shutdown().await` → flush daemon records.
+
+### 4.9 Settings
+
+- `docs/settings.md` maps **every** key of the reference's `app/preferences`. Each key is
+  one of: our setting (which `SessionBuilder` / `set_*` call, or which daemon policy),
+  fixed (a library constant, shown read-only), or unsupported (with the reason). Our
+  settings API has its own names and units (4.3). `Session::settings()` is the source of
+  truth for library-side values.
+- Most library knobs change live (`set_listen`, `set_dht`, `set_profile`, limits, queue,
+  encryption, transports, PEX, LSD). The engine tuning row (`hash_threads`, `recv_ring`,
+  `zero_copy_send`, `disk_thread`, `max_open_files`, `max_checking`,
+  `piece_extent_affinity`, `max_concurrent_announces`) is fixed per session. Persist it,
+  apply it at the next start, and say so in the API ("applies after restart").
+- Interface names are resolved by the daemon and passed as addresses (`listen_v4` /
+  `listen_v6`). Port randomisation is picked by the daemon too (`docs/config.md`).
+- Settings the reference lacks are ours too, for example the identity profile (`native` /
+  `qbt_5_2_3_lt2_0_14`), DHT bootstrap nodes and engine tuning.
+
+### 4.10 Authentication and security
+
+The API controls the filesystem: save paths, directory listing, delete with files,
+run-on-completion later. Treat it as a security boundary.
+
+- Auth is on by default. Offer both of the reference's schemes: cookie sessions after
+  login, and API keys (`Authorization: Bearer`, rotate / delete). Passwords and keys are
+  stored as hashes (PBKDF2 or argon2), never in plain text. With no password set,
+  generate a temporary one per run and print it. Also provide a session timeout, bans
+  after repeated login failures, an opt-in localhost bypass and an opt-in subnet
+  whitelist.
+- Cookie sessions can be used from browsers, so they get CSRF protection (`Origin` /
+  `Referer`) and `Host` validation. Requests authenticated with an API key do not need
+  them.
+- Bound everything a request can make us allocate: body size, multipart parts, `.torrent`
+  size, list lengths. No panics on request input (the lints in section 7 enforce
+  `unwrap` / `expect` / `panic`).
+- Paths from requests are untrusted even when authenticated. Content paths are sanitised
+  by the library. The daemon validates its own (save and download paths, export
+  directories): no NULs, and normalise before use.
+
+## 5. Testing
+
+1. **Unit.** Unit and state-flag derivation, the sync diff engine, request parsing, auth
+   (sessions, bans, keys), persistence round-trips.
+2. **Coverage check.** `xtask check` fails if `docs/api.md` or `docs/settings.md` leaves any
+   reference endpoint or preference key unmapped (rule 3). The reference lists are checked
+   in (`docs/reference/`), extracted from the pinned build.
+3. **In-process API tests** (`tests/`). The axum router, driven with `tower::ServiceExt`,
+   runs against real `Session`s on loopback (`127.0.0.x`, DHT and LSD off, as
+   `../urtorrent/crates/session/tests/daemon.rs` does). Two sessions transfer a real
+   torrent, and every assertion goes through the API.
+4. **Lab scenarios** (`xtask it`, urtorrent's `testkit` as a path dev-dependency for the
+   netns lab, opentracker and the qBittorrent oracle as a peer). Drive `urtorrentd` over
+   its API to leech from and seed to the oracle, and to stop, start, recheck, move and
+   delete.
+5. **Restart and crash.** Stop gracefully and restart: everything is back, including
+   categories, tags, queue order, limits, magnets without metadata, and stopped torrents.
+   `kill -9` mid-download and restart: no torrent claims data it does not have (the
+   library guarantees this, and the daemon must not undo it). Removed torrents stay
+   removed.
+
+Every test runs offline (rule 4). Environment needs are the library's: io_uring, and for
+the lab passwordless `sudo`, `opentracker` and the cached oracle (run
+`cargo xtask doctor` in `../urtorrent`).
+
+## 6. Milestones
+
+Each milestone ends with its tests green.
+
+- **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
+  (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
+  docs and their check, and ADR 0001 on API conventions (4.3).
+- **D1 Skeleton.** Config, `Session` lifecycle, signals and graceful shutdown, auth (login,
+  logout, sessions, API keys, bans, CSRF / Host), app info, persistence and restart of
+  torrents.
+- **D2 Torrents.** Add (file, magnet, URL), listing and detail (properties, files,
+  trackers, web seeds, piece states / hashes / availability, export), start, stop, force
+  start, delete, recheck, reannounce, file priorities, limits, queue moves, location,
+  renames, trackers, web seeds, peers, sequential.
+- **D3 Sync.** Incremental sync for torrents and peers, transfer info and limits, logs,
+  peer bans.
+- **D4 Frontend policies.** Categories, tags, automatic torrent management, share limits,
+  alternative limits and scheduler, download path, stop conditions, content layout,
+  auto-added trackers (never on private torrents), settings coverage. **Release 0.1.0.**
+- **Later, each on request:** RSS, watch folders, run-on-completion, notifications, HTTPS
+  for the API, the client key-value store, metadata preview (`fetchMetadata`). Anything
+  that needs a library change lands in urtorrent first.
+
+## 7. Working conventions
+
+- Rust stable, edition 2024, the same `rust-toolchain.toml` pin as `../urtorrent`.
+  Workspace lints as in the library: `unsafe_code = "forbid"`, `missing_docs = "deny"` on
+  library code, clippy `unwrap_used` / `expect_used` / `panic` denied (tests excepted).
+- Errors: one `ApiError` enum (`thiserror`) rendered as 4.3 says. `anyhow` only in `main`
+  bootstrap and `xtask`.
+- Logging via `tracing`, no `println!` (except the temporary-password line at startup). A
+  tracing layer feeds the main log endpoint.
+- Dependencies: keep the tree small and justify every new one in the PR. Expected: `axum`
+  (with multipart), `tokio`, `tower`, `serde`, `serde_json`, `thiserror`, `tracing`,
+  `tracing-subscriber`, an HTTP client on rustls, and RustCrypto password hashing.
+  `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with the library's licence
+  allow-list. It does **not** ban `mio` here (4.2).
+- Commands (create in D0, keep working forever):
+  - `cargo xtask check`: fmt, clippy `-D warnings`, unit and in-process tests, docs,
+    `cargo-deny`, the coverage check
+  - `cargo xtask it [scenario]`: lab scenarios (transfer, restart, crash)
+- Definition of done for any change: `xtask check` green. `docs/api.md` and
+  `docs/settings.md` are current. A new library gap has a `docs/gaps.md` entry.
+  Design-level decisions get an ADR.
+- **Versioning.** SemVer, first release `0.1.0`, `CHANGELOG.md` in Keep-a-Changelog
+  format, one line per user-visible change in the same PR. The API is versioned by its
+  base path. A breaking change needs a new path version, or a `0.x` minor bump while
+  pre-1.0. On-disk formats (daemon records, settings, categories) carry their own format
+  version. Every release reads every format it ever wrote.
+- **Licence: Apache-2.0** (`LICENSE`). Every source file starts with:
+  ```
+  // SPDX-License-Identifier: Apache-2.0
+  // Copyright (c) 2026 urtorrentd contributors
+  ```
+  Logic ported from a permissive project keeps its notice in the file and an entry in
+  `NOTICE`. Never copy from qBittorrent (GPL) or any other copyleft project (rule 7).
+- **Terminology:** in urtorrent, a *profile* is a wire identity (`native`,
+  `qbt_5_2_3_lt2_0_14`). In qBittorrent, `--profile` is the configuration directory. Here
+  "profile" only ever means the identity; directories are the *data dir*.
+- When something here is wrong or unclear, fix this file in the same PR.
+
+## 8. Decisions and open questions
+
+### Decided by the maintainer (2026-09-22)
+
+- A daemon built on `urtorrent`, written in Rust, with its HTTP API on **axum**.
+- The API offers every feature of qBittorrent's WebAPI that urtorrent supports.
+  **qBittorrent is a feature checklist only:** no emulation of its responses or versions,
+  and no compatibility with qBittorrent frontends or clients.
+- **Licence: Apache-2.0.**
+
+### Still open (defaults assumed; confirm with the maintainer in the PR that depends on it)
+
+- **API style.** Default: resource-oriented JSON under `/api/v1`, grouped like the
+  reference's scopes (4.3). Settled in ADR 0001.
+- **Resume storage.** Default: engine-managed `resume_dir` (4.8), not caller-held blobs.
+- **Identity profile.** Default: the library's default, `native`. The qbt profile is opt-in
+  in the daemon config, for private trackers with client whitelists.
+- **Scope beyond the library.** Torrent creation (`torrentcreator/*`): unsupported by
+  default, even though the daemon could do it without the library. RSS and watch folders:
+  planned after 0.1.0 (section 6).
+- **On-disk layout.** Default: one data dir (`$XDG_DATA_HOME/urtorrentd`) holding
+  `torrents/`, `resume/`, `config/` and `logs/`, with daemon records as JSON. Record the
+  final layout in an ADR before D1 ends.
