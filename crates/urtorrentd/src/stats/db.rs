@@ -21,7 +21,7 @@ use crate::model::{StatsStep, TimelineKind, TorrentState};
 /// The file in the data directory.
 pub const STATS_DB_FILE: &str = "stats.db";
 /// The schema version (`PRAGMA user_version`).
-pub const STATS_SCHEMA_VERSION: i64 = 1;
+pub const STATS_SCHEMA_VERSION: i64 = 2;
 
 fn db_err(e: rusqlite::Error) -> io::Error {
     io::Error::other(format!("statistics database: {e}"))
@@ -150,6 +150,17 @@ impl SessionTraffic {
     }
 }
 
+/// Peer traffic with one place in one bucket.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PeerTraffic {
+    /// Payload bytes received.
+    pub downloaded: u64,
+    /// Payload bytes sent.
+    pub uploaded: u64,
+    /// Distinct addresses that moved data (within a run).
+    pub peers: u32,
+}
+
 /// A timeline event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EventRow {
@@ -190,6 +201,11 @@ pub struct Batch {
     pub session: Vec<(StatsStep, u64, SessionTraffic)>,
     /// Timeline events.
     pub events: Vec<EventRow>,
+    /// Peer traffic: (hash, step, bucket start, dimension, key, traffic);
+    /// hour and day steps.
+    pub peer_traffic: Vec<(String, StatsStep, u64, &'static str, String, PeerTraffic)>,
+    /// Autonomous system names.
+    pub asns: Vec<(u32, String)>,
 }
 
 impl Batch {
@@ -200,6 +216,8 @@ impl Batch {
             && self.days.is_empty()
             && self.session.is_empty()
             && self.events.is_empty()
+            && self.peer_traffic.is_empty()
+            && self.asns.is_empty()
     }
 }
 
@@ -290,20 +308,8 @@ fn connect(path: &Path) -> io::Result<Connection> {
     Ok(conn)
 }
 
-/// Bring the schema to [`STATS_SCHEMA_VERSION`].
-fn migrate(conn: &mut Connection) -> io::Result<()> {
-    let version: i64 = conn
-        .pragma_query_value(None, "user_version", |r| r.get(0))
-        .map_err(db_err)?;
-    if version > STATS_SCHEMA_VERSION {
-        return Err(io::Error::other(format!(
-            "the statistics database has schema version {version}, newer than this daemon's {STATS_SCHEMA_VERSION}"
-        )));
-    }
-    let tx = conn.transaction().map_err(db_err)?;
-    if version < 1 {
-        tx.execute_batch(
-            "CREATE TABLE torrents (
+/// Version 1 (0.5.0).
+const SCHEMA_V1: &str = "CREATE TABLE torrents (
                  id INTEGER PRIMARY KEY,
                  hash TEXT NOT NULL UNIQUE,
                  name TEXT,
@@ -366,9 +372,39 @@ fn migrate(conn: &mut Connection) -> io::Result<()> {
                  started INTEGER NOT NULL,
                  last_seen INTEGER NOT NULL,
                  stopped INTEGER
-             );",
-        )
+             );";
+
+/// Version 2 (0.6.0): peer traffic by place.
+const SCHEMA_V2: &str = "CREATE TABLE peer_traffic (
+                 torrent INTEGER NOT NULL,
+                 step INTEGER NOT NULL,
+                 t INTEGER NOT NULL,
+                 dim TEXT NOT NULL,
+                 key TEXT NOT NULL,
+                 downloaded INTEGER NOT NULL,
+                 uploaded INTEGER NOT NULL,
+                 peers INTEGER NOT NULL,
+                 PRIMARY KEY (torrent, step, t, dim, key)
+             ) WITHOUT ROWID;
+             CREATE INDEX peer_traffic_by_time ON peer_traffic (step, dim, t);
+             CREATE TABLE asns (asn INTEGER PRIMARY KEY, name TEXT NOT NULL);";
+
+/// Bring the schema to [`STATS_SCHEMA_VERSION`].
+fn migrate(conn: &mut Connection) -> io::Result<()> {
+    let version: i64 = conn
+        .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(db_err)?;
+    if version > STATS_SCHEMA_VERSION {
+        return Err(io::Error::other(format!(
+            "the statistics database has schema version {version}, newer than this daemon's {STATS_SCHEMA_VERSION}"
+        )));
+    }
+    let tx = conn.transaction().map_err(db_err)?;
+    if version < 1 {
+        tx.execute_batch(SCHEMA_V1).map_err(db_err)?;
+    }
+    if version < 2 {
+        tx.execute_batch(SCHEMA_V2).map_err(db_err)?;
     }
     tx.pragma_update(None, "user_version", STATS_SCHEMA_VERSION)
         .map_err(db_err)?;
@@ -599,6 +635,38 @@ impl StatsDb {
                     ])
                     .map_err(db_err)?;
             }
+            let mut peer = tx
+                .prepare_cached(
+                    "INSERT INTO peer_traffic (torrent, step, t, dim, key, downloaded, uploaded, peers)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                     ON CONFLICT(torrent, step, t, dim, key) DO UPDATE SET
+                         downloaded = downloaded + excluded.downloaded,
+                         uploaded = uploaded + excluded.uploaded,
+                         peers = peers + excluded.peers",
+                )
+                .map_err(db_err)?;
+            for (hash, step, t, dim, key, x) in &b.peer_traffic {
+                let id = ensure(&tx, ids, &mut new, hash, b.meta.get(hash)).map_err(db_err)?;
+                peer.execute(params![
+                    id,
+                    step.secs(),
+                    t,
+                    dim,
+                    key,
+                    x.downloaded,
+                    x.uploaded,
+                    x.peers
+                ])
+                .map_err(db_err)?;
+            }
+            for (asn, name) in &b.asns {
+                tx.execute(
+                    "INSERT INTO asns (asn, name) VALUES (?1, ?2)
+                     ON CONFLICT(asn) DO UPDATE SET name = excluded.name",
+                    params![asn, name],
+                )
+                .map_err(db_err)?;
+            }
             for e in &b.events {
                 let id =
                     ensure(&tx, ids, &mut new, &e.hash, b.meta.get(&e.hash)).map_err(db_err)?;
@@ -646,6 +714,16 @@ impl StatsDb {
                         .map_err(db_err)?;
                 }
             }
+            for step in [StatsStep::Hour, StatsStep::Day] {
+                if let Some(keep) = r.of(step) {
+                    n += tx
+                        .execute(
+                            "DELETE FROM peer_traffic WHERE step = ?1 AND t < ?2",
+                            params![step.secs(), cutoff(keep)],
+                        )
+                        .map_err(db_err)?;
+                }
+            }
             for step in StatsStep::ALL {
                 if let Some(keep) = r.of(step) {
                     n += tx
@@ -672,6 +750,7 @@ impl StatsDb {
                        AND NOT EXISTS (SELECT 1 FROM traffic WHERE torrent = torrents.id)
                        AND NOT EXISTS (SELECT 1 FROM daily WHERE torrent = torrents.id)
                        AND NOT EXISTS (SELECT 1 FROM events WHERE torrent = torrents.id)
+                       AND NOT EXISTS (SELECT 1 FROM peer_traffic WHERE torrent = torrents.id)
                      RETURNING hash",
                 )
                 .map_err(db_err)?;
@@ -710,6 +789,7 @@ impl StatsDb {
             "DELETE FROM traffic WHERE torrent = ?1",
             "DELETE FROM daily WHERE torrent = ?1",
             "DELETE FROM events WHERE torrent = ?1",
+            "DELETE FROM peer_traffic WHERE torrent = ?1",
             "DELETE FROM torrents WHERE id = ?1",
         ] {
             tx.execute(sql, params![id]).map_err(db_err)?;
@@ -985,6 +1065,142 @@ impl StatsDb {
         .map_err(db_err)
     }
 
+    /// Peer traffic by place over a range, ranked; `(key, downloaded,
+    /// uploaded, most peers in one bucket)`. `torrent` `None` = all.
+    #[allow(clippy::too_many_arguments)]
+    pub fn places(
+        &self,
+        torrent: Option<i64>,
+        step: StatsStep,
+        dim: &str,
+        from: u64,
+        to: u64,
+        by_upload: bool,
+        limit: u32,
+    ) -> io::Result<Vec<(String, u64, u64, u32)>> {
+        let conn = self.reader();
+        let order = if by_upload {
+            "up DESC, down DESC"
+        } else {
+            "down DESC, up DESC"
+        };
+        let sql = format!(
+            "SELECT key, sum(d) AS down, sum(u) AS up, max(p) FROM (
+                 SELECT key, t, sum(downloaded) AS d, sum(uploaded) AS u, sum(peers) AS p
+                 FROM peer_traffic
+                 WHERE step = ?1 AND dim = ?2 AND t BETWEEN ?3 AND ?4
+                   AND (?5 IS NULL OR torrent = ?5)
+                 GROUP BY key, t)
+             GROUP BY key ORDER BY {order}, key LIMIT ?6"
+        );
+        let mut stmt = conn.prepare_cached(&sql).map_err(db_err)?;
+        stmt.query_map(params![step.secs(), dim, from, to, torrent, limit], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .map_err(db_err)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(db_err)
+    }
+
+    /// The buckets of some places; `(t, key, downloaded, uploaded, peers)`,
+    /// oldest first.
+    pub fn place_series(
+        &self,
+        torrent: Option<i64>,
+        step: StatsStep,
+        dim: &str,
+        from: u64,
+        to: u64,
+        keys: &[String],
+    ) -> io::Result<Vec<(u64, String, PeerTraffic)>> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.reader();
+        let wanted = serde_json::to_string(keys).unwrap_or_else(|_| "[]".into());
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT t, key, sum(downloaded), sum(uploaded), sum(peers) FROM peer_traffic
+                 WHERE step = ?1 AND dim = ?2 AND t BETWEEN ?3 AND ?4
+                   AND (?5 IS NULL OR torrent = ?5)
+                   AND key IN (SELECT value FROM json_each(?6))
+                 GROUP BY t, key ORDER BY t, key",
+            )
+            .map_err(db_err)?;
+        stmt.query_map(params![step.secs(), dim, from, to, torrent, wanted], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                PeerTraffic {
+                    downloaded: r.get(2)?,
+                    uploaded: r.get(3)?,
+                    peers: r.get(4)?,
+                },
+            ))
+        })
+        .map_err(db_err)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(db_err)
+    }
+
+    /// Bytes attributed to peers (all places) and the torrents' traffic,
+    /// over a range: `((down, up), (down, up))`.
+    pub fn attribution(
+        &self,
+        torrent: Option<i64>,
+        step: StatsStep,
+        dim: &str,
+        from: u64,
+        to: u64,
+    ) -> io::Result<((u64, u64), (u64, u64))> {
+        let conn = self.reader();
+        let attributed = conn
+            .query_row(
+                "SELECT coalesce(sum(downloaded), 0), coalesce(sum(uploaded), 0) FROM peer_traffic
+                 WHERE step = ?1 AND dim = ?2 AND t BETWEEN ?3 AND ?4
+                   AND (?5 IS NULL OR torrent = ?5)",
+                params![step.secs(), dim, from, to, torrent],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(db_err)?;
+        let traffic = if step == StatsStep::Day {
+            conn.query_row(
+                "SELECT coalesce(sum(downloaded), 0), coalesce(sum(uploaded), 0) FROM daily
+                 WHERE t BETWEEN ?1 AND ?2 AND (?3 IS NULL OR torrent = ?3)",
+                params![from, to, torrent],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+        } else {
+            conn.query_row(
+                "SELECT coalesce(sum(downloaded), 0), coalesce(sum(uploaded), 0) FROM traffic
+                 WHERE step = ?1 AND t BETWEEN ?2 AND ?3 AND (?4 IS NULL OR torrent = ?4)",
+                params![step.secs(), from, to, torrent],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+        }
+        .map_err(db_err)?;
+        Ok((attributed, traffic))
+    }
+
+    /// Names of autonomous systems.
+    pub fn asn_names(&self, asns: &[u32]) -> io::Result<HashMap<u32, String>> {
+        let conn = self.reader();
+        let mut stmt = conn
+            .prepare_cached("SELECT name FROM asns WHERE asn = ?1")
+            .map_err(db_err)?;
+        let mut out = HashMap::new();
+        for asn in asns {
+            if let Some(name) = stmt
+                .query_row(params![asn], |r| r.get::<_, String>(0))
+                .optional()
+                .map_err(db_err)?
+            {
+                out.insert(*asn, name);
+            }
+        }
+        Ok(out)
+    }
+
     /// Size and coverage.
     pub fn info(&self) -> io::Result<Info> {
         let conn = self.reader();
@@ -1200,6 +1416,50 @@ mod tests {
         assert!(db.purge(H1).unwrap());
         assert!(!db.purge(H1).unwrap());
         assert!(db.torrent(H1).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_version_1_database_is_migrated() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let c = Connection::open(dir.path().join(STATS_DB_FILE)).unwrap();
+            c.execute_batch(SCHEMA_V1).unwrap();
+            c.pragma_update(None, "user_version", 1).unwrap();
+            c.execute(
+                "INSERT INTO torrents (hash, name, size) VALUES (?1, 'old', 1)",
+                params![H1],
+            )
+            .unwrap();
+        }
+        let db = StatsDb::open(dir.path()).unwrap();
+        assert_eq!(
+            db.torrent(H1).unwrap().unwrap().name.as_deref(),
+            Some("old")
+        );
+        db.write(&Batch {
+            peer_traffic: vec![(
+                H1.into(),
+                StatsStep::Hour,
+                3_600,
+                "country",
+                "NZ".into(),
+                PeerTraffic {
+                    downloaded: 1,
+                    uploaded: 2,
+                    peers: 1,
+                },
+            )],
+            asns: vec![(64_500, "Test Net".into())],
+            ..Default::default()
+        })
+        .unwrap();
+        let t = db.torrent(H1).unwrap().unwrap();
+        assert_eq!(
+            db.places(Some(t.id), StatsStep::Hour, "country", 0, 7_200, true, 10)
+                .unwrap(),
+            vec![("NZ".to_string(), 1, 2, 1)]
+        );
+        assert_eq!(db.asn_names(&[64_500]).unwrap()[&64_500], "Test Net");
     }
 
     #[test]

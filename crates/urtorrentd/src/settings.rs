@@ -175,6 +175,15 @@ settings! {
     api_max_auth_failures: u32 = 5, nullable = false;
     /// Seconds an address stays banned after too many failed logins.
     api_ban_duration: u64 = 3600, nullable = false;
+    /// A MaxMind DB file (`.mmdb`, absolute path) with countries:
+    /// GeoLite2-Country, DB-IP IP-to-Country Lite or IPinfo Lite; `null` =
+    /// none. Peers show their country and `/stats/geo` has traffic by
+    /// country. Re-read when the file changes; never downloaded.
+    geoip_database: Option<String> = None, nullable = true;
+    /// A MaxMind DB file with autonomous systems (GeoLite2-ASN, DB-IP
+    /// IP-to-ASN Lite); `null` = none (IPinfo Lite has them in
+    /// `geoip_database`).
+    geoip_asn_database: Option<String> = None, nullable = true;
     /// Record statistics (`/stats`): traffic per torrent and for the session,
     /// each torrent's days, the timeline. Off: nothing new is recorded, what
     /// was recorded stays.
@@ -308,6 +317,16 @@ impl Settings {
             && !std::path::Path::new(p).is_absolute()
         {
             return Err("download_path must be an absolute path".into());
+        }
+        for (name, p) in [
+            ("geoip_database", &self.geoip_database),
+            ("geoip_asn_database", &self.geoip_asn_database),
+        ] {
+            if let Some(p) = p
+                && !std::path::Path::new(p).is_absolute()
+            {
+                return Err(format!("{name} must be an absolute path"));
+            }
         }
         if let Some(sfx) = &self.incomplete_file_suffix
             && (sfx.is_empty() || sfx.len() > 32 || sfx.contains(['/', '\\', '\0']))

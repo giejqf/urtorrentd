@@ -14,8 +14,8 @@ use super::{HashPath, Json, Path, Query, no_content};
 use crate::daemon::Daemon;
 use crate::error::ApiResult;
 use crate::model::{
-    StatsInfo, StatsRangeQuery, TimelineEvent, TimelineQuery, TopQuery, TopTorrents, TorrentDays,
-    TorrentTraffic, TransferStats,
+    GeoQuery, GeoStats, StatsInfo, StatsRangeQuery, TimelineEvent, TimelineQuery, TopQuery,
+    TopTorrents, TorrentDays, TorrentTraffic, TransferStats,
 };
 
 /// What the statistics database holds.
@@ -72,6 +72,18 @@ pub(crate) async fn get_top_torrents(
     Query(q): Query<TopQuery>,
 ) -> ApiResult<Json<TopTorrents>> {
     Ok(Json(d.top_torrents(q).await?))
+}
+
+/// Peer traffic by country or autonomous system (all torrents, or one), with
+/// what could not be tied to a peer. Needs a GeoIP database to locate peers
+/// (settings `geoip_database`, `geoip_asn_database`); without one, traffic
+/// is recorded as not located.
+#[utoipa::path(get, path = "/stats/geo", tag = "stats", params(GeoQuery), responses((status = 200, body = GeoStats)))]
+pub(crate) async fn get_geo_stats(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<GeoQuery>,
+) -> ApiResult<Json<GeoStats>> {
+    Ok(Json(d.geo_stats(q).await?))
 }
 
 /// What happened to torrents, newest first.

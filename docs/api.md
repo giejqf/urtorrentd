@@ -93,6 +93,34 @@ GET /api/v1/stats/top?from=1789593600&by=uploaded&limit=10
 GET /api/v1/stats/timeline?hash=<hash>
 ```
 
+### By place
+
+With a GeoIP database configured (`geoip_database`, `geoip_asn_database`;
+[settings.md](settings.md#geolocation)), peers carry `country`, `asn` and
+`as_org`, and `/stats/geo` has the traffic by country or autonomous system:
+
+```sh
+# Where this torrent's upload went this week, with a daily series of the top 5
+GET /api/v1/stats/geo?hash=<hash>&from=1789593600&dim=country&limit=5&series=true
+{"hash": "...", "step": "hour", "dim": "country", "located": true,
+ "rows": [{"country": "DE", "asn": null, "as_org": null, "downloaded": 0, "uploaded": 734003200, "peers_max": 12}, ...],
+ "points": [{"t": 1789596000, "country": "DE", "downloaded": 0, "uploaded": 4194304, "peers": 3}, ...],
+ "unattributed": {"downloaded": 0, "uploaded": 16384}}
+
+# Which networks peers came from, over all torrents
+GET /api/v1/stats/geo?dim=asn&by=downloaded
+```
+
+Rows plus `unattributed` add up to the torrents' traffic over the range.
+`unattributed` holds what no peer accounts for: web seeds, a connection whose
+end was missed, and the last seconds of a running transfer (peers are sampled
+every 10 s). A row with `country` (or `asn`) `null` is peers the database
+does not place, or all peers when there is no database (`located` false):
+traffic is recorded by peer either way, so a database added later locates
+new traffic, not old. `peers` is distinct addresses per torrent and bucket;
+peer addresses themselves are never stored. Places are kept per hour and per
+day, with the same retention as the traffic.
+
 A time-of-day pattern (an hour × weekday heatmap) is the hourly series
 binned in the viewer's time zone; `sdk/typescript/check.ts` shows it.
 Removed torrents keep their history (with `removed` set) until the retention
@@ -126,7 +154,7 @@ be opened, the daemon runs without statistics and `/stats` answers
 | POST | `/torrents/{hash}/trackers/remove`, `/trackers/edit` | Remove or replace trackers |
 | GET, POST | `/torrents/{hash}/webseeds` | Web seeds; add |
 | POST | `/torrents/{hash}/webseeds/remove`, `/webseeds/edit` | Remove or replace web seeds |
-| GET | `/torrents/{hash}/peers` | Connected peers |
+| GET | `/torrents/{hash}/peers` | Connected peers, with country and network (GeoIP) |
 | GET | `/torrents/{hash}/pieces`, `/pieces/hashes` | Piece states, availability and priorities; piece hashes |
 | GET | `/torrents/{hash}/torrent-file` | The `.torrent` (current trackers and web seeds) |
 | GET, POST, PUT | `/categories` | Categories; create; edit |
@@ -145,6 +173,7 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET | `/stats/torrents/{hash}/days` | A torrent's days: bytes, running and seeding time, all-time counters, ratio, swarm size |
 | DELETE | `/stats/torrents/{hash}` | Delete a torrent's history |
 | GET | `/stats/top` | Torrents ranked by bytes up or down over a range (removed ones too) |
+| GET | `/stats/geo` | Peer traffic by country or autonomous system, per torrent or overall, optionally as a series |
 | GET | `/stats/timeline` | What happened to torrents (added, finished, moved, errors, state changes, removed) |
 
 ## Adding torrents: qBittorrent's `torrents/add` parameters
@@ -202,7 +231,7 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `log/main` | done | `GET /log` |
 | `log/peers` | done | `GET /log/peers` |
 | `sync/maindata` | done | `GET /sync`; pushed: `GET /events` (server-sent events) |
-| `sync/torrentPeers` | done | `GET /torrents/{hash}/peers` (the full list each time; peer lists are small) |
+| `sync/torrentPeers` | done | `GET /torrents/{hash}/peers` (the full list each time; peer lists are small); `country` (code), `asn`, `as_org` from the GeoIP database |
 | `transfer/info` | done | `GET /transfer` |
 | `transfer/uploadLimit` | done | `GET /transfer` (`upload_limit` in force) |
 | `transfer/downloadLimit` | done | `GET /transfer` (`download_limit` in force) |

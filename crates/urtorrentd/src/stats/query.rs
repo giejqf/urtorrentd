@@ -11,9 +11,10 @@ use super::{Flush, Stats};
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult};
 use crate::model::{
-    StatsInfo, StatsPeriod, StatsRangeQuery, StatsStep, TimelineEvent, TimelineQuery, TopMetric,
-    TopQuery, TopTorrent, TopTorrents, TorrentDay, TorrentDays, TorrentTraffic, TrafficPoint,
-    TransferPoint, TransferStats,
+    ByteTotals, GeoDimension, GeoPoint, GeoQuery, GeoRow, GeoStats, StatsInfo, StatsPeriod,
+    StatsRangeQuery, StatsStep, TimelineEvent, TimelineQuery, TopMetric, TopQuery, TopTorrent,
+    TopTorrents, TorrentDay, TorrentDays, TorrentTraffic, TrafficPoint, TransferPoint,
+    TransferStats,
 };
 use crate::util::{blocking, hex, now, parse_hash};
 
@@ -32,9 +33,10 @@ fn range(from: Option<u64>, to: Option<u64>, now: u64, span: Option<u64>) -> Api
     Ok((from, to))
 }
 
-/// The requested step, or the finest one kept for the whole range (with at
-/// most [`MAX_POINTS`] buckets when `capped`).
+/// The requested step, or the finest of `steps` kept for the whole range
+/// (with at most [`MAX_POINTS`] buckets when `capped`).
 pub(crate) fn pick_step(
+    steps: &[StatsStep],
     requested: Option<StatsStep>,
     from: u64,
     to: u64,
@@ -51,8 +53,9 @@ pub(crate) fn pick_step(
         }
         return Ok(s);
     }
-    Ok(StatsStep::ALL
-        .into_iter()
+    Ok(steps
+        .iter()
+        .copied()
         .find(|&s| {
             let kept = retention
                 .of(s)
@@ -139,7 +142,15 @@ impl Daemon {
     pub(crate) async fn transfer_stats(&self, q: StatsRangeQuery) -> ApiResult<TransferStats> {
         let t = now();
         let (from, to) = range(q.from, q.to, t, Some(DEFAULT_SPAN))?;
-        let step = pick_step(q.step, from, to, t, &self.stats_retention(), true)?;
+        let step = pick_step(
+            &StatsStep::ALL,
+            q.step,
+            from,
+            to,
+            t,
+            &self.stats_retention(),
+            true,
+        )?;
         let (db, current) = self.stats_db().await?;
         let (points, periods) =
             blocking(move || Ok((db.session(step, from, to)?, db.periods(from, to)?)))
@@ -173,7 +184,15 @@ impl Daemon {
     ) -> ApiResult<TorrentTraffic> {
         let t = now();
         let (from, to) = range(q.from, q.to, t, Some(DEFAULT_SPAN))?;
-        let step = pick_step(q.step, from, to, t, &self.stats_retention(), true)?;
+        let step = pick_step(
+            &StatsStep::ALL,
+            q.step,
+            from,
+            to,
+            t,
+            &self.stats_retention(),
+            true,
+        )?;
         let (db, current) = self.stats_db().await?;
         let row = self.stats_torrent(&db, hash).await?;
         let id = row.id;
@@ -211,6 +230,7 @@ impl Daemon {
         let t = now();
         let (from, to) = range(q.from, q.to, t, Some(30 * DEFAULT_SPAN))?;
         if pick_step(
+            &StatsStep::ALL,
             Some(StatsStep::Day),
             from,
             to,
@@ -266,7 +286,15 @@ impl Daemon {
         if !(1..=1000).contains(&limit) {
             return Err(ApiError::bad_request("`limit` must be 1 to 1000"));
         }
-        let step = pick_step(None, from, to, t, &self.stats_retention(), false)?;
+        let step = pick_step(
+            &StatsStep::ALL,
+            None,
+            from,
+            to,
+            t,
+            &self.stats_retention(),
+            false,
+        )?;
         let by_upload = q.by.unwrap_or(TopMetric::Uploaded) == TopMetric::Uploaded;
         let (db, _) = self.stats_db().await?;
         let rows = blocking(move || db.top(step, from, to, by_upload, limit))
@@ -317,6 +345,112 @@ impl Daemon {
             .collect())
     }
 
+    /// Peer traffic by place.
+    pub(crate) async fn geo_stats(&self, q: GeoQuery) -> ApiResult<GeoStats> {
+        let t = now();
+        let (from, to) = range(q.from, q.to, t, Some(DEFAULT_SPAN))?;
+        if q.step == Some(StatsStep::Minute) {
+            return Err(ApiError::bad_request(
+                "peer traffic is kept per hour and per day",
+            ));
+        }
+        let steps = [StatsStep::Hour, StatsStep::Day];
+        let step = pick_step(&steps, q.step, from, to, t, &self.stats_retention(), true)?;
+        let limit = q.limit.unwrap_or(20);
+        if !(1..=250).contains(&limit) {
+            return Err(ApiError::bad_request("`limit` must be 1 to 250"));
+        }
+        let series = q.series.unwrap_or(false);
+        if series && ((to - from) / step.secs() + 1) * u64::from(limit) > 10 * MAX_POINTS {
+            return Err(ApiError::bad_request(format!(
+                "a series of more than {} points; use a larger step, a shorter range or a lower limit",
+                10 * MAX_POINTS
+            )));
+        }
+        let dim = q.dim.unwrap_or(GeoDimension::Country);
+        let tag = match dim {
+            GeoDimension::Country => "country",
+            GeoDimension::Asn => "asn",
+        };
+        let by_upload = q.by.unwrap_or(TopMetric::Uploaded) == TopMetric::Uploaded;
+        let (db, _) = self.stats_db().await?;
+        let (hash, torrent) = match &q.hash {
+            Some(h) => {
+                let row = self.stats_torrent(&db, h).await?;
+                (Some(row.hash), Some(row.id))
+            }
+            None => (None, None),
+        };
+        let (places, points, (attributed, traffic), names) = blocking(move || {
+            let places = db.places(torrent, step, tag, from, to, by_upload, limit)?;
+            let keys: Vec<String> = places.iter().map(|p| p.0.clone()).collect();
+            let points = if series {
+                db.place_series(torrent, step, tag, from, to, &keys)?
+            } else {
+                Vec::new()
+            };
+            let asns: Vec<u32> = keys.iter().filter_map(|k| k.parse().ok()).collect();
+            let names = if dim == GeoDimension::Asn {
+                db.asn_names(&asns)?
+            } else {
+                Default::default()
+            };
+            Ok((
+                places,
+                points,
+                db.attribution(torrent, step, tag, from, to)?,
+                names,
+            ))
+        })
+        .await
+        .map_err(ApiError::io)?;
+        // A place's key: a country code or an AS number; "" = not located.
+        let place = |key: &str| match dim {
+            GeoDimension::Country => (Some(key.to_string()).filter(|k| !k.is_empty()), None),
+            GeoDimension::Asn => (None, key.parse::<u32>().ok()),
+        };
+        Ok(GeoStats {
+            hash,
+            from,
+            to,
+            step,
+            dim,
+            rows: places
+                .into_iter()
+                .map(|(key, downloaded, uploaded, peers_max)| {
+                    let (country, asn) = place(&key);
+                    GeoRow {
+                        country,
+                        asn,
+                        as_org: asn.and_then(|a| names.get(&a).cloned()),
+                        downloaded,
+                        uploaded,
+                        peers_max,
+                    }
+                })
+                .collect(),
+            points: points
+                .into_iter()
+                .map(|(t, key, x)| {
+                    let (country, asn) = place(&key);
+                    GeoPoint {
+                        t,
+                        country,
+                        asn,
+                        downloaded: x.downloaded,
+                        uploaded: x.uploaded,
+                        peers: x.peers,
+                    }
+                })
+                .collect(),
+            unattributed: ByteTotals {
+                downloaded: traffic.0.saturating_sub(attributed.0),
+                uploaded: traffic.1.saturating_sub(attributed.1),
+            },
+            located: self.geo.enabled(),
+        })
+    }
+
     /// Delete a torrent's history.
     pub(crate) async fn purge_torrent_stats(&self, hash: &str) -> ApiResult<()> {
         let (db, _) = self.stats_db().await?;
@@ -348,27 +482,47 @@ mod tests {
         let now = 400 * 86_400;
         let day = |n: u64| now - n * 86_400;
         assert_eq!(
-            pick_step(None, day(1), now, now, &r, true).unwrap(),
+            pick_step(&StatsStep::ALL, None, day(1), now, now, &r, true).unwrap(),
             StatsStep::Minute
         );
         // Minutes are kept for two days, but a week of them is too many.
         assert_eq!(
-            pick_step(None, day(3), now, now, &r, true).unwrap(),
+            pick_step(&StatsStep::ALL, None, day(3), now, now, &r, true).unwrap(),
             StatsStep::Hour
         );
         assert_eq!(
-            pick_step(None, day(100), now, now, &r, true).unwrap(),
+            pick_step(&StatsStep::ALL, None, day(100), now, now, &r, true).unwrap(),
             StatsStep::Day
         );
         assert_eq!(
-            pick_step(None, day(3), now, now, &r, false).unwrap(),
+            pick_step(&StatsStep::ALL, None, day(3), now, now, &r, false).unwrap(),
             StatsStep::Hour
         );
         assert_eq!(
-            pick_step(Some(StatsStep::Minute), day(1), now, now, &r, true).unwrap(),
+            pick_step(
+                &StatsStep::ALL,
+                Some(StatsStep::Minute),
+                day(1),
+                now,
+                now,
+                &r,
+                true
+            )
+            .unwrap(),
             StatsStep::Minute
         );
-        assert!(pick_step(Some(StatsStep::Minute), day(30), now, now, &r, true).is_err());
+        assert!(
+            pick_step(
+                &StatsStep::ALL,
+                Some(StatsStep::Minute),
+                day(30),
+                now,
+                now,
+                &r,
+                true
+            )
+            .is_err()
+        );
         assert!(range(Some(5), Some(4), now, None).is_err());
         assert_eq!(
             range(None, Some(100_000), now, Some(DEFAULT_SPAN)).unwrap(),

@@ -60,13 +60,27 @@ totals only), so there is no checklist entry to follow: the design is ours.
   finest step kept for the whole range is used, capped at 10 000 buckets.
   Charts, and heatmaps binned in the viewer's time zone, are client work:
   the daemon has no time-zone database and no UI (non-goal).
-- **Geolocation (next, 0.6.0)**: a `.mmdb` file the user provides (GeoLite2
-  or DB-IP Lite), no downloads by the daemon; country and ASN, never city;
-  peer addresses are aggregated when observed and never written to disk.
-  Per-peer bytes come from `peers(id)` deltas and the final counters in
-  `Event::PeerDisconnected`; breakdowns report what they cannot attribute
-  (web seeds, disconnects lost to `Lagged`) as `unattributed`, so they add
-  up to the torrent's traffic.
+- **Geolocation (0.6.0)**: `.mmdb` files the user provides (GeoLite2 or
+  DB-IP Lite country and ASN databases, or IPinfo Lite with both), read into
+  memory and re-read when the file changes; the daemon never downloads one.
+  Fields are read by path as whatever type the file stores (the layouts
+  differ); countries and ASNs only, never cities. Peers in the API carry
+  their place.
+- **Traffic by place (0.6.0)**: per-connection counters are differenced like
+  a torrent's. Every 10 s, before the torrents' snapshot (so peer traffic
+  never runs ahead of the traffic it is part of), the tick samples the peers
+  of the torrents that moved data; `Event::PeerDisconnected` brings a
+  connection's final counters. A connection is known by its address and
+  start time (observation time minus `connected_for`), so a sample taken
+  before a close but handled after it, or one of an earlier connection from
+  the same address, is not counted twice; connections older than the
+  recording period are baselines. Bytes are grouped per torrent, per hour
+  and per day, by country and by ASN (`peer_traffic`, keys `""` = not
+  located), with the distinct addresses per torrent and bucket (within a
+  run). Peer addresses stay in memory and are never written. What cannot be
+  tied to a peer (web seeds, a close missed in `Lagged`, the seconds since
+  the last sample) is reported as `unattributed` = the torrents' traffic
+  minus the peer traffic over the same range, so the rows add up.
 
 ## Consequences
 
@@ -78,3 +92,10 @@ totals only), so there is no checklist entry to follow: the design is ours.
   all-time counter gained by that much. Both are observations; neither is
   edited to match the other.
 - A tick that sees no torrent change writes session buckets only.
+- Sampling peers is one `peers(id)` call per torrent that moved data, every
+  10 s: background work bounded by the active torrents, not a list
+  endpoint (AGENTS.md 4.4). A call for many torrents at once is the
+  upstream request if it ever shows in a profile (`docs/gaps.md`).
+- The database's licence is the user's to honour: DB-IP Lite (CC BY 4.0)
+  asks for credit where the data is shown, GeoLite2 has its own EULA.
+  `GET /app` reports the `database_type` so a client can show it.

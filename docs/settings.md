@@ -56,6 +56,25 @@ kind of bucket is kept, in seconds (`null` = forever):
 Without a `step`, a query uses the finest step kept for its whole range, so
 shortening a retention changes which step long ranges get.
 
+## Geolocation
+
+Peers are placed by MaxMind DB (`.mmdb`) files you provide; the daemon never
+downloads one. Point `geoip_database` at a country database and, if it has
+no autonomous systems, `geoip_asn_database` at an ASN one:
+
+| Source | `geoip_database` | `geoip_asn_database` | Licence |
+|---|---|---|---|
+| [DB-IP Lite](https://db-ip.com/db/lite.php) (monthly, no account) | `dbip-country-lite-YYYY-MM.mmdb` | `dbip-asn-lite-YYYY-MM.mmdb` | CC BY 4.0: credit DB-IP where the data is shown |
+| [MaxMind GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) (free account) | `GeoLite2-Country.mmdb` | `GeoLite2-ASN.mmdb` | GeoLite2 EULA |
+| [IPinfo Lite](https://ipinfo.io/lite) (free account) | `ipinfo_lite.mmdb` | `null` (it has both) | CC BY-SA 4.0 |
+
+A city database works too (only the country is read) but takes more memory.
+Paths are absolute and checked when set (`400` if the file cannot be read).
+The file is re-read when it changes, so a monthly update is a replace
+(write a new file and rename it over the old one); a file that cannot be
+read keeps the database loaded before. `GET /app` → `geoip` shows each
+file's `database_type`, build time and last error.
+
 ## Coverage of qBittorrent 5.2.3's preferences
 
 Every key of the reference (`docs/reference/qbittorrent-5.2.3-preferences.txt`)
@@ -218,7 +237,7 @@ an API daemon. **unsupported**: with the reason.
 | `recheck_completed_torrents` | planned | recheck when a download completes |
 | `refresh_interval` | n/a | clients choose their polling interval |
 | `request_queue_size` | fixed | library |
-| `resolve_peer_countries` | unsupported | no GeoIP database |
+| `resolve_peer_countries` | setting | `geoip_database` (a database file you provide; countries on peers and in `/stats/geo`), `geoip_asn_database` |
 | `resolve_peer_host_names` | unsupported | no reverse DNS for peers |
 | `resume_data_storage_type` | fixed | SQLite: resume data lives in the daemon's database (ADR 0004) |
 | `rss_auto_downloading_enabled` | planned | RSS |

@@ -12,6 +12,7 @@ pub mod api;
 pub mod auth;
 pub mod daemon;
 pub mod error;
+pub mod geo;
 pub mod log;
 pub mod model;
 pub mod settings;

@@ -10,7 +10,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.5.0"
+    "version": "0.6.0"
   },
   "paths": {
     "/api/v1/app": {
@@ -1676,6 +1676,177 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StatsInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/geo": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Peer traffic by country or autonomous system (all torrents, or one), with\nwhat could not be tied to a peer. Needs a GeoIP database to locate peers\n(settings `geoip_database`, `geoip_asn_database`); without one, traffic\nis recorded as not located.",
+        "operationId": "get_geo_stats",
+        "parameters": [
+          {
+            "name": "dim",
+            "in": "query",
+            "description": "Grouped by; default `country`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/GeoDimension"
+            }
+          },
+          {
+            "name": "hash",
+            "in": "query",
+            "description": "One torrent (info-hash); default: all.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Buckets starting at or after this time, unix seconds; default: one\nday before `to`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Buckets starting at or before this time, unix seconds; default: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "step",
+            "in": "query",
+            "description": "`hour` or `day`; default: the finest kept for the whole range.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StatsStep"
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "description": "Ranked by; default `uploaded`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TopMetric"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many places (1 to 250); default 20.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "description": "Also return each place's buckets (`points`); default false.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoStats"
                 }
               }
             }
@@ -7487,7 +7658,8 @@
           "data_dir",
           "default_save_path",
           "listen_port",
-          "restart_required"
+          "restart_required",
+          "geoip"
         ],
         "properties": {
           "version": {
@@ -7534,6 +7706,10 @@
               "type": "string"
             },
             "description": "Settings changed since the start that apply only after a restart."
+          },
+          "geoip": {
+            "$ref": "#/components/schemas/GeoIpInfo",
+            "description": "The GeoIP databases in use."
           }
         }
       },
@@ -7600,6 +7776,28 @@
               "$ref": "#/components/schemas/BulkFailure"
             },
             "description": "Torrents where the action failed."
+          }
+        }
+      },
+      "ByteTotals": {
+        "type": "object",
+        "description": "Bytes.",
+        "required": [
+          "downloaded",
+          "uploaded"
+        ],
+        "properties": {
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes received.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes sent.",
+            "minimum": 0
           }
         }
       },
@@ -7931,6 +8129,260 @@
           }
         }
       },
+      "GeoDatabaseInfo": {
+        "type": "object",
+        "description": "A GeoIP database file.",
+        "required": [
+          "path",
+          "database_type",
+          "built",
+          "error"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The file."
+          },
+          "database_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its `database_type` (`GeoLite2-Country`, `DBIP-Country-Lite`, ...);\n`null` = not loaded."
+          },
+          "built": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When it was built, unix seconds; `null` = not loaded.",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it could not be read (at the start, or the last reload; a failed\nreload keeps the database read before)."
+          }
+        }
+      },
+      "GeoDimension": {
+        "type": "string",
+        "description": "What peer traffic is grouped by.",
+        "enum": [
+          "country",
+          "asn"
+        ]
+      },
+      "GeoIpInfo": {
+        "type": "object",
+        "description": "The GeoIP databases (settings `geoip_database`, `geoip_asn_database`).",
+        "required": [
+          "country",
+          "asn"
+        ],
+        "properties": {
+          "country": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GeoDatabaseInfo",
+                "description": "The country database; `null` = none configured."
+              }
+            ]
+          },
+          "asn": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GeoDatabaseInfo",
+                "description": "The ASN database; `null` = none configured."
+              }
+            ]
+          }
+        }
+      },
+      "GeoPoint": {
+        "type": "object",
+        "description": "Traffic with a place in one bucket.",
+        "required": [
+          "t",
+          "country",
+          "asn",
+          "downloaded",
+          "uploaded",
+          "peers"
+        ],
+        "properties": {
+          "t": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bucket start, unix seconds.",
+            "minimum": 0
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The country (`dim` = `country`)."
+          },
+          "asn": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The autonomous system (`dim` = `asn`).",
+            "minimum": 0
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes received.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes sent.",
+            "minimum": 0
+          },
+          "peers": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its peers that moved data in the bucket (distinct addresses per\ntorrent, summed over torrents).",
+            "minimum": 0
+          }
+        }
+      },
+      "GeoRow": {
+        "type": "object",
+        "description": "Traffic with a place over a range.",
+        "required": [
+          "country",
+          "asn",
+          "as_org",
+          "downloaded",
+          "uploaded",
+          "peers_max"
+        ],
+        "properties": {
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The country (`dim` = `country`); `null` = not located."
+          },
+          "asn": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The autonomous system (`dim` = `asn`); `null` = not located.",
+            "minimum": 0
+          },
+          "as_org": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The autonomous system's organization, as last seen."
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes received from its peers.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes sent to its peers.",
+            "minimum": 0
+          },
+          "peers_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The most of its peers that moved data in one bucket (distinct\naddresses per torrent, summed over torrents).",
+            "minimum": 0
+          }
+        }
+      },
+      "GeoStats": {
+        "type": "object",
+        "description": "Peer traffic by place. Rows plus `unattributed` add up to the torrents'\ntraffic in the range.",
+        "required": [
+          "hash",
+          "from",
+          "to",
+          "step",
+          "dim",
+          "rows",
+          "points",
+          "unattributed",
+          "located"
+        ],
+        "properties": {
+          "hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The torrent, or `null` for all."
+          },
+          "from": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "step": {
+            "$ref": "#/components/schemas/StatsStep",
+            "description": "The bucket size."
+          },
+          "dim": {
+            "$ref": "#/components/schemas/GeoDimension",
+            "description": "Grouped by."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeoRow"
+            },
+            "description": "Places, highest first (not located: `country` / `asn` `null`)."
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeoPoint"
+            },
+            "description": "Their buckets, oldest first (`series=true`)."
+          },
+          "unattributed": {
+            "$ref": "#/components/schemas/ByteTotals",
+            "description": "Traffic not tied to a peer: web seeds, and connections whose end\nwas missed. Peer traffic is sampled every 10 s, so the last seconds\nof an ongoing transfer show here until the next sample."
+          },
+          "located": {
+            "type": "boolean",
+            "description": "A GeoIP database is loaded now."
+          }
+        }
+      },
       "Hashes": {
         "oneOf": [
           {
@@ -8167,7 +8619,10 @@
           "peer_interested",
           "am_interested",
           "outstanding_requests",
-          "connected_for"
+          "connected_for",
+          "country",
+          "asn",
+          "as_org"
         ],
         "properties": {
           "address": {
@@ -8267,6 +8722,29 @@
             "format": "int64",
             "description": "Seconds connected.",
             "minimum": 0
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its country (ISO 3166-1 alpha-2) from the GeoIP database; `null` =\nno database, or not in it."
+          },
+          "asn": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Its autonomous system number; `null` = unknown.",
+            "minimum": 0
+          },
+          "as_org": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its autonomous system's organization; `null` = unknown."
           }
         }
       },
@@ -8549,6 +9027,8 @@
           "api_session_timeout",
           "api_max_auth_failures",
           "api_ban_duration",
+          "geoip_database",
+          "geoip_asn_database",
           "stats_enabled",
           "stats_minute_retention",
           "stats_hour_retention",
@@ -8923,6 +9403,22 @@
             "default": 3600,
             "minimum": 0
           },
+          "geoip_database": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A MaxMind DB file (`.mmdb`, absolute path) with countries:\nGeoLite2-Country, DB-IP IP-to-Country Lite or IPinfo Lite; `null` =\nnone. Peers show their country and `/stats/geo` has traffic by\ncountry. Re-read when the file changes; never downloaded.",
+            "default": null
+          },
+          "geoip_asn_database": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A MaxMind DB file with autonomous systems (GeoLite2-ASN, DB-IP\nIP-to-ASN Lite); `null` = none (IPinfo Lite has them in\n`geoip_database`).",
+            "default": null
+          },
           "stats_enabled": {
             "type": "boolean",
             "description": "Record statistics (`/stats`): traffic per torrent and for the session,\neach torrent's days, the timeline. Off: nothing new is recorded, what\nwas recorded stays.",
@@ -9290,6 +9786,20 @@
             "format": "int64",
             "description": "Seconds an address stays banned after too many failed logins.",
             "minimum": 0
+          },
+          "geoip_database": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A MaxMind DB file (`.mmdb`, absolute path) with countries:\nGeoLite2-Country, DB-IP IP-to-Country Lite or IPinfo Lite; `null` =\nnone. Peers show their country and `/stats/geo` has traffic by\ncountry. Re-read when the file changes; never downloaded."
+          },
+          "geoip_asn_database": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A MaxMind DB file with autonomous systems (GeoLite2-ASN, DB-IP\nIP-to-ASN Lite); `null` = none (IPinfo Lite has them in\n`geoip_database`)."
           },
           "stats_enabled": {
             "type": "boolean",

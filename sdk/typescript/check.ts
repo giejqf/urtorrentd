@@ -66,6 +66,26 @@ export async function demo(): Promise<void> {
   const top = await api.GET("/api/v1/stats/top", { params: { query: { by: "uploaded", limit: 5 } } });
   console.log(heat, ratios, top.data?.torrents.map((t) => [t.name, t.uploaded, t.removed]));
 
+  // Where the upload went: countries for a map, and a stacked series of the
+  // top five.
+  const geo = await api.GET("/api/v1/stats/geo", {
+    params: { query: { dim: "country", by: "uploaded", limit: 5, series: true, step: "day" } },
+  });
+  const byCountry = new Map<string, number>();
+  for (const r of geo.data?.rows ?? []) {
+    byCountry.set(r.country ?? "unknown", r.uploaded);
+  }
+  const unattributed: number = geo.data?.unattributed.uploaded ?? 0;
+  const networks = await api.GET("/api/v1/stats/geo", { params: { query: { dim: "asn" } } });
+  const orgs = networks.data?.rows.map((r: Schemas["GeoRow"]) => `${r.asn ?? "?"} ${r.as_org ?? ""}`);
+  const peers = await api.GET("/api/v1/torrents/{hash}/peers", {
+    params: { path: { hash: "0123456789abcdef0123456789abcdef01234567" } },
+  });
+  const flags: (string | null)[] = peers.data?.map((p) => p.country) ?? [];
+  console.log(byCountry, unattributed, orgs, flags);
+
+  // @ts-expect-error: not a dimension.
+  await api.GET("/api/v1/stats/geo", { params: { query: { dim: "city" } } });
   // @ts-expect-error: not a step.
   await api.GET("/api/v1/stats/transfer", { params: { query: { step: "week" } } });
   // @ts-expect-error: `hashes` is a list of info-hashes or "all".

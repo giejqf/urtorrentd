@@ -13,7 +13,8 @@ use urtorrent::{ErrorKind, Event, EventStream, InfoHash, TorrentId};
 use super::{Daemon, ResumeSave};
 use crate::log::LogLevel;
 use crate::model::TimelineKind;
-use crate::util::{blocking, hex};
+use crate::stats::peers::PeerSample;
+use crate::util::{blocking, hex, now};
 
 pub(crate) async fn run(daemon: Weak<Daemon>, mut events: EventStream) {
     while let Some(ev) = events.recv().await {
@@ -87,6 +88,11 @@ impl Daemon {
                         None => reason,
                     },
                 );
+            }
+            Event::PeerDisconnected { id, info, .. } => {
+                if let (Some(h), Ok(stats)) = (self.hash_of(id), &self.stats) {
+                    stats.peer_closed(now(), h, &PeerSample::of(&info), &|ip| self.geo.lookup(ip));
+                }
             }
             Event::PeerConnected { incoming: true, .. } => {
                 self.state().incoming_seen = true;

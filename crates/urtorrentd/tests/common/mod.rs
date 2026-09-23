@@ -14,6 +14,8 @@
     missing_docs
 )]
 
+pub mod mmdb;
+
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};

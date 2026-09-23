@@ -123,7 +123,7 @@ our endpoints are named in `docs/api.md`, which keeps the full, current table.
 | `app` | `sendTestEmail` | U until notifications exist (D later) |
 | `log` | `main`, `peers` | D (the daemon's own ring buffers) |
 | `sync` | `maindata` | D over L snapshots (4.6) |
-| `sync` | `torrentPeers` | L `peers` (no GeoIP country data) |
+| `sync` | `torrentPeers` | L `peers`, plus country and ASN from a user-supplied GeoIP database (D) |
 | `transfer` | `info` | L `stats` (connectability derived from incoming connections) |
 | `transfer` | `downloadLimit`, `uploadLimit`, `setDownloadLimit`, `setUploadLimit` | L `set_rate_limits` |
 | `transfer` | `speedLimitsMode`, `setSpeedLimitsMode`, `toggleSpeedLimitsMode` | D (alternative limits, scheduler → `set_rate_limits`) |
@@ -170,7 +170,9 @@ crates/urtorrentd/src/
   model.rs              every request / response type (ToSchema)
   settings.rs           Settings / SettingsPatch from one field list, live apply
   store.rs              the SQLite database: schema, migrations, 0.1.0 import (ADR 0004)
-  stats/                history (ADR 0005): the sampler (mod.rs), stats.db (db.rs), /stats (query.rs)
+  stats/                history (ADR 0005): the sampler (mod.rs), per-peer attribution (peers.rs),
+                        stats.db (db.rs), /stats (query.rs)
+  geo.rs                GeoIP: user-supplied .mmdb files, country and ASN lookups
   auth.rs log.rs sync.rs error.rs util.rs
 crates/urtorrentd/tests/  API tests on real engines, restart / kill -9, statistics, schema, coverage
 sdk/typescript/         generates TypeScript types from openapi.json and type-checks a client
@@ -422,10 +424,15 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
   minutes. Retention (settings) is applied hourly. Removed torrents keep their history.
 - A `stats.db` that cannot be opened turns statistics off for the run (logged, `/stats`
   answers 503); it never stops the daemon.
-- Next (maintainer decisions, 2026-09-23): geolocation from a user-supplied `.mmdb`
-  (country and ASN, never city, peer addresses never stored), then breakdowns by client,
-  discovery source, transport, IP version, tracker, category and tag. Breakdowns report
-  what they cannot attribute as `unattributed`, so they add up.
+- **By place** (0.6.0): user-supplied `.mmdb` files (`geo.rs`; country and ASN, never
+  city; never downloaded; re-read when replaced). Every 10 s, before the snapshot, the
+  tick samples the peers of torrents that moved data; `PeerDisconnected` brings final
+  counters; connections are known by address and start time so nothing counts twice
+  (`stats/peers.rs`). Per torrent, hour and day, by country and ASN; peer addresses stay
+  in memory. `unattributed` (web seeds, missed closes, the seconds since the last
+  sample) makes the rows add up to the torrents' traffic.
+- Next: breakdowns by client, discovery source, transport, IP version, tracker, category
+  and tag, on the same per-peer attribution (`peer_traffic` has a `dim` column for them).
 
 ## 5. Testing
 
@@ -447,10 +454,12 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
    netns lab, opentracker and the qBittorrent oracle as a peer). Drive `urtorrentd` over
    its API to leech from and seed to the oracle, and to stop, start, recheck, move and
    delete.
-6. **Statistics** (`tests/stats.rs`). A real transfer's minute, hour and day series add
-   up to the library's counters; history outlives removal and restarts (restored
-   counters are baselines, not new traffic); recording periods and switching recording
-   off; a broken `stats.db` leaves the daemon running.
+6. **Statistics** (`tests/stats.rs`, `tests/geo.rs`). A real transfer's minute, hour and
+   day series add up to the library's counters; history outlives removal and restarts
+   (restored counters are baselines, not new traffic); recording periods and switching
+   recording off; a broken `stats.db` leaves the daemon running. GeoIP files in the
+   layouts users have (written by `tests/common/mmdb.rs`, mapping loopback), peers
+   located in the API, and traffic by place that adds up to the torrents' traffic.
 7. **Restart and crash** (`tests/restart.rs`). Stop gracefully and restart in process:
    everything is back, including categories, tags, queue order, limits, magnets without
    metadata, and stopped torrents; removed torrents stay removed. The real binary is
@@ -472,7 +481,8 @@ and `docs/settings.md` are the remaining work; `docs/gaps.md` has what is still 
 upstream. **0.3.0** added the incomplete-file suffix and verified staging downloads that
 move to their category's directory on completion. **0.4.0** pushes the sync diffs as
 server-sent events (4.6). **0.5.0** records statistics (4.11) and aligns with urtorrent
-0.13.2 (resume data saved when it changed, counters included).
+0.13.2 (resume data saved when it changed, counters included). **0.6.0** locates peers
+(GeoIP) and records traffic by country and network.
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -490,7 +500,7 @@ server-sent events (4.6). **0.5.0** records statistics (4.11) and aligns with ur
   alternative limits, download path, stop conditions, content layout, auto-added trackers
   (never on private torrents), settings coverage. **Released as 0.1.0.**
 - **Analytics** (4.11, the plan of 2026-09-23): 0.5.0 history and seeding days (done);
-  0.6.0 geolocation (country and ASN on live peers and in history); 0.7.0 breakdowns,
+  0.6.0 geolocation (country and ASN on live peers and in history; done); 0.7.0 breakdowns,
   tracker reliability, idle-seed report, opt-in scrape for completed-download counts.
   Later: data-usage caps (needs wire-level counters upstream), Prometheus `/metrics`.
 - **Later, each on request:** the alternative-limits scheduler, RSS, watch folders,
@@ -513,7 +523,8 @@ server-sent events (4.6). **0.5.0** records statistics (4.11) and aligns with ur
   `tracing`, `tracing-subscriber`, `clap`, `reqwest` on rustls (URL adds), `argon2` and
   `sha2` (credentials), `getrandom`, `base64`, `rustix` (free space, no `unsafe`),
   `rusqlite` with SQLite compiled in (persistence, ADR 0004), `futures-util` (the
-  event stream; already in the tree through axum and tower).
+  event stream; already in the tree through axum and tower), `maxminddb` (reading the
+  user's GeoIP files; ISC).
   `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with the library's licence
   allow-list. It does **not** ban `mio` here (4.2).
 - Commands (keep them working forever):

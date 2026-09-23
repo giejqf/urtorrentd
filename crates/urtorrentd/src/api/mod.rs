@@ -33,7 +33,7 @@ use utoipa_axum::routes;
 
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ErrorBody, ErrorCode};
-use crate::model::{DirectoryMode, StatsStep, TopMetric, TorrentFilter, TorrentSort};
+use crate::model::{DirectoryMode, GeoDimension, StatsStep, TopMetric, TorrentFilter, TorrentSort};
 
 /// The API base path.
 pub const BASE: &str = "/api/v1";
@@ -189,7 +189,8 @@ Errors always have the `ErrorBody` shape with a stable `code`."
         TorrentSort,
         DirectoryMode,
         StatsStep,
-        TopMetric
+        TopMetric,
+        GeoDimension
     )),
     tags(
         (name = "auth", description = "Login sessions and API keys."),
@@ -269,6 +270,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(stats::get_torrent_days))
         .routes(routes!(stats::delete_torrent_stats))
         .routes(routes!(stats::get_top_torrents))
+        .routes(routes!(stats::get_geo_stats))
         .routes(routes!(stats::get_timeline))
         .routes(routes!(logs::get_main_log))
         .routes(routes!(logs::get_peer_log));

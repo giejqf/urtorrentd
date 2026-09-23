@@ -30,6 +30,7 @@ pub(crate) async fn get_app_info(State(d): State<Arc<Daemon>>) -> Json<AppInfo> 
         default_save_path: settings.save_path.clone(),
         listen_port: d.session.listen_port(),
         restart_required: settings.pending_restart(&d.running),
+        geoip: d.geo.info(),
     })
 }
 

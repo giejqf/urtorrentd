@@ -927,6 +927,16 @@ pub struct PeerInfo {
     pub outstanding_requests: usize,
     /// Seconds connected.
     pub connected_for: u64,
+    /// Its country (ISO 3166-1 alpha-2) from the GeoIP database; `null` =
+    /// no database, or not in it.
+    #[schema(required = true)]
+    pub country: Option<String>,
+    /// Its autonomous system number; `null` = unknown.
+    #[schema(required = true)]
+    pub asn: Option<u32>,
+    /// Its autonomous system's organization; `null` = unknown.
+    #[schema(required = true)]
+    pub as_org: Option<String>,
 }
 
 /// A piece's standing.
@@ -1074,6 +1084,8 @@ pub struct AppInfo {
     pub listen_port: u16,
     /// Settings changed since the start that apply only after a restart.
     pub restart_required: Vec<String>,
+    /// The GeoIP databases in use.
+    pub geoip: GeoIpInfo,
 }
 
 /// What a directory listing includes.
@@ -1522,4 +1534,143 @@ pub struct StatsInfo {
     /// Oldest day kept, unix seconds; `null` = none.
     #[schema(required = true)]
     pub oldest_day: Option<u64>,
+}
+
+/// A GeoIP database file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct GeoDatabaseInfo {
+    /// The file.
+    pub path: String,
+    /// Its `database_type` (`GeoLite2-Country`, `DBIP-Country-Lite`, ...);
+    /// `null` = not loaded.
+    #[schema(required = true)]
+    pub database_type: Option<String>,
+    /// When it was built, unix seconds; `null` = not loaded.
+    #[schema(required = true)]
+    pub built: Option<u64>,
+    /// Why it could not be read (at the start, or the last reload; a failed
+    /// reload keeps the database read before).
+    #[schema(required = true)]
+    pub error: Option<String>,
+}
+
+/// The GeoIP databases (settings `geoip_database`, `geoip_asn_database`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct GeoIpInfo {
+    /// The country database; `null` = none configured.
+    #[schema(required = true)]
+    pub country: Option<GeoDatabaseInfo>,
+    /// The ASN database; `null` = none configured.
+    #[schema(required = true)]
+    pub asn: Option<GeoDatabaseInfo>,
+}
+
+/// What peer traffic is grouped by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoDimension {
+    /// The peer's country.
+    Country,
+    /// The peer's autonomous system (its network operator).
+    Asn,
+}
+
+/// Query of peer traffic by place.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct GeoQuery {
+    /// Grouped by; default `country`.
+    pub dim: Option<GeoDimension>,
+    /// One torrent (info-hash); default: all.
+    pub hash: Option<String>,
+    /// Buckets starting at or after this time, unix seconds; default: one
+    /// day before `to`.
+    pub from: Option<u64>,
+    /// Buckets starting at or before this time, unix seconds; default: now.
+    pub to: Option<u64>,
+    /// `hour` or `day`; default: the finest kept for the whole range.
+    pub step: Option<StatsStep>,
+    /// Ranked by; default `uploaded`.
+    pub by: Option<TopMetric>,
+    /// At most this many places (1 to 250); default 20.
+    pub limit: Option<u32>,
+    /// Also return each place's buckets (`points`); default false.
+    pub series: Option<bool>,
+}
+
+/// Traffic with a place over a range.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct GeoRow {
+    /// The country (`dim` = `country`); `null` = not located.
+    #[schema(required = true)]
+    pub country: Option<String>,
+    /// The autonomous system (`dim` = `asn`); `null` = not located.
+    #[schema(required = true)]
+    pub asn: Option<u32>,
+    /// The autonomous system's organization, as last seen.
+    #[schema(required = true)]
+    pub as_org: Option<String>,
+    /// Payload bytes received from its peers.
+    pub downloaded: u64,
+    /// Payload bytes sent to its peers.
+    pub uploaded: u64,
+    /// The most of its peers that moved data in one bucket (distinct
+    /// addresses per torrent, summed over torrents).
+    pub peers_max: u32,
+}
+
+/// Traffic with a place in one bucket.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct GeoPoint {
+    /// Bucket start, unix seconds.
+    pub t: u64,
+    /// The country (`dim` = `country`).
+    #[schema(required = true)]
+    pub country: Option<String>,
+    /// The autonomous system (`dim` = `asn`).
+    #[schema(required = true)]
+    pub asn: Option<u32>,
+    /// Payload bytes received.
+    pub downloaded: u64,
+    /// Payload bytes sent.
+    pub uploaded: u64,
+    /// Its peers that moved data in the bucket (distinct addresses per
+    /// torrent, summed over torrents).
+    pub peers: u32,
+}
+
+/// Bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+pub struct ByteTotals {
+    /// Payload bytes received.
+    pub downloaded: u64,
+    /// Payload bytes sent.
+    pub uploaded: u64,
+}
+
+/// Peer traffic by place. Rows plus `unattributed` add up to the torrents'
+/// traffic in the range.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct GeoStats {
+    /// The torrent, or `null` for all.
+    #[schema(required = true)]
+    pub hash: Option<String>,
+    /// The range, unix seconds.
+    pub from: u64,
+    /// The range, unix seconds.
+    pub to: u64,
+    /// The bucket size.
+    pub step: StatsStep,
+    /// Grouped by.
+    pub dim: GeoDimension,
+    /// Places, highest first (not located: `country` / `asn` `null`).
+    pub rows: Vec<GeoRow>,
+    /// Their buckets, oldest first (`series=true`).
+    pub points: Vec<GeoPoint>,
+    /// Traffic not tied to a peer: web seeds, and connections whose end
+    /// was missed. Peer traffic is sampled every 10 s, so the last seconds
+    /// of an ongoing transfer show here until the next sample.
+    pub unattributed: ByteTotals,
+    /// A GeoIP database is loaded now.
+    pub located: bool,
 }

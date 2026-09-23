@@ -13,10 +13,12 @@
 //! when bytes moved; a torrent's day is written when it ran or moved data.
 
 pub(crate) mod db;
+pub(crate) mod peers;
 mod query;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
+use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -25,8 +27,10 @@ use urtorrent::{InfoHash, SessionStats, TorrentStatus};
 use crate::model::{StatsStep, TimelineKind, TorrentState};
 use crate::util::{blocking, hex};
 use db::{
-    Batch, Day, EventRow, Meta, Retention, SessionTraffic, StatsDb, Totals, Traffic, max_opt,
+    Batch, Day, EventRow, Meta, PeerTraffic, Retention, SessionTraffic, StatsDb, Totals, Traffic,
+    max_opt,
 };
+use peers::{Conn, PeerKey};
 
 /// Flushes happen at most this often from the tick, seconds.
 const FLUSH_EVERY: u64 = 60;
@@ -54,7 +58,7 @@ pub(crate) struct Sample<'a> {
 }
 
 /// The counters of the last observation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 struct Seen {
     downloaded: u64,
     uploaded: u64,
@@ -104,6 +108,20 @@ struct Acc {
     last_flush: u64,
     last_idle_days: u64,
     last_prune: u64,
+    /// When the recording period started: connections older than it are
+    /// baselines.
+    since: u64,
+    /// Connections by torrent and address.
+    conns: HashMap<InfoHash, HashMap<SocketAddr, Conn>>,
+    /// Torrents whose counters moved since their peers were last sampled.
+    active: HashSet<InfoHash>,
+    /// Peer traffic by place, not written yet.
+    peer_traffic: HashMap<PeerKey, PeerTraffic>,
+    /// Addresses already counted per torrent and bucket.
+    counted: HashMap<(InfoHash, StatsStep, u64), HashSet<IpAddr>>,
+    /// Autonomous system names known, and those not written yet.
+    asn_names: HashMap<u32, String>,
+    asn_pending: Vec<(u32, String)>,
 }
 
 impl Acc {
@@ -132,6 +150,12 @@ impl Acc {
         for ((step, t), x) in self.session.drain() {
             b.session.push((step, t, x));
         }
+        for ((h, step, t, dim, key), x) in self.peer_traffic.drain() {
+            hashes.push(h);
+            b.peer_traffic.push((hex(&h), step, t, dim.tag(), key, x));
+        }
+        b.asns = std::mem::take(&mut self.asn_pending);
+        self.tidy_peers(now);
         for (t, h, kind, state, detail) in self.events.drain(..) {
             hashes.push(h);
             b.events.push(EventRow {
@@ -189,6 +213,7 @@ impl Stats {
                 period,
                 last_flush: now,
                 last_idle_days: now,
+                since: now,
                 ..Default::default()
             }),
             flush_lock: tokio::sync::Mutex::new(()),
@@ -280,6 +305,7 @@ impl Stats {
             };
             let moved = down > 0 || up > 0;
             if moved {
+                a.active.insert(s.hash);
                 for (step, t) in [(StatsStep::Minute, minute), (StatsStep::Hour, hour)] {
                     a.traffic
                         .entry((s.hash, step, t))
@@ -336,7 +362,11 @@ impl Stats {
     /// A torrent left the session: a later add of the same hash starts from
     /// zero.
     pub(crate) fn forget(&self, hash: &InfoHash) {
-        self.acc().seen.remove(hash);
+        let mut a = self.acc();
+        a.seen.remove(hash);
+        a.conns.remove(hash);
+        a.active.remove(hash);
+        a.counted.retain(|(h, _, _), _| h != hash);
     }
 
     /// Write what was observed (see [`Flush`]), and apply the retention
@@ -392,7 +422,11 @@ impl Stats {
             let mut a = self.acc();
             a.period = Some(id);
             a.rebase = true;
+            a.since = now;
             a.seen.clear();
+            a.conns.clear();
+            a.counted.clear();
+            a.active.clear();
             Ok(())
         } else {
             self.stop(now, retention).await

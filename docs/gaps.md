@@ -40,6 +40,11 @@ Nothing.
 
 ## Considered, not needed
 
+- **Peers of many torrents in one call**, for the statistics by place. The
+  daemon calls `peers(id)` every 10 s for each torrent that moved data since
+  the last sample (idle torrents cost nothing). Background work bounded by
+  the active torrents, not a list endpoint; ask if it shows in a profile.
+
 - **Tracker URLs in `statuses()` rows**, for the trackers in list rows'
   `magnet_uri`. The daemon caches each torrent's URLs, filled once from
   `trackers(id)` on the first list after a start and refreshed only when the

@@ -24,6 +24,7 @@ use urtorrent::{AddTorrent, InfoHash, Session, TorrentId};
 
 use crate::auth::{Auth, Credentials};
 use crate::error::{ApiError, ApiResult};
+use crate::geo::{self, GeoIp};
 use crate::log::Logs;
 use crate::model::{BulkFailure, BulkResult, Hashes, TimelineKind};
 use crate::settings::{self, Settings, SettingsPatch};
@@ -158,6 +159,8 @@ pub struct Daemon {
     /// The statistics recorder, or why `stats.db` could not be opened (the
     /// daemon runs without statistics then).
     pub(crate) stats: Result<Stats, String>,
+    /// The GeoIP databases.
+    pub(crate) geo: GeoIp,
     shutdown_requested: watch::Sender<bool>,
     closed: watch::Sender<bool>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
@@ -265,6 +268,7 @@ impl Daemon {
             http,
             sync: Mutex::new(SyncState::default()),
             stats,
+            geo: GeoIp::default(),
             shutdown_requested: watch::channel(false).0,
             closed: watch::channel(false).0,
             tasks: Mutex::new(Vec::new()),
@@ -276,6 +280,15 @@ impl Daemon {
             daemon.session.listen_port(),
             if first_start { ", first start" } else { "" }
         ));
+        {
+            let s = daemon.settings();
+            for e in daemon
+                .geo
+                .configure(s.geoip_database.as_deref(), s.geoip_asn_database.as_deref())
+            {
+                daemon.logs.warn(e);
+            }
+        }
         if let Err(e) = &daemon.stats {
             daemon.logs.warn(format!(
                 "statistics are off for this run: {e} (delete {} to start over)",
@@ -407,6 +420,20 @@ impl Daemon {
         let old = self.settings();
         let new = old.patched(patch);
         new.validate().map_err(ApiError::bad_request)?;
+        for (name, old_path, new_path) in [
+            ("geoip_database", &old.geoip_database, &new.geoip_database),
+            (
+                "geoip_asn_database",
+                &old.geoip_asn_database,
+                &new.geoip_asn_database,
+            ),
+        ] {
+            if let Some(p) = new_path
+                && new_path != old_path
+            {
+                geo::check(p).map_err(|e| ApiError::bad_request(format!("{name}: {e}")))?;
+            }
+        }
         if let Err(e) = settings::apply_live(&self.session, &old, &new).await {
             // Undo whatever part went through before the failure.
             let _ = settings::apply_live(&self.session, &new, &old).await;
@@ -417,6 +444,16 @@ impl Daemon {
             blocking(move || s.save(store::SETTINGS, &v)).await?;
         }
         let save_path_changed = old.save_path != new.save_path;
+        if (&old.geoip_database, &old.geoip_asn_database)
+            != (&new.geoip_database, &new.geoip_asn_database)
+        {
+            for e in self.geo.configure(
+                new.geoip_database.as_deref(),
+                new.geoip_asn_database.as_deref(),
+            ) {
+                self.logs.warn(e);
+            }
+        }
         if old.stats_enabled != new.stats_enabled
             && let Ok(stats) = &self.stats
         {

@@ -12,6 +12,7 @@ use urtorrent::{InfoHash, TorrentId, TorrentState as L, TorrentStatus};
 
 use super::{Daemon, Entry, ResumeSave};
 use crate::settings::{Settings, ShareLimitAction};
+use crate::stats::peers::{PEER_SAMPLE_EVERY, PeerSample};
 use crate::stats::{Flush, Sample};
 use crate::store::{RatioLimit, TimeLimit};
 use crate::util::now;
@@ -31,6 +32,14 @@ pub(crate) async fn run(daemon: Weak<Daemon>) {
         };
         if d.is_closed() {
             return;
+        }
+        for msg in d.geo.refresh() {
+            d.logs.info(msg);
+        }
+        if n.is_multiple_of(PEER_SAMPLE_EVERY / TICK.as_secs()) {
+            // Before the snapshot: peer traffic never runs ahead of the
+            // torrents' traffic it is part of.
+            d.sample_peers().await;
         }
         d.tick_once().await;
         d.save_resume(ResumeSave::Due).await;
@@ -97,6 +106,29 @@ fn share_limit_reached(
 }
 
 impl Daemon {
+    /// Sample the peers of the torrents that moved data since the last
+    /// sample, for the statistics by place.
+    async fn sample_peers(&self) {
+        let Ok(stats) = &self.stats else {
+            return;
+        };
+        let hashes = stats.take_active();
+        let ids: Vec<(InfoHash, TorrentId)> = {
+            let st = self.state();
+            hashes
+                .iter()
+                .filter_map(|h| st.torrents.get(h).map(|e| (*h, e.id)))
+                .collect()
+        };
+        for (hash, id) in ids {
+            let Ok(peers) = self.session.peers(id).await else {
+                continue;
+            };
+            let samples: Vec<PeerSample> = peers.iter().map(PeerSample::of).collect();
+            stats.observe_peers(now(), hash, &samples, &|ip| self.geo.lookup(ip));
+        }
+    }
+
     async fn tick_once(self: &Arc<Self>) {
         let Ok(statuses) = self.session.statuses().await else {
             return;

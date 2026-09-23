@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-23
+
+### Added
+
+- **Geolocation**: settings `geoip_database` and `geoip_asn_database` take
+  MaxMind DB files you provide (DB-IP Lite, GeoLite2, IPinfo Lite; never
+  downloaded, re-read when replaced). Peers (`GET /torrents/{hash}/peers`)
+  carry `country`, `asn` and `as_org`; `GET /app` shows the databases in
+  use. qBittorrent's `resolve_peer_countries` is covered.
+- **Traffic by place**: `GET /stats/geo` has peer traffic by country or
+  autonomous system, per torrent or overall, per hour or day, optionally as
+  a series. Rows plus `unattributed` (web seeds, missed closes, the seconds
+  since the last sample) add up to the torrents' traffic. Per-connection
+  counters are differenced like a torrent's: peers of active torrents are
+  sampled every 10 s and closed connections bring their final counters.
+  Peer addresses are never written to disk.
+- `stats.db` schema version 2 (migrated on open).
+
 ## [0.5.0] - 2026-09-23
 
 ### Added

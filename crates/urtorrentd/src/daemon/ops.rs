@@ -664,7 +664,14 @@ impl Daemon {
             .peers(id)
             .await?
             .into_iter()
-            .map(|p| model::PeerInfo {
+            .map(|p| {
+                let loc = self.geo.lookup(p.addr.ip());
+                (p, loc)
+            })
+            .map(|(p, loc)| model::PeerInfo {
+                country: loc.country,
+                asn: loc.asn,
+                as_org: loc.as_org,
                 address: p.addr.to_string(),
                 source: match p.source {
                     urtorrent::PeerSource::Tracker => model::PeerSource::Tracker,
