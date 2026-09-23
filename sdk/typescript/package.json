@@ -1,0 +1,15 @@
+{
+  "name": "@urtorrentd/sdk-check",
+  "private": true,
+  "type": "module",
+  "description": "Generates TypeScript types from ../../openapi.json and type-checks a client against them (cargo xtask sdk).",
+  "scripts": {
+    "generate": "openapi-typescript ../../openapi.json -o schema.d.ts",
+    "check": "npm run generate && tsc --noEmit"
+  },
+  "devDependencies": {
+    "openapi-fetch": "0.17.0",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

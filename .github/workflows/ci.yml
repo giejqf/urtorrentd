@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: xtask check
+    runs-on: ubuntu-24.04
+    steps:
+      # The library is a path dependency (../urtorrent): check both out side by side.
+      - uses: actions/checkout@v4
+        with:
+          path: urtorrentd
+      - uses: actions/checkout@v4
+        with:
+          repository: giejqf/urtorrent
+          path: urtorrent
+      - name: Install toolchain from rust-toolchain.toml
+        working-directory: urtorrentd
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: urtorrentd
+      - name: Install cargo-deny
+        run: |
+          set -euo pipefail
+          V=0.20.2
+          curl -sSL -o cd.tgz "https://github.com/EmbarkStudios/cargo-deny/releases/download/${V}/cargo-deny-${V}-x86_64-unknown-linux-musl.tar.gz"
+          tar xzf cd.tgz && install -m755 "cargo-deny-${V}-x86_64-unknown-linux-musl/cargo-deny" ~/.cargo/bin/
+      - working-directory: urtorrentd
+        run: cargo xtask check
+
+  sdk:
+    name: TypeScript SDK from openapi.json
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: sdk/typescript
+        run: npm ci --no-audit --no-fund && npm run check

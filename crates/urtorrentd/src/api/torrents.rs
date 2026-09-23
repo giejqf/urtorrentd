@@ -1,0 +1,261 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 urtorrentd contributors
+
+//! `/torrents`: the list, adding, and bulk actions over info-hash lists.
+
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use axum::extract::State;
+
+use super::{Json, Query};
+use crate::daemon::Daemon;
+use crate::error::{ApiError, ApiResult};
+use crate::model::{
+    AddPeersRequest, AddTorrentsRequest, AddTorrentsResponse, BulkResult, CategoryRequest,
+    CountResponse, DeleteRequest, HashesRequest, LimitsRequest, LocationRequest,
+    ParseTorrentRequest, QueueRequest, ShareLimitsRequest, TagsRequest, ToggleRequest,
+    TorrentListQuery, TorrentMetadata, TorrentSummary,
+};
+
+/// The torrent list, filtered, sorted and paged.
+#[utoipa::path(get, path = "/torrents", tag = "torrents", params(TorrentListQuery), responses((status = 200, body = Vec<TorrentSummary>)))]
+pub(crate) async fn list_torrents(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<TorrentListQuery>,
+) -> ApiResult<Json<Vec<TorrentSummary>>> {
+    Ok(Json(d.list(&q).await?))
+}
+
+/// Add torrents from magnet links, info-hashes, URLs and base64 `.torrent`
+/// files. Each source succeeds or fails on its own.
+#[utoipa::path(post, path = "/torrents", tag = "torrents", responses((status = 200, body = AddTorrentsResponse)))]
+pub(crate) async fn add_torrents(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<AddTorrentsRequest>,
+) -> ApiResult<Json<AddTorrentsResponse>> {
+    Ok(Json(d.add_torrents(req).await?))
+}
+
+/// How many torrents there are.
+#[utoipa::path(get, path = "/torrents/count", tag = "torrents", responses((status = 200, body = CountResponse)))]
+pub(crate) async fn count_torrents(State(d): State<Arc<Daemon>>) -> Json<CountResponse> {
+    Json(CountResponse { count: d.count() })
+}
+
+/// Describe a `.torrent` without adding it.
+#[utoipa::path(post, path = "/torrents/parse", tag = "torrents", responses((status = 200, body = TorrentMetadata)))]
+pub(crate) async fn parse_torrent(
+    Json(req): Json<ParseTorrentRequest>,
+) -> ApiResult<Json<TorrentMetadata>> {
+    let bytes = crate::daemon::decode_base64(&req.torrent)?;
+    Ok(Json(crate::daemon::parse_metadata(&bytes)?))
+}
+
+/// Start torrents (they rejoin the queue).
+#[utoipa::path(post, path = "/torrents/start", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn start_torrents(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<HashesRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| d.start_torrent(h, id)).await?,
+    ))
+}
+
+/// Stop torrents.
+#[utoipa::path(post, path = "/torrents/stop", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn stop_torrents(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<HashesRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| d.stop_torrent(h, id)).await?,
+    ))
+}
+
+/// Force-start torrents regardless of the queue limits (`value: true`), or
+/// hand them back to the queue (`false`).
+#[utoipa::path(post, path = "/torrents/force-start", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn force_start_torrents(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<ToggleRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let on = req.value;
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| d.force_start(h, id, on))
+            .await?,
+    ))
+}
+
+/// Recheck the data on disk (runs in the background; the state shows `checking`).
+#[utoipa::path(post, path = "/torrents/recheck", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn recheck_torrents(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<HashesRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    Ok(Json(d.bulk(&req.hashes, |_, id| d.recheck(id)).await?))
+}
+
+/// Announce to the trackers as soon as their minimum interval allows.
+#[utoipa::path(post, path = "/torrents/reannounce", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn reannounce_torrents(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<HashesRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let dd = &d;
+    Ok(Json(
+        d.bulk(&req.hashes, |_, id| async move {
+            Ok(dd.session.force_reannounce(id).await?)
+        })
+        .await?,
+    ))
+}
+
+/// Remove torrents, optionally with their content.
+#[utoipa::path(post, path = "/torrents/delete", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn delete_torrents(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<DeleteRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let files = req.delete_files;
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| d.remove(h, id, files)).await?,
+    ))
+}
+
+/// Move torrents in the queue.
+#[utoipa::path(post, path = "/torrents/queue", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn move_torrents_in_queue(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<QueueRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let to = req.to;
+    Ok(Json(
+        d.bulk(&req.hashes, |_, id| d.queue_move(id, to)).await?,
+    ))
+}
+
+/// Sequential download on or off.
+#[utoipa::path(post, path = "/torrents/sequential", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn set_sequential(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<ToggleRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let on = req.value;
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| d.set_sequential(h, id, on))
+            .await?,
+    ))
+}
+
+/// Change rate limits and connection / upload slot caps.
+#[utoipa::path(post, path = "/torrents/limits", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn set_torrent_limits(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<LimitsRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    Ok(Json(
+        d.bulk(&req.hashes, |_, id| d.set_limits(id, &req)).await?,
+    ))
+}
+
+/// Set share limits.
+#[utoipa::path(post, path = "/torrents/share-limits", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn set_share_limits(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<ShareLimitsRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    if let crate::store::RatioLimit::Limit(r) = req.share_limits.ratio
+        && (!r.is_finite() || r < 0.0)
+    {
+        return Err(ApiError::bad_request(
+            "the ratio limit must be a non-negative number",
+        ));
+    }
+    let limits = req.share_limits;
+    Ok(Json(
+        d.bulk(&req.hashes, |h, _| {
+            d.update_record(h, move |r| r.share_limits = limits)
+        })
+        .await?,
+    ))
+}
+
+/// Move content to another directory (in the background; the state shows
+/// `moving`). Turns automatic management off.
+#[utoipa::path(post, path = "/torrents/location", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn set_location(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<LocationRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    if !std::path::Path::new(&req.path).is_absolute() {
+        return Err(ApiError::bad_request("path must be absolute"));
+    }
+    let path = req.path.clone();
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| {
+            d.spawn_move(h, id, path.clone(), false);
+            std::future::ready(Ok(()))
+        })
+        .await?,
+    ))
+}
+
+/// Set or clear the category (automatically managed torrents move).
+#[utoipa::path(post, path = "/torrents/category", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn set_torrent_category(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<CategoryRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let category = req.category.clone();
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| d.set_category(h, id, category.clone()))
+            .await?,
+    ))
+}
+
+/// Add, remove or replace tags.
+#[utoipa::path(post, path = "/torrents/tags", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn change_torrent_tags(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<TagsRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    Ok(Json(
+        d.bulk(&req.hashes, |h, _| d.change_tags(h, req.mode, &req.tags))
+            .await?,
+    ))
+}
+
+/// Automatic management on or off (on moves torrents to their category's path).
+#[utoipa::path(post, path = "/torrents/auto-management", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn set_auto_management(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<ToggleRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let on = req.value;
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| d.set_auto_management(h, id, on))
+            .await?,
+    ))
+}
+
+/// Give torrents peer addresses to connect to.
+#[utoipa::path(post, path = "/torrents/peers", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn add_peers(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<AddPeersRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let peers: Vec<SocketAddr> = req
+        .peers
+        .iter()
+        .map(|p| {
+            p.trim()
+                .parse::<SocketAddr>()
+                .map_err(|_| ApiError::bad_request(format!("{p:?} is not ip:port")))
+        })
+        .collect::<ApiResult<_>>()?;
+    Ok(Json(
+        d.bulk(&req.hashes, |_, id| d.add_peers(id, &peers)).await?,
+    ))
+}

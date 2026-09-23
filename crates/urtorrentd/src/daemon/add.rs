@@ -1,0 +1,493 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 urtorrentd contributors
+
+//! Adding torrents: resolving sources (base64 `.torrent`, magnet links, bare
+//! info-hashes, `http(s)` URLs), then one engine add per torrent with the
+//! daemon-side options applied around it (AGENTS.md 4.7).
+
+use std::sync::Arc;
+
+use axum::http::StatusCode;
+use base64::Engine as _;
+use urtorrent::{AddTorrent, InfoHash, MagnetLink, QueueMove, Torrent};
+
+use super::Daemon;
+use crate::error::{ApiError, ApiResult, ErrorCode};
+use crate::model::{
+    AddFailure, AddOptions, AddTorrentsRequest, AddTorrentsResponse, AddedTorrent, ContentLayout,
+    MetadataFile, TorrentMetadata,
+};
+use crate::settings::valid_tracker_url;
+use crate::store::{RECORD_FORMAT, StopCondition, TorrentRecord};
+use crate::util::{blocking, hex, parse_hash};
+
+/// Largest `.torrent` accepted from a URL.
+const MAX_TORRENT_FILE: usize = 64 * 1024 * 1024;
+
+/// Redirects are followed (up to 10), except to a `magnet:` link, which is
+/// returned to the caller as the redirect response.
+pub(crate) fn redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.url().scheme() == "magnet" {
+            attempt.stop()
+        } else if attempt.previous().len() >= 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
+}
+
+/// Where a torrent comes from, once resolved.
+enum Source {
+    Metainfo { bytes: Vec<u8> },
+    Magnet { uri: String },
+}
+
+/// A resolved and parsed torrent, ready to add.
+struct Parsed {
+    hash: InfoHash,
+    name: String,
+    private: bool,
+    source: Source,
+    source_url: Option<String>,
+    /// Content file paths in file order (empty for magnets).
+    files: Vec<String>,
+}
+
+fn invalid(message: impl Into<String>) -> ApiError {
+    ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidTorrent, message)
+}
+
+fn download_failed(message: impl Into<String>) -> ApiError {
+    ApiError::new(StatusCode::BAD_GATEWAY, ErrorCode::DownloadFailed, message)
+}
+
+/// The renames a content layout asks for: `(file index, new path)`.
+pub fn content_renames(files: &[String], layout: ContentLayout) -> Vec<(usize, String)> {
+    match layout {
+        ContentLayout::Original => Vec::new(),
+        ContentLayout::Subfolder => match files {
+            [only] if !only.contains('/') => {
+                let stem = match only.rsplit_once('.') {
+                    Some((s, _)) if !s.is_empty() => s,
+                    _ => only.as_str(),
+                };
+                vec![(0, format!("{stem}/{only}"))]
+            }
+            _ => Vec::new(),
+        },
+        ContentLayout::NoSubfolder => {
+            let Some(root) = files
+                .first()
+                .and_then(|f| f.split_once('/'))
+                .map(|(r, _)| r)
+            else {
+                return Vec::new();
+            };
+            let prefix = format!("{root}/");
+            if !files.iter().all(|f| f.starts_with(&prefix)) {
+                return Vec::new();
+            }
+            files
+                .iter()
+                .enumerate()
+                .map(|(i, f)| (i, f.strip_prefix(&prefix).unwrap_or(f).to_string()))
+                .collect()
+        }
+    }
+}
+
+fn parse_metainfo(bytes: Vec<u8>, source_url: Option<String>) -> ApiResult<Parsed> {
+    let t = Torrent::parse(&bytes).map_err(|e| invalid(format!("not a valid .torrent: {e}")))?;
+    let files = t.info.content_files().map(|f| f.path.display()).collect();
+    Ok(Parsed {
+        hash: t.info.info_hash,
+        name: t.info.name.clone(),
+        private: t.info.private,
+        files,
+        source: Source::Metainfo { bytes },
+        source_url,
+    })
+}
+
+fn parse_magnet(uri: String, source_url: Option<String>) -> ApiResult<Parsed> {
+    let m =
+        MagnetLink::parse(&uri).map_err(|e| invalid(format!("not a valid magnet link: {e}")))?;
+    Ok(Parsed {
+        hash: m.info_hash,
+        name: m.name.clone().unwrap_or_else(|| hex(&m.info_hash)),
+        private: false,
+        files: Vec::new(),
+        source: Source::Magnet { uri },
+        source_url,
+    })
+}
+
+/// Describe a `.torrent` without adding it.
+pub fn parse_metadata(bytes: &[u8]) -> ApiResult<TorrentMetadata> {
+    let t = Torrent::parse(bytes).map_err(|e| invalid(format!("not a valid .torrent: {e}")))?;
+    Ok(TorrentMetadata {
+        hash: hex(&t.info.info_hash),
+        name: t.info.name.clone(),
+        total_size: t.info.total_length,
+        piece_size: t.info.piece_length,
+        pieces: t.info.piece_count(),
+        private: t.info.private,
+        files: t
+            .info
+            .content_files()
+            .map(|f| MetadataFile {
+                path: f.path.display(),
+                size: f.length,
+            })
+            .collect(),
+        trackers: t.tiers(),
+        web_seeds: t.url_list.clone(),
+        comment: t.comment.clone(),
+        created_by: t.created_by.clone(),
+        creation_date: t.creation_date,
+    })
+}
+
+/// Decode a base64 `.torrent`.
+pub fn decode_base64(s: &str) -> ApiResult<Vec<u8>> {
+    base64::engine::general_purpose::STANDARD
+        .decode(s.trim())
+        .map_err(|e| ApiError::bad_request(format!("invalid base64: {e}")))
+}
+
+fn check_options(o: &AddOptions) -> ApiResult<()> {
+    for (name, p) in [
+        ("save_path", &o.save_path),
+        ("download_path", &o.download_path),
+    ] {
+        if let Some(p) = p
+            && !std::path::Path::new(p).is_absolute()
+        {
+            return Err(ApiError::bad_request(format!(
+                "{name} must be an absolute path"
+            )));
+        }
+    }
+    if let Some(p) = &o.file_priorities
+        && p.iter().any(|x| *x > 7)
+    {
+        return Err(ApiError::bad_request("file priorities range from 0 to 7"));
+    }
+    if let Some(c) = &o.category {
+        super::organize::check_category_name(c)?;
+    }
+    for t in &o.tags {
+        super::organize::check_tag(t)?;
+    }
+    Ok(())
+}
+
+impl Daemon {
+    /// Add every source of a request; each succeeds or fails on its own.
+    pub(crate) async fn add_torrents(
+        self: &Arc<Self>,
+        req: AddTorrentsRequest,
+    ) -> ApiResult<AddTorrentsResponse> {
+        if req.urls.is_empty() && req.torrents.is_empty() {
+            return Err(ApiError::bad_request("give at least one URL or .torrent"));
+        }
+        check_options(&req.options)?;
+        let mut out = AddTorrentsResponse::default();
+        let mut parsed: Vec<(String, ApiResult<Parsed>)> = Vec::new();
+        for (i, b64) in req.torrents.iter().enumerate() {
+            let label = format!("torrents[{i}]");
+            parsed.push((
+                label,
+                decode_base64(b64).and_then(|b| parse_metainfo(b, None)),
+            ));
+        }
+        for url in &req.urls {
+            let r = self.resolve_url(url, req.options.cookie.as_deref()).await;
+            parsed.push((url.clone(), r));
+        }
+        for (label, p) in parsed {
+            let (hash, result) = match p {
+                Ok(p) => (Some(hex(&p.hash)), self.add_one(p, &req.options).await),
+                Err(e) => (None, Err(e)),
+            };
+            match result {
+                Ok(added) => out.added.push(added),
+                Err(error) => out.failed.push(AddFailure {
+                    source: label,
+                    hash,
+                    error: error.detail(),
+                }),
+            }
+        }
+        Ok(out)
+    }
+
+    async fn resolve_url(&self, url: &str, cookie: Option<&str>) -> ApiResult<Parsed> {
+        let url = url.trim();
+        let lower = url.to_ascii_lowercase();
+        if lower.starts_with("magnet:") {
+            return parse_magnet(url.to_string(), None);
+        }
+        if let Some(h) = parse_hash(url) {
+            return parse_magnet(format!("magnet:?xt=urn:btih:{}", hex(&h)), None);
+        }
+        if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+            return Err(invalid(format!(
+                "{url:?} is not a magnet link, info-hash or http(s) URL"
+            )));
+        }
+        let agent = self.settings().identity.profile().user_agent;
+        let mut req = self
+            .http
+            .get(url)
+            .header(reqwest::header::USER_AGENT, agent);
+        if let Some(c) = cookie {
+            req = req.header(reqwest::header::COOKIE, c);
+        }
+        let mut resp = req
+            .send()
+            .await
+            .map_err(|e| download_failed(format!("fetching {url}: {e}")))?;
+        if resp.status().is_redirection() {
+            let location = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_string();
+            if location.to_ascii_lowercase().starts_with("magnet:") {
+                return parse_magnet(location, Some(url.to_string()));
+            }
+            return Err(download_failed(format!("{url}: unfollowed redirect")));
+        }
+        if !resp.status().is_success() {
+            return Err(download_failed(format!("{url}: HTTP {}", resp.status())));
+        }
+        if resp
+            .content_length()
+            .is_some_and(|n| n > MAX_TORRENT_FILE as u64)
+        {
+            return Err(download_failed(format!("{url}: larger than 64 MiB")));
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = resp
+            .chunk()
+            .await
+            .map_err(|e| download_failed(format!("reading {url}: {e}")))?
+        {
+            if body.len() + chunk.len() > MAX_TORRENT_FILE {
+                return Err(download_failed(format!("{url}: larger than 64 MiB")));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        parse_metainfo(body, Some(url.to_string()))
+    }
+
+    async fn add_one(self: &Arc<Self>, p: Parsed, o: &AddOptions) -> ApiResult<AddedTorrent> {
+        let _ops = self.ops.lock().await;
+        let hash_hex = hex(&p.hash);
+        if self.state().torrents.contains_key(&p.hash) {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                ErrorCode::Duplicate,
+                format!("torrent {hash_hex} is already added"),
+            ));
+        }
+        let settings = self.settings();
+        let category = o.category.clone().filter(|c| !c.is_empty());
+        if let Some(c) = &category {
+            self.ensure_category(c).await?;
+        }
+        self.ensure_tags(&o.tags).await?;
+        let auto = o.auto_management.unwrap_or(settings.auto_management);
+        let save_path = if auto {
+            self.category_save_path(category.as_deref())
+        } else {
+            o.save_path
+                .clone()
+                .unwrap_or_else(|| settings.save_path.clone())
+        };
+        let download_path = match (&o.download_path, o.use_download_path) {
+            (Some(p), _) => Some(p.clone()),
+            (None, Some(false)) => None,
+            (None, _) if auto => self.category_download_path(category.as_deref()),
+            (None, _) => settings.download_path.clone(),
+        }
+        .filter(|d| *d != save_path);
+        let is_magnet = matches!(p.source, Source::Magnet { .. });
+        let mut stopped = o.stopped.unwrap_or(settings.add_stopped);
+        let mut stop_condition = o.stop_condition;
+        if stop_condition != StopCondition::None && !is_magnet {
+            // A `.torrent` has its metadata, and a torrent added paused still
+            // runs its initial check and stays stopped: both conditions hold
+            // race-free by adding it stopped. Magnets wait for the events
+            // (racy until the library can hold them, docs/gaps.md).
+            stopped = true;
+        }
+        if stopped {
+            stop_condition = StopCondition::None;
+        }
+        let renames = content_renames(&p.files, o.content_layout);
+        let record = TorrentRecord {
+            format: RECORD_FORMAT,
+            info_hash: hash_hex.clone(),
+            magnet: match &p.source {
+                Source::Magnet { uri } => Some(uri.clone()),
+                Source::Metainfo { .. } => None,
+            },
+            save_path: save_path.clone(),
+            download_path: download_path.clone(),
+            stopped,
+            category,
+            tags: o.tags.iter().cloned().collect(),
+            name: o.rename.clone().filter(|n| !n.is_empty()),
+            comment: None,
+            auto_management: auto,
+            sequential: o.sequential,
+            share_limits: o.share_limits.unwrap_or_default(),
+            source_url: p.source_url.clone(),
+            queue_position: None,
+            last_activity: None,
+            seen_complete: None,
+            stop_condition,
+        };
+        // Record and metainfo first: a crash right after the engine add
+        // still finds the torrent on the next start. A stale resume file
+        // from an earlier life of the same torrent goes (AGENTS.md 4.8).
+        {
+            let store = self.store.clone();
+            let rec = record.clone();
+            let bytes = match &p.source {
+                Source::Metainfo { bytes } => Some(bytes.clone()),
+                Source::Magnet { .. } => None,
+            };
+            let _g = self.persist_lock.lock().await;
+            blocking(move || {
+                store.delete_torrent(&rec.info_hash)?;
+                if let Some(b) = &bytes {
+                    store.save_torrent_file(&rec.info_hash, b)?;
+                }
+                store.save_record(&rec)
+            })
+            .await?;
+        }
+        let dir = download_path.unwrap_or(save_path);
+        let mut add = match p.source {
+            Source::Metainfo { bytes } => AddTorrent::metainfo(bytes, dir),
+            Source::Magnet { uri } => AddTorrent::magnet(uri, dir),
+        }
+        .resume_dir(self.store.resume_dir())
+        .paused(stopped || !renames.is_empty())
+        .sequential(o.sequential)
+        .preallocate(o.preallocate.unwrap_or(settings.preallocate))
+        .auto_managed(!o.forced);
+        if let Some(prios) = &o.file_priorities {
+            add = add.file_priorities(prios.clone());
+        }
+        if let Some(l) = o.upload_limit {
+            add = add.upload_limit(l);
+        }
+        if let Some(l) = o.download_limit {
+            add = add.download_limit(l);
+        }
+        if let Some(n) = o.max_connections {
+            add = add.max_peers(usize::try_from(n).unwrap_or(usize::MAX));
+        }
+        if let Some(n) = o.max_uploads.or(settings.max_uploads_per_torrent) {
+            add = add.max_uploads(usize::try_from(n).unwrap_or(usize::MAX));
+        }
+        let id = match self.session.add_torrent(add).await {
+            Ok(id) => id,
+            Err(e) => {
+                let store = self.store.clone();
+                let h = hash_hex.clone();
+                let _ = blocking(move || store.delete_torrent(&h)).await;
+                return Err(e.into());
+            }
+        };
+        self.insert(p.hash, id, record);
+
+        // Daemon-side options around the engine add. Failures here leave the
+        // torrent added and are logged.
+        if o.add_to_top_of_queue
+            .unwrap_or(settings.add_to_top_of_queue)
+            && let Err(e) = self.session.move_in_queue(id, QueueMove::Top).await
+        {
+            self.logs
+                .warn(format!("{}: moving to the top of the queue: {e}", p.name));
+        }
+        if !is_magnet && !p.private {
+            self.add_auto_trackers(id, &settings.add_trackers).await;
+        }
+        for (index, path) in &renames {
+            if let Err(e) = self.session.rename_file(id, *index, path.clone()).await {
+                self.logs
+                    .warn(format!("{}: content layout rename: {e}", p.name));
+            }
+        }
+        if !stopped && !renames.is_empty() {
+            let r = if o.forced {
+                self.session.force_resume(id).await
+            } else {
+                self.session.resume(id).await
+            };
+            if let Err(e) = r {
+                self.logs.warn(format!("{}: starting: {e}", p.name));
+            }
+        }
+        let name = o.rename.clone().filter(|n| !n.is_empty()).unwrap_or(p.name);
+        self.logs.info(format!("added torrent {name} ({hash_hex})"));
+        Ok(AddedTorrent {
+            hash: hash_hex,
+            name,
+        })
+    }
+
+    /// Append the automatic tracker list, each URL in a tier of its own after
+    /// the existing ones. Callers make sure the torrent is not private.
+    pub(crate) async fn add_auto_trackers(&self, id: urtorrent::TorrentId, urls: &[String]) {
+        if urls.is_empty() {
+            return;
+        }
+        let existing = self.session.trackers(id).await.unwrap_or_default();
+        let mut tier = existing.iter().map(|t| t.tier + 1).max().unwrap_or(0);
+        for url in urls {
+            if !valid_tracker_url(url) || existing.iter().any(|t| t.url == *url) {
+                continue;
+            }
+            match self.session.add_tracker(id, url.clone(), tier).await {
+                Ok(()) => tier += 1,
+                Err(e) => self.logs.warn(format!("adding tracker {url}: {e}")),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layouts() {
+        let single = vec!["movie.mkv".to_string()];
+        let multi = vec!["Show/e1.mkv".to_string(), "Show/sub/e2.srt".to_string()];
+        assert!(content_renames(&single, ContentLayout::Original).is_empty());
+        assert_eq!(
+            content_renames(&single, ContentLayout::Subfolder),
+            vec![(0, "movie/movie.mkv".to_string())]
+        );
+        assert!(content_renames(&multi, ContentLayout::Subfolder).is_empty());
+        assert_eq!(
+            content_renames(&multi, ContentLayout::NoSubfolder),
+            vec![(0, "e1.mkv".to_string()), (1, "sub/e2.srt".to_string())]
+        );
+        assert!(content_renames(&single, ContentLayout::NoSubfolder).is_empty());
+        let noext = vec!["README".to_string()];
+        assert_eq!(
+            content_renames(&noext, ContentLayout::Subfolder),
+            vec![(0, "README/README".to_string())]
+        );
+    }
+}

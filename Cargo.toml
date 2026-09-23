@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/urtorrentd", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "Apache-2.0"
+authors = ["urtorrentd contributors"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+# Dependencies without debug info keep target/ small.
+[profile.dev.package."*"]
+debug = false
+
+# Password hashing is deliberately slow; keep debug builds (and tests) usable.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.release]
+debug = 1

@@ -150,31 +150,39 @@ our endpoints are named in `docs/api.md`, which keeps the full, current table.
 
 ## 4. Architecture
 
-### 4.1 Layout (starting point; split crates only when a boundary earns it)
+### 4.1 Layout (split crates only when a boundary earns it)
 
 ```
 Cargo.toml              workspace: crates/urtorrentd, xtask
 rust-toolchain.toml     the same pin as ../urtorrent (1.98.1, edition 2024)
+openapi.json            the generated API schema, committed (4.3, ADR 0003)
 crates/urtorrentd/src/
-  main.rs               CLI, config, tokio runtime, signals, startup / shutdown order
-  daemon/               the core: owns the urtorrent Session
-    registry.rs         info-hash <-> TorrentId, the per-torrent daemon record
+  main.rs               CLI (run, passwd, openapi), tokio runtime, signals, shutdown order
+  daemon/               the core: owns the urtorrent Session and the registry
+    mod.rs              start / restore / shutdown, State and Entry, records, bulk selection
+    add.rs              sources (base64, magnet, info-hash, URL) and the add pipeline
+    ops.rs              per-torrent operations (lifecycle, limits, moves, files, trackers, ...)
+    organize.rs         categories, tags, automatic management
+    view.rs             list rows, detail, transfer info, caches
     events.rs           the single event pump (4.4)
-    policy/             share limits, alternative speed + scheduler, download-path moves,
-                        stop conditions, automatic torrent management
-    store.rs            persistence, atomic writes (4.8)
-  api/                  axum router, one module per feature group (auth, app, log, sync,
-                        transfer, torrents, ...), request / response types, ApiError
-  sync.rs               snapshots and revision diffs
-xtask/                  check, it
+    tick.rs             activity tracking, share limits, periodic flushes
+  api/                  axum handlers, one module per feature group; guard.rs = auth
+  model.rs              every request / response type (ToSchema)
+  settings.rs           Settings / SettingsPatch from one field list, live apply
+  store.rs auth.rs log.rs sync.rs error.rs util.rs
+crates/urtorrentd/tests/  API tests on real engines, restart / kill -9, schema, coverage
+sdk/typescript/         generates TypeScript types from openapi.json and type-checks a client
+xtask/                  check, openapi, sdk
 docs/api.md             our API: every endpoint, plus the checklist mapping (section 3)
 docs/settings.md        every qBittorrent preference key: our setting / fixed / unsupported
 docs/gaps.md            what the daemon needs from urtorrent and does not have yet
+docs/reference/         the checklist: qBittorrent 5.2.3's actions, parameters, preference keys
 docs/adr/               design decisions
 ```
 
-Depend on the facade only: `urtorrent = { path = "../urtorrent/crates/urtorrent" }` during
-development. CI checks both repos out side by side. Switch to a pinned git revision or a
+Depend on the facade only: `urtorrent = { path = "../urtorrent/crates/urtorrent", version =
+"0.11.4" }` during development (the version is the oldest library release the daemon is
+tested against; raise it when the daemon starts using something newer). CI checks both repos out side by side. Switch to a pinned git revision or a
 crates.io version once one is published. The library is `0.x`, so a minor bump is
 breaking: pin the minor. The facade re-exports what the daemon needs, including
 `urtorrent::Torrent::parse` and `urtorrent::MagnetLink::parse` for info-hashes before an
@@ -195,12 +203,25 @@ add, and `Profile` for identity.
   `kernel.io_uring_disabled` and container seccomp profiles (library 7.2).
 - SIGTERM and SIGINT take the same path as the shutdown endpoint (4.8).
 
-### 4.3 API conventions (ours; record the final shape in ADR 0001 during D0)
+### 4.3 API conventions ([ADR 0001](docs/adr/0001-api-conventions.md)) and the typed schema ([ADR 0003](docs/adr/0003-typed-schema.md))
 
+- **The schema is generated, never written by hand.** Handlers carry `#[utoipa::path]`
+  annotations and are registered only through `utoipa_axum::routes!`, so the router and
+  the OpenAPI document come from one list. Request and response types live in `model.rs`
+  (and `settings.rs`, `store.rs`) and derive `ToSchema`. Frontends generate their SDK
+  from `openapi.json`; anything that breaks that breaks the product.
+- Adding or changing an endpoint: annotate it, register it in `api::routes()`, give it a
+  unique handler name (it becomes the SDK method name), call it from a test (every
+  response in the tests is validated against the schema), update `docs/api.md`, run
+  `cargo xtask openapi`, and commit `openapi.json` with the change.
+- Schema rules: request types put `#[serde(default)]` on fields, never on the container
+  (openapi-typescript would make the fields required); always-present `Option` fields in
+  responses carry `#[schema(required = true)]`; enums only referenced from query
+  parameters are listed in `ApiDoc`'s `components`.
 - Everything lives under a versioned base path (`/api/v1/...`), grouped by feature like the
   reference's scopes, so the checklist maps cleanly.
-- JSON request and response bodies. A `.torrent` upload is the one binary input
-  (multipart or a raw body).
+- JSON request and response bodies. A `.torrent` travels base64 inside JSON; the export
+  endpoint returns `application/x-bittorrent`.
 - **One unit per kind of value across the whole API:** bytes, bytes per second, seconds,
   unix timestamps (UTC). Unknown or unlimited is `null`, never a magic number (qBittorrent
   uses `-1`, `0` and `8640000` inconsistently; do not copy that).
@@ -244,11 +265,14 @@ Polling clients need what `sync/maindata` and `sync/torrentPeers` give qBittorre
 full snapshot first, then only what changed since a revision the client holds. That
 includes removals (torrents, categories, tags) and the session's transfer state.
 
-- Keep the last snapshot per client session (cookie or API key) and bound what is kept. An
-  unknown or expired revision gets a full snapshot.
-- Build one shared snapshot per tick however many clients poll, and diff it per client.
+- One shared snapshot is built at most every 500 ms however many clients poll; the
+  fingerprints of the last 16 are kept (`sync.rs`). A client passes the `rev` it holds and
+  gets what changed since; an unknown or expired revision gets a full snapshot. No
+  per-client state.
+- Changed torrents and categories are sent whole (typed objects, not field-level
+  patches), so SDK types stay exact.
 - Polling with revisions is the default. Server-sent events (axum supports them) can be
-  added on top later. Decide in an ADR.
+  added on top later.
 
 ### 4.7 Feature notes (what the reference offers, sourced from the library)
 
@@ -295,7 +319,7 @@ The daemon restarts from three things (`docs/config.md`, "Daemon persistence"):
    `torrent_file` is `None` until the metadata arrives.
 2. **Resume data.** Default: engine-managed `resume_dir` (atomic, periodic, flushed on
    shutdown). Caller-held blobs (`resume_data(id)` / `AddTorrent::resume_data`, polled via
-   `needs_resume_save`) are the alternative. Record the choice in an ADR. With `resume_dir`,
+   `needs_resume_save`) are the alternative; ADR 0002 chose `resume_dir`. With `resume_dir`,
    plain `remove_torrent` **leaves `<hash>.resume` behind** (the engine writes a final one
    when the torrent stops). The daemon deletes it, or a later re-add would restore stale
    state. `remove_torrent_with_files` deletes it itself.
@@ -335,7 +359,7 @@ run-on-completion later. Treat it as a security boundary.
 
 - Auth is on by default. Offer both of the reference's schemes: cookie sessions after
   login, and API keys (`Authorization: Bearer`, rotate / delete). Passwords and keys are
-  stored as hashes (PBKDF2 or argon2), never in plain text. With no password set,
+  stored as hashes (argon2 for passwords, SHA-256 for API keys), never in plain text. With no password set,
   generate a temporary one per run and print it. Also provide a session timeout, bans
   after repeated login failures, an opt-in localhost bypass and an opt-in subnet
   whitelist.
@@ -353,22 +377,28 @@ run-on-completion later. Treat it as a security boundary.
 
 1. **Unit.** Unit and state-flag derivation, the sync diff engine, request parsing, auth
    (sessions, bans, keys), persistence round-trips.
-2. **Coverage check.** `xtask check` fails if `docs/api.md` or `docs/settings.md` leaves any
-   reference endpoint or preference key unmapped (rule 3). The reference lists are checked
-   in (`docs/reference/`), extracted from the pinned build.
-3. **In-process API tests** (`tests/`). The axum router, driven with `tower::ServiceExt`,
-   runs against real `Session`s on loopback (`127.0.0.x`, DHT and LSD off, as
-   `../urtorrent/crates/session/tests/daemon.rs` does). Two sessions transfer a real
-   torrent, and every assertion goes through the API.
-4. **Lab scenarios** (`xtask it`, urtorrent's `testkit` as a path dev-dependency for the
+2. **Coverage check** (`tests/coverage.rs`). Fails if `docs/api.md` or `docs/settings.md`
+   leaves any reference endpoint or preference key unmapped (rule 3). The reference lists
+   are checked in (`docs/reference/`), extracted from the pinned build's source and API.
+3. **In-process API tests** (`tests/api.rs`, `tests/torrents.rs`). The axum router, driven
+   with `tower::ServiceExt`, runs against real `Session`s on loopback (`127.0.0.x`, DHT
+   and LSD off, as `../urtorrent/crates/session/tests/daemon.rs` does). Two daemons
+   transfer a real torrent, and every assertion goes through the API. **Every response
+   is validated against the OpenAPI schema** (`tests/common`), and calling an
+   undocumented endpoint fails the test.
+4. **Schema** (`tests/openapi.rs`, `cargo xtask sdk`). The committed `openapi.json` is
+   current, every `$ref` resolves, operation ids are unique, errors are typed; a
+   TypeScript client generated from it type-checks, and wrong calls do not.
+5. **Lab scenarios** (`xtask it`, not built yet; urtorrent's `testkit` as a path dev-dependency for the
    netns lab, opentracker and the qBittorrent oracle as a peer). Drive `urtorrentd` over
    its API to leech from and seed to the oracle, and to stop, start, recheck, move and
    delete.
-5. **Restart and crash.** Stop gracefully and restart: everything is back, including
-   categories, tags, queue order, limits, magnets without metadata, and stopped torrents.
-   `kill -9` mid-download and restart: no torrent claims data it does not have (the
-   library guarantees this, and the daemon must not undo it). Removed torrents stay
-   removed.
+6. **Restart and crash** (`tests/restart.rs`). Stop gracefully and restart in process:
+   everything is back, including categories, tags, queue order, limits, magnets without
+   metadata, and stopped torrents; removed torrents stay removed. The real binary is
+   killed with `kill -9` and comes back with its torrents, then stops cleanly on SIGTERM
+   and on `POST /app/shutdown`. No torrent may claim data it does not have (the library
+   guarantees this, and the daemon must not undo it).
 
 Every test runs offline (rule 4). Environment needs are the library's: io_uring, and for
 the lab passwordless `sudo`, `opentracker` and the cached oracle (run
@@ -376,7 +406,10 @@ the lab passwordless `sudo`, `opentracker` and the cached oracle (run
 
 ## 6. Milestones
 
-Each milestone ends with its tests green.
+Each milestone ends with its tests green. Status: **0.1.0 released (2026-09-23)** with D0 to
+D4 done except the alternative-limits scheduler, which moved to the later list. The
+"planned" rows of `docs/api.md` and `docs/settings.md` are the remaining work; what they
+need from the library is in `docs/gaps.md`.
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -391,11 +424,12 @@ Each milestone ends with its tests green.
 - **D3 Sync.** Incremental sync for torrents and peers, transfer info and limits, logs,
   peer bans.
 - **D4 Frontend policies.** Categories, tags, automatic torrent management, share limits,
-  alternative limits and scheduler, download path, stop conditions, content layout,
-  auto-added trackers (never on private torrents), settings coverage. **Release 0.1.0.**
-- **Later, each on request:** RSS, watch folders, run-on-completion, notifications, HTTPS
-  for the API, the client key-value store, metadata preview (`fetchMetadata`). Anything
-  that needs a library change lands in urtorrent first.
+  alternative limits, download path, stop conditions, content layout, auto-added trackers
+  (never on private torrents), settings coverage. **Released as 0.1.0.**
+- **Later, each on request:** the alternative-limits scheduler, RSS, watch folders,
+  run-on-completion, notifications, HTTPS for the API, the client key-value store,
+  metadata preview (`fetchMetadata`). Anything that needs a library change lands in
+  urtorrent first.
 
 ## 7. Working conventions
 
@@ -404,20 +438,25 @@ Each milestone ends with its tests green.
   library code, clippy `unwrap_used` / `expect_used` / `panic` denied (tests excepted).
 - Errors: one `ApiError` enum (`thiserror`) rendered as 4.3 says. `anyhow` only in `main`
   bootstrap and `xtask`.
-- Logging via `tracing`, no `println!` (except the temporary-password line at startup). A
-  tracing layer feeds the main log endpoint.
-- Dependencies: keep the tree small and justify every new one in the PR. Expected: `axum`
-  (with multipart), `tokio`, `tower`, `serde`, `serde_json`, `thiserror`, `tracing`,
-  `tracing-subscriber`, an HTTP client on rustls, and RustCrypto password hashing.
+- Logging via `tracing`, no `println!` (except the temporary-password line at startup).
+  Daemon events go through `Logs::log`, which feeds `GET /log` and emits the same line
+  through `tracing`.
+- Dependencies: keep the tree small and justify every new one in the PR. In use: `axum`,
+  `tokio`, `utoipa` + `utoipa-axum` (the schema), `serde`, `serde_json`, `thiserror`,
+  `tracing`, `tracing-subscriber`, `clap`, `reqwest` on rustls (URL adds), `argon2` and
+  `sha2` (credentials), `getrandom`, `base64`, `rustix` (free space, no `unsafe`).
   `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with the library's licence
   allow-list. It does **not** ban `mio` here (4.2).
-- Commands (create in D0, keep working forever):
-  - `cargo xtask check`: fmt, clippy `-D warnings`, unit and in-process tests, docs,
-    `cargo-deny`, the coverage check
-  - `cargo xtask it [scenario]`: lab scenarios (transfer, restart, crash)
-- Definition of done for any change: `xtask check` green. `docs/api.md` and
-  `docs/settings.md` are current. A new library gap has a `docs/gaps.md` entry.
-  Design-level decisions get an ADR.
+- Commands (keep them working forever):
+  - `cargo xtask check`: fmt, clippy `-D warnings`, all tests (unit, API on real
+    engines, restart / `kill -9`, schema, coverage), docs, `cargo-deny`
+  - `cargo xtask openapi`: regenerate `openapi.json`
+  - `cargo xtask sdk`: generate TypeScript types from `openapi.json` and type-check
+    `sdk/typescript/check.ts` (Node.js)
+  - `cargo xtask it [scenario]`: lab scenarios against the oracle (not built yet, 5.4)
+- Definition of done for any change: `xtask check` and `xtask sdk` green. `openapi.json`
+  regenerated and committed. `docs/api.md` and `docs/settings.md` are current. A new
+  library gap has a `docs/gaps.md` entry. Design-level decisions get an ADR.
 - **Versioning.** SemVer, first release `0.1.0`, `CHANGELOG.md` in Keep-a-Changelog
   format, one line per user-visible change in the same PR. The API is versioned by its
   base path. A breaking change needs a new path version, or a `0.x` minor bump while
@@ -444,17 +483,22 @@ Each milestone ends with its tests green.
   **qBittorrent is a feature checklist only:** no emulation of its responses or versions,
   and no compatibility with qBittorrent frontends or clients.
 - **Licence: Apache-2.0.**
+- **A typed API schema generated from the code**, so frontends get an SDK from a
+  generator with end-to-end type safety (ADR 0003).
+
+### Settled in ADRs (defaults taken while building; revisit with the maintainer if needed)
+
+- **API style**: resource-oriented JSON under `/api/v1` (ADR 0001).
+- **Resume storage**: engine-managed `resume_dir`, not caller-held blobs (ADR 0002).
 
 ### Still open (defaults assumed; confirm with the maintainer in the PR that depends on it)
 
-- **API style.** Default: resource-oriented JSON under `/api/v1`, grouped like the
-  reference's scopes (4.3). Settled in ADR 0001.
-- **Resume storage.** Default: engine-managed `resume_dir` (4.8), not caller-held blobs.
 - **Identity profile.** Default: the library's default, `native`. The qbt profile is opt-in
   in the daemon config, for private trackers with client whitelists.
 - **Scope beyond the library.** Torrent creation (`torrentcreator/*`): unsupported by
   default, even though the daemon could do it without the library. RSS and watch folders:
   planned after 0.1.0 (section 6).
-- **On-disk layout.** Default: one data dir (`$XDG_DATA_HOME/urtorrentd`) holding
-  `torrents/`, `resume/`, `config/` and `logs/`, with daemon records as JSON. Record the
-  final layout in an ADR before D1 ends.
+- **On-disk layout.** One data dir (`$XDG_DATA_HOME/urtorrentd`) as ADR 0002 and
+  `store.rs` describe; logs go to stderr / journald, not files.
+- **API listen address.** Default `127.0.0.1:8080` (loopback only); exposing it is a
+  deliberate `--api-listen`.

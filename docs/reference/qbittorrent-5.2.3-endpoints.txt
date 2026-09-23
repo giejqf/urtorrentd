@@ -1,0 +1,127 @@
+# qBittorrent 5.2.3 WebAPI actions and their parameters (the feature checklist, AGENTS.md section 2).
+# Extracted mechanically from src/webui/api/*controller.cpp at tag release-5.2.3: one line per
+# action, 'scope/action<TAB>params', '*' marks required parameters. Parameters read through helper
+# functions (for example the .torrent file parts of torrents/add) may be missing; the source wins.
+app/webapiVersion	
+app/version	
+app/buildInfo	
+app/processInfo	
+app/shutdown	
+app/preferences	
+app/setPreferences	json*
+app/defaultSavePath	
+app/sendTestEmail	
+app/getDirectoryContent	dirPath* mode withMetadata
+app/cookies	
+app/setCookies	cookies*
+app/rotateAPIKey	
+app/deleteAPIKey	
+app/networkInterfaceList	
+app/networkInterfaceAddressList	iface*
+auth/login	password username
+auth/logout	
+clientdata/load	keys
+clientdata/store	data*
+log/main	critical info last_known_id normal warning
+log/peers	last_known_id
+rss/addFolder	path*
+rss/addFeed	path* refreshInterval url*
+rss/setFeedURL	path* url*
+rss/setFeedRefreshInterval	path* refreshInterval*
+rss/removeItem	path*
+rss/moveItem	destPath* itemPath*
+rss/items	withData
+rss/markAsRead	articleId itemPath*
+rss/refreshItem	itemPath*
+rss/setRule	ruleDef* ruleName*
+rss/renameRule	newRuleName* ruleName*
+rss/removeRule	ruleName*
+rss/rules	
+rss/matchingArticles	ruleName*
+search/start	category* pattern* plugins*
+search/stop	id*
+search/status	id
+search/results	id* limit offset
+search/delete	id*
+search/downloadTorrent	pluginName* torrentUrl*
+search/plugins	
+search/installPlugin	sources*
+search/uninstallPlugin	names*
+search/enablePlugin	enable* names*
+search/updatePlugins	
+sync/maindata	rid
+sync/torrentPeers	hash rid
+torrentcreator/addTask	startSeeding
+torrentcreator/status	
+torrentcreator/torrentFile	
+torrentcreator/deleteTask	
+torrents/count	
+torrents/info	filter hashes includeFiles includeTrackers limit offset private reverse sort
+torrents/properties	hash*
+torrents/trackers	hash*
+torrents/webseeds	hash*
+torrents/addWebSeeds	hash* urls*
+torrents/editWebSeed	hash* newUrl* origUrl*
+torrents/removeWebSeeds	hash* urls*
+torrents/files	hash*
+torrents/pieceHashes	hash*
+torrents/pieceStates	hash*
+torrents/pieceAvailability	hash*
+torrents/add	addToTopOfQueue autoTMM category contentLayout dlLimit downloadPath downloader filePriorities firstLastPiecePrio forced inactiveSeedingTimeLimit ratioLimit rename savepath seedingTimeLimit sequentialDownload shareLimitAction skip_checking stopCondition stopped tags upLimit urls useDownloadPath
+torrents/addTrackers	hash* urls*
+torrents/editTracker	hash* url*
+torrents/removeTrackers	hash* urls*
+torrents/addPeers	hashes* peers*
+torrents/stop	hashes*
+torrents/start	hashes*
+torrents/filePrio	hash* id* priority*
+torrents/uploadLimit	hashes*
+torrents/downloadLimit	hashes*
+torrents/setUploadLimit	hashes* limit*
+torrents/setDownloadLimit	hashes* limit*
+torrents/setShareLimits	hashes* inactiveSeedingTimeLimit* ratioLimit* seedingTimeLimit* shareLimitAction*
+torrents/toggleSequentialDownload	hashes*
+torrents/toggleFirstLastPiecePrio	hashes*
+torrents/setSuperSeeding	hashes* value*
+torrents/setForceStart	hashes* value*
+torrents/delete	deleteFiles* hashes*
+torrents/increasePrio	hashes*
+torrents/decreasePrio	hashes*
+torrents/topPrio	hashes*
+torrents/bottomPrio	hashes*
+torrents/setLocation	hashes* location*
+torrents/setSavePath	id* path*
+torrents/setDownloadPath	id* path*
+torrents/rename	hash* name*
+torrents/setComment	comment* hashes*
+torrents/setAutoManagement	enable* hashes*
+torrents/recheck	hashes*
+torrents/reannounce	hashes* urls
+torrents/setCategory	category* hashes*
+torrents/createCategory	category* downloadPath downloadPathEnabled savePath
+torrents/editCategory	category* downloadPath downloadPathEnabled savePath*
+torrents/removeCategories	categories*
+torrents/categories	
+torrents/addTags	hashes* tags*
+torrents/setTags	hashes* tags*
+torrents/removeTags	hashes* tags
+torrents/createTags	tags*
+torrents/deleteTags	tags*
+torrents/tags	
+torrents/renameFile	hash* newPath* oldPath*
+torrents/renameFolder	hash* newPath* oldPath*
+torrents/export	hash*
+torrents/SSLParameters	hash*
+torrents/setSSLParameters	hash*
+torrents/fetchMetadata	downloader source*
+torrents/parseMetadata	
+torrents/saveMetadata	source*
+transfer/info	
+transfer/uploadLimit	
+transfer/downloadLimit	
+transfer/setUploadLimit	limit*
+transfer/setDownloadLimit	limit*
+transfer/toggleSpeedLimitsMode	
+transfer/speedLimitsMode	
+transfer/setSpeedLimitsMode	mode*
+transfer/banPeers	peers*
