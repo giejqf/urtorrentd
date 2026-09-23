@@ -30,6 +30,8 @@ profile that allows it).
   `GET /api/v1/openapi.json`; `urtorrentd openapi` prints it.
 - Overview, and the map from qBittorrent's WebAPI: [docs/api.md](docs/api.md).
 - Settings: [docs/settings.md](docs/settings.md).
+- Live updates: `GET /api/v1/events` pushes what changed as server-sent
+  events (`EventSource` in a browser); `GET /api/v1/sync` is the polled form.
 
 ```sh
 curl -s -c jar -H 'content-type: application/json' \

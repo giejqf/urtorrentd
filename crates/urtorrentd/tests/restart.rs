@@ -314,7 +314,10 @@ async fn binary_survives_kill_and_stops_gracefully() {
     assert_eq!(t["category"], "c");
     assert_eq!(t["progress"], 1.0);
 
-    // SIGTERM: a clean exit.
+    // SIGTERM with an event stream open: still a clean exit (streams end
+    // before the HTTP server drains).
+    let stream = client.get(format!("{base}/events")).send().await.unwrap();
+    assert_eq!(stream.status().as_u16(), 200);
     let pid = child.id().to_string();
     assert!(
         Command::new("kill")
@@ -324,6 +327,7 @@ async fn binary_survives_kill_and_stops_gracefully() {
             .success()
     );
     assert!(wait_exit(&mut child, 30).await.success());
+    drop(stream);
 
     // And the shutdown endpoint.
     let port = free_port();

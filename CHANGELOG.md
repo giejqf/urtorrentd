@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-23
+
+### Added
+
+- **Live updates as server-sent events**: `GET /api/v1/events` pushes the
+  same diffs as `GET /sync` (`SyncResponse` data, the revision as the event
+  id): everything at once, then only what changed, at most once a second
+  and only when something did. `EventSource` resumes with `Last-Event-ID`;
+  an unknown id gets everything; a slow client gets the latest changes, not
+  a backlog; idle streams send a comment every 15 s. The TypeScript check
+  types a client's `EventSource` handler from the generated schema.
+
+### Fixed
+
+- A shutdown (API, SIGTERM, SIGINT) ends open event streams first, so the
+  HTTP server's graceful shutdown does not wait on them; covered by a test
+  that stops the real binary with a stream open.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added

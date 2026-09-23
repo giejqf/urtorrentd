@@ -1,19 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 urtorrentd contributors
 
-//! Incremental sync for polling clients (AGENTS.md 4.6). The daemon builds a
-//! snapshot at most every [`MIN_INTERVAL`], however many clients poll, and
-//! keeps the fingerprints of the last [`KEEP`] snapshots. A client passes the
-//! `rev` it holds; if that snapshot is still kept it gets only what changed,
-//! otherwise everything. No per-client state is kept.
+//! Incremental sync (AGENTS.md 4.6), polled (`GET /sync`) or pushed as
+//! server-sent events (`GET /events`). The daemon builds a snapshot at most
+//! every [`MIN_INTERVAL`], however many clients there are, and keeps the
+//! fingerprints of the last [`KEEP`] snapshots. A client passes the `rev` it
+//! holds; if that snapshot is still kept it gets only what changed, otherwise
+//! everything. Polling keeps no per-client state; a stream keeps only the
+//! last `rev` and transfer state it sent.
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::convert::Infallible;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use axum::response::sse::Event;
+use futures_util::Stream;
 use serde::Serialize;
+use tokio::sync::watch;
+use tokio::time::{Interval, MissedTickBehavior};
 
 use crate::daemon::Daemon;
 use crate::error::ApiResult;
@@ -24,6 +31,8 @@ use crate::store::Category;
 pub const MIN_INTERVAL: Duration = Duration::from_millis(500);
 /// Snapshots whose fingerprints are kept for diffs.
 pub const KEEP: usize = 16;
+/// A stream looks for changes this often (and sends only when there are).
+pub const PUSH_INTERVAL: Duration = Duration::from_secs(1);
 
 fn fingerprint<T: Serialize>(v: &T) -> u64 {
     let mut h = DefaultHasher::new();
@@ -167,4 +176,73 @@ impl Daemon {
         s.latest = Some(latest.clone());
         Ok((latest, prints))
     }
+}
+
+/// Whether a diff carries anything the client does not have.
+fn has_changes(r: &SyncResponse, last_transfer: Option<&TransferInfo>) -> bool {
+    r.full
+        || !r.torrents.is_empty()
+        || !r.torrents_removed.is_empty()
+        || !r.categories.is_empty()
+        || !r.categories_removed.is_empty()
+        || r.tags.is_some()
+        || last_transfer != Some(&r.transfer)
+}
+
+struct StreamState {
+    daemon: Arc<Daemon>,
+    /// The revision the client holds.
+    rev: Option<u64>,
+    /// The transfer state last sent.
+    last_transfer: Option<TransferInfo>,
+    interval: Interval,
+    shutdown: watch::Receiver<bool>,
+}
+
+/// Server-sent events: a `sync` event (id = the revision, data = a
+/// [`SyncResponse`]) at once, then whenever something changed, checked every
+/// [`PUSH_INTERVAL`]. Nothing is queued: each event is computed when the
+/// connection can take it, so a slow client gets the latest diff, not a
+/// backlog. The stream ends when the daemon shuts down.
+pub(crate) fn event_stream(
+    daemon: Arc<Daemon>,
+    rev: Option<u64>,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    let mut interval = tokio::time::interval(PUSH_INTERVAL);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let shutdown = daemon.shutdown_watch();
+    let state = StreamState {
+        daemon,
+        rev,
+        last_transfer: None,
+        interval,
+        shutdown,
+    };
+    futures_util::stream::unfold(state, |mut s| async move {
+        loop {
+            // The first tick of a tokio interval completes at once.
+            tokio::select! {
+                _ = s.interval.tick() => {}
+                _ = s.shutdown.wait_for(|stop| *stop) => return None,
+            }
+            if s.daemon.is_closed() {
+                return None;
+            }
+            let Ok(resp) = s.daemon.sync(s.rev).await else {
+                continue;
+            };
+            let changed = has_changes(&resp, s.last_transfer.as_ref());
+            s.rev = Some(resp.rev);
+            if !changed {
+                continue;
+            }
+            s.last_transfer = Some(resp.transfer.clone());
+            let event = Event::default()
+                .event("sync")
+                .id(resp.rev.to_string())
+                .json_data(&resp)
+                .unwrap_or_else(|e| Event::default().comment(format!("encoding failed: {e}")));
+            return Some((Ok(event), s));
+        }
+    })
 }

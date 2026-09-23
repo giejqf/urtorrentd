@@ -42,6 +42,30 @@ npx openapi-typescript openapi.json -o schema.d.ts   # types
 `operationId`s (SDK method names) are unique and stable: they are the
 handler names (`list_torrents`, `add_torrents`, `get_torrent`, ...).
 
+## Live updates
+
+`GET /api/v1/events` is a server-sent event stream (`text/event-stream`) of
+the same updates `GET /sync` returns. Every event is named `sync`, its `id`
+is the revision, and its `data` is a `SyncResponse`: the first one is
+everything (or, with `?rev=N` or a `Last-Event-ID` header, the changes since
+that revision), the next ones only what changed, at most once a second and
+only when something did. Nothing is queued for a slow client: it gets the
+latest changes, never a backlog. An idle stream sends a comment every 15 s.
+Streams end when the daemon shuts down.
+
+```ts
+const events = new EventSource("/api/v1/events", { withCredentials: true });
+events.addEventListener("sync", (e) => {
+  const update: components["schemas"]["SyncResponse"] = JSON.parse(e.data);
+  // update.full: replace the state; otherwise apply torrents, *_removed, tags, transfer
+});
+```
+
+`EventSource` reconnects on its own and sends the last id back, so a client
+resumes where it left off (or gets everything, if that revision is too old).
+Browsers cannot set headers on `EventSource`: use the login cookie; other
+clients can send the API key. Polling `GET /sync` stays for scripts.
+
 ## Endpoints
 
 | Method | Path | What |
@@ -78,6 +102,7 @@ handler names (`list_torrents`, `add_torrents`, `get_torrent`, ...).
 | PUT | `/transfer/alt-speed` | Switch to or from the alternative limits |
 | POST | `/transfer/bans` | Ban peer addresses |
 | GET | `/sync` | Incremental updates: everything, then changes since `rev` |
+| GET | `/events` | The same updates pushed as server-sent events |
 | GET | `/log`, `/log/peers` | Main log; peer (ban) log |
 
 ## Adding torrents: qBittorrent's `torrents/add` parameters
@@ -134,7 +159,7 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `app/networkInterfaceAddressList` | planned | as above |
 | `log/main` | done | `GET /log` |
 | `log/peers` | done | `GET /log/peers` |
-| `sync/maindata` | done | `GET /sync` |
+| `sync/maindata` | done | `GET /sync`; pushed: `GET /events` (server-sent events) |
 | `sync/torrentPeers` | done | `GET /torrents/{hash}/peers` (the full list each time; peer lists are small) |
 | `transfer/info` | done | `GET /transfer` |
 | `transfer/uploadLimit` | done | `GET /transfer` (`upload_limit` in force) |

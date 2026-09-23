@@ -9,6 +9,7 @@
 mod app;
 mod auth;
 mod categories;
+mod events;
 mod guard;
 mod logs;
 mod sync;
@@ -188,7 +189,7 @@ Errors always have the `ErrorBody` shape with a stable `code`."
         (name = "torrent", description = "One torrent: detail, files, trackers, web seeds, peers, pieces."),
         (name = "categories", description = "Categories and tags."),
         (name = "transfer", description = "Session-wide transfer state, speed limits and bans."),
-        (name = "sync", description = "Incremental updates for polling clients."),
+        (name = "sync", description = "Incremental updates: polled (`/sync`) or pushed as server-sent events (`/events`)."),
         (name = "log", description = "The main log and the peer log."),
     )
 )]
@@ -251,6 +252,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(transfer::set_alt_speed))
         .routes(routes!(transfer::ban_peers))
         .routes(routes!(sync::sync))
+        .routes(routes!(events::stream_events))
         .routes(routes!(logs::get_main_log))
         .routes(routes!(logs::get_peer_log));
     (public, protected)

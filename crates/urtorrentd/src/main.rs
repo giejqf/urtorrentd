@@ -67,6 +67,9 @@ async fn shutdown_signal(daemon: std::sync::Arc<Daemon>) {
         _ = term => tracing::info!("terminated"),
         _ = daemon.shutdown_requested() => {}
     }
+    // Open event streams end on this, so the graceful shutdown of the HTTP
+    // server does not wait for them.
+    daemon.request_shutdown();
 }
 
 async fn run(data_dir: PathBuf, api_listen: SocketAddr) -> Result<(), String> {

@@ -416,9 +416,16 @@ impl Daemon {
         Ok(new)
     }
 
-    /// Ask the process to shut down (the `/app/shutdown` endpoint).
+    /// Ask the process to shut down (the `/app/shutdown` endpoint, and the
+    /// signal handler, so open event streams end before the server drains).
     pub fn request_shutdown(&self) {
         let _ = self.shutdown_requested.send(true);
+    }
+
+    /// Watch for a shutdown request (open event streams end on it, so the
+    /// HTTP server's graceful shutdown does not wait for them).
+    pub(crate) fn shutdown_watch(&self) -> watch::Receiver<bool> {
+        self.shutdown_requested.subscribe()
     }
 
     /// Resolves once a shutdown was requested through the API.
@@ -438,6 +445,7 @@ impl Daemon {
         if self.closed.send_replace(true) {
             return;
         }
+        let _ = self.shutdown_requested.send_replace(true);
         let _ops = self.ops.lock().await;
         if let Ok(tasks) = self.tasks.lock() {
             for t in tasks.iter() {

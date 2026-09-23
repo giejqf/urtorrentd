@@ -43,7 +43,14 @@ get a typed SDK from the schema (ADR 0003).
   torrents and categories that changed (whole objects), removal lists, the
   tag list when it changed, and the transfer state every time. Snapshots are
   shared by all clients (built at most every 500 ms, the last 16 kept); no
-  per-client state. Server-sent events may come later on top.
+  per-client state. The same diffs are pushed as server-sent events
+  (`GET /events`, 2026-09-23): one-way fits (commands stay REST), browsers
+  reconnect with `Last-Event-ID` = the revision, cookies and the `Host`
+  checks apply as to any `GET`, and the payload is the schema's
+  `SyncResponse`, so generated types cover it. A WebSocket was considered:
+  it needs its own origin check against cross-site hijacking, proxy upgrade
+  settings and hand-written reconnection, and the client never needs to
+  speak on the channel.
 - **Authentication**: cookie sessions (`urtorrentd_sid`, HttpOnly,
   SameSite=Strict) and a bearer API key; CSRF (`Origin` / `Referer`) checks
   for cookie sessions; `Host` checks against DNS rebinding (IP literals always

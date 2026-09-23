@@ -10,7 +10,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.3.0"
+    "version": "0.4.0"
   },
   "paths": {
     "/api/v1/app": {
@@ -945,6 +945,122 @@
         "responses": {
           "204": {
             "description": "Removed."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Live updates as server-sent events (`text/event-stream`). Every event is\nnamed `sync`, its `id` is the revision and its `data` a `SyncResponse`:\nthe first is everything (or the changes since `rev`), the next ones only\nwhat changed, at most once a second and only when something did. On\nreconnect a browser's `EventSource` sends the last id as `Last-Event-ID`,\nwhich resumes from there. Idle streams get a comment every 15 s.",
+        "operationId": "stream_events",
+        "parameters": [
+          {
+            "name": "rev",
+            "in": "query",
+            "description": "Resume after this revision (a `Last-Event-ID` header wins); absent\nstarts with everything.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "description": "The last event id received (sent by `EventSource` on reconnect); wins over `rev`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A stream of `sync` events; each `data` is a `SyncResponse`.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResponse"
+                }
+              }
+            }
           },
           "400": {
             "description": "Malformed request or invalid value.",
@@ -9676,7 +9792,7 @@
     },
     {
       "name": "sync",
-      "description": "Incremental updates for polling clients."
+      "description": "Incremental updates: polled (`/sync`) or pushed as server-sent events (`/events`)."
     },
     {
       "name": "log",

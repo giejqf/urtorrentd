@@ -273,8 +273,12 @@ includes removals (torrents, categories, tags) and the session's transfer state.
   per-client state.
 - Changed torrents and categories are sent whole (typed objects, not field-level
   patches), so SDK types stay exact.
-- Polling with revisions is the default. Server-sent events (axum supports them) can be
-  added on top later.
+- The same diffs are pushed as server-sent events (`GET /events`, `sync.rs`
+  `event_stream`): at once, then at most every second when something changed; the event
+  id is the revision, so `EventSource` resumes with `Last-Event-ID`. Nothing is queued
+  per client (each event is computed when the connection can take it). Streams end on
+  a shutdown request, so the HTTP server's graceful shutdown never waits on them; the
+  signal handler requests one too. Polling stays for scripts.
 
 ### 4.7 Feature notes (what the reference offers, sourced from the library)
 
@@ -436,7 +440,8 @@ moved persistence to SQLite and aligned with urtorrent 0.13 (error recovery, hol
 piece priorities, address ranges, list-view fields). The "planned" rows of `docs/api.md`
 and `docs/settings.md` are the remaining work; `docs/gaps.md` has what is still open
 upstream. **0.3.0** added the incomplete-file suffix and verified staging downloads that
-move to their category's directory on completion.
+move to their category's directory on completion. **0.4.0** pushes the sync diffs as
+server-sent events (4.6).
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -472,7 +477,8 @@ move to their category's directory on completion.
   `tokio`, `utoipa` + `utoipa-axum` (the schema), `serde`, `serde_json`, `thiserror`,
   `tracing`, `tracing-subscriber`, `clap`, `reqwest` on rustls (URL adds), `argon2` and
   `sha2` (credentials), `getrandom`, `base64`, `rustix` (free space, no `unsafe`),
-  `rusqlite` with SQLite compiled in (persistence, ADR 0004).
+  `rusqlite` with SQLite compiled in (persistence, ADR 0004), `futures-util` (the
+  event stream; already in the tree through axum and tower).
   `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with the library's licence
   allow-list. It does **not** ban `mio` here (4.2).
 - Commands (keep them working forever):

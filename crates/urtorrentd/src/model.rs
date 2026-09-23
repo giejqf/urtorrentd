@@ -1181,6 +1181,15 @@ pub struct SyncQuery {
     pub rev: Option<u64>,
 }
 
+/// Query of the event stream.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct EventsQuery {
+    /// Resume after this revision (a `Last-Event-ID` header wins); absent
+    /// starts with everything.
+    pub rev: Option<u64>,
+}
+
 /// Changes since a revision. With `full`, the maps hold everything and the
 /// client replaces its state; otherwise they hold only what changed and the
 /// `*_removed` lists say what went away. Torrents and categories are sent

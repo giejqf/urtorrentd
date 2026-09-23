@@ -59,3 +59,19 @@ export async function demo(): Promise<void> {
   // @ts-expect-error: no such endpoint.
   await api.GET("/api/v1/nope");
 }
+
+// Live updates: server-sent events whose data is a SyncResponse. The schema
+// ties the stream's payload to that type; the check below fails if it does not.
+type EventData = paths["/api/v1/events"]["get"]["responses"][200]["content"]["text/event-stream"];
+const eventDataIsSyncResponse: EventData extends Schemas["SyncResponse"] ? true : false = true;
+void eventDataIsSyncResponse;
+
+export function watch(onUpdate: (update: Schemas["SyncResponse"]) => void): EventSource {
+  // The browser resumes with Last-Event-ID on reconnect.
+  const events = new EventSource("/api/v1/events", { withCredentials: true });
+  events.addEventListener("sync", (e: MessageEvent<string>) => {
+    const update: EventData = JSON.parse(e.data);
+    onUpdate(update);
+  });
+  return events;
+}

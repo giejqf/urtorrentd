@@ -251,6 +251,24 @@ pub fn validate_response(
     );
 }
 
+/// Check a value against a named component schema.
+pub fn validate_schema(name: &str, instance: &Value) {
+    let schema = json!({
+        "$ref": format!("#/components/schemas/{name}"),
+        "components": doc()["components"].clone(),
+    });
+    let validator = jsonschema::validator_for(&schema).unwrap();
+    let errors: Vec<String> = validator
+        .iter_errors(instance)
+        .map(|e| format!("{} at {}", e, e.instance_path))
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "{name}: {}\n{instance}",
+        errors.join("\n")
+    );
+}
+
 // ------------------------------------------------------------------ daemons
 
 /// Settings for a test daemon: peers on `127.0.0.<n>`, no DHT / LSD, a
