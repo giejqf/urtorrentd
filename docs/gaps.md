@@ -6,11 +6,34 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 ## Open
 
-### Smaller wishes
+### `needs_resume_save` misses changes the resume data records (0.13.1)
 
-| Wish | Workaround here | Affects |
-|---|---|---|
-| Tracker URLs in `statuses()` rows (the list has `working_tracker` and `trackers_count` but not the URLs) | a per-torrent cache of the URLs, refreshed from `trackers(id)` only when the list is edited or the metadata arrives | the trackers in list rows' `magnet_uri` |
+A caller that stores the resume data itself (`Session::resume_data`, what
+the daemon does since 0.2.0, ADR 0004) learns what changed only through
+`TorrentStatus::needs_resume_save`. These operations change what the resume
+data holds but leave the flag unset (probed against 0.13.1; `add_web_seed`,
+which sets it, as the reference):
+
+| Operation | Recorded in the resume data as |
+|---|---|
+| `add_tracker`, `remove_tracker` | the tracker list (format 6) |
+| `set_sequential`, `set_torrent_rate_limits`, `set_max_peers`, `set_max_uploads` | per-torrent settings (format 5) |
+| `pause`, `resume`, `force_resume`, `set_auto_managed` | `auto_managed` (format 4) |
+| `move_in_queue` | `queue_position` of the moved torrent **and of every torrent it shifts** (format 4) |
+
+In the engine's own file mode the gap hides behind the save every torrent
+gets when it stops. With caller-held data, a `kill -9` loses these changes,
+and for a torrent where nothing else ever marks the data (an idle seed) they
+never reach the database at all until a clean shutdown.
+
+Wanted: set `needs_resume_save` for each of them (for a queue move, on every
+torrent whose position changed), as libtorrent's `need_save_resume_data`
+does.
+
+Workaround here: at shutdown the daemon saves the resume data of every
+torrent, not only the marked ones (`ResumeSave::All`). Once fixed, shutdown
+saves only the marked ones (O(changed) instead of O(all)) and a crash loses
+at most the last minute of these edits.
 
 ## Resolved upstream
 
@@ -34,6 +57,18 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
   banned address ranges (`banned_ip_ranges` setting), per-endpoint tracker
   rows and `updating` (in `GET /torrents/{hash}/trackers`), `FileCompleted`.
 - 0.11.4: `rustls-pemfile` replaced (RUSTSEC-2025-0134).
+
+## Considered, not needed
+
+- **Tracker URLs in `statuses()` rows**, for the trackers in list rows'
+  `magnet_uri`. The daemon caches each torrent's URLs, filled once from
+  `trackers(id)` on the first list after a start and refreshed only when the
+  list is edited or a magnet's metadata arrives. Carrying the URLs in every
+  `statuses()` row would copy every torrent's tracker list on every snapshot
+  (the tick every 2 s, sync up to twice a second, every list request): more
+  work than the one-time fill it saves. If the fill after a start ever
+  matters, a call returning the trackers of many torrents at once is the
+  better request.
 
 ## Still unsupported (by choice, not blocked)
 
