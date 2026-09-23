@@ -218,7 +218,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bencode"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "thiserror",
 ]
@@ -442,7 +442,7 @@ dependencies = [
 
 [[package]]
 name = "dht"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "bencode",
  "metainfo",
@@ -506,6 +506,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
+name = "fallible-streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
+
+[[package]]
 name = "fancy-regex"
 version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -544,6 +556,12 @@ name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+
+[[package]]
+name = "foldhash"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "form_urlencoded"
@@ -682,6 +700,18 @@ name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+dependencies = [
+ "foldhash",
+]
+
+[[package]]
+name = "hashlink"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a596f1b20ed2cc5ecac41a164aaebc7258057060f06c0cf7a2ba3991ee7990fb"
+dependencies = [
+ "hashbrown",
+]
 
 [[package]]
 name = "heck"
@@ -1057,6 +1087,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
+name = "libsqlite3-sys"
+version = "0.38.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1112,7 +1153,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "metainfo"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "bencode",
  "sha1",
@@ -1147,7 +1188,7 @@ dependencies = [
 
 [[package]]
 name = "mse"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "metainfo",
  "num-bigint",
@@ -1317,7 +1358,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "picker"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "metainfo",
  "profile",
@@ -1355,7 +1396,7 @@ dependencies = [
 
 [[package]]
 name = "profile"
-version = "0.11.4"
+version = "0.13.1"
 
 [[package]]
 name = "quinn"
@@ -1604,6 +1645,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusqlite"
+version = "0.40.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23f2a97da3e3873c73cb2a2e71b35c40ff95e0b1eefa8d72d8499a6928c3b5b3"
+dependencies = [
+ "bitflags",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "hashlink",
+ "libsqlite3-sys",
+ "smallvec",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1840,7 +1895,7 @@ dependencies = [
 
 [[package]]
 name = "session"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "bencode",
  "dht",
@@ -1956,7 +2011,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "storage"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "bencode",
  "metainfo",
@@ -2250,7 +2305,7 @@ dependencies = [
 
 [[package]]
 name = "tracker"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "bencode",
  "metainfo",
@@ -2286,7 +2341,7 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "uring"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "io-uring",
  "libc",
@@ -2308,7 +2363,7 @@ dependencies = [
 
 [[package]]
 name = "urtorrent"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "metainfo",
  "profile",
@@ -2318,7 +2373,7 @@ dependencies = [
 
 [[package]]
 name = "urtorrentd"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "axum",
@@ -2328,6 +2383,7 @@ dependencies = [
  "http-body-util",
  "jsonschema",
  "reqwest",
+ "rusqlite",
  "rustix",
  "serde",
  "serde_json",
@@ -2395,7 +2451,7 @@ dependencies = [
 
 [[package]]
 name = "utp"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "profile",
  "thiserror",
@@ -2428,6 +2484,12 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version_check"
@@ -2667,7 +2729,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "wire"
-version = "0.11.4"
+version = "0.13.1"
 dependencies = [
  "bencode",
  "metainfo",

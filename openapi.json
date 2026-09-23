@@ -10,7 +10,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "paths": {
     "/api/v1/app": {
@@ -2513,6 +2513,107 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/torrents/first-last-piece-priority": {
+      "post": {
+        "tags": [
+          "torrents"
+        ],
+        "summary": "Download the first and last pieces of each wanted file first (`value:\ntrue`), or let the file priorities decide every piece again (`false`).",
+        "operationId": "set_first_last_piece_priority",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToggleRequest"
               }
             }
           },
@@ -6230,6 +6331,10 @@
             "type": "boolean",
             "description": "Download pieces in order."
           },
+          "first_last_piece_priority": {
+            "type": "boolean",
+            "description": "Download the first and last pieces of each file first (previews)."
+          },
           "file_priorities": {
             "type": [
               "array",
@@ -7292,7 +7397,8 @@
         "description": "Every piece's state and availability.",
         "required": [
           "states",
-          "availability"
+          "availability",
+          "priorities"
         ],
         "properties": {
           "states": {
@@ -7310,6 +7416,15 @@
               "minimum": 0
             },
             "description": "Connected peers (and web seeds) with each piece, in piece order."
+          },
+          "priorities": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Download priority of each piece (0 = skipped, 1..=7), in piece order."
           }
         }
       },
@@ -7435,6 +7550,7 @@
           "max_uploads",
           "max_uploads_per_torrent",
           "banned_ips",
+          "banned_ip_ranges",
           "download_limit",
           "upload_limit",
           "alt_download_limit",
@@ -7590,6 +7706,14 @@
               "type": "string"
             },
             "description": "Addresses banned from every torrent.",
+            "default": []
+          },
+          "banned_ip_ranges": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Address ranges banned from every torrent: `10.0.0.0/8`, `fd00::/8`, or\n`first-last` (`1.2.3.0-1.2.4.255`).",
             "default": []
           },
           "download_limit": {
@@ -7945,6 +8069,13 @@
               "type": "string"
             },
             "description": "Addresses banned from every torrent."
+          },
+          "banned_ip_ranges": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Address ranges banned from every torrent: `10.0.0.0/8`, `fd00::/8`, or\n`first-last` (`1.2.3.0-1.2.4.255`)."
           },
           "download_limit": {
             "type": [
@@ -8473,6 +8604,16 @@
         ],
         "description": "Everything about one torrent."
       },
+      "TorrentErrorKind": {
+        "type": "string",
+        "description": "What stopped a torrent in the `error` state, and so what brings it back.",
+        "enum": [
+          "content_missing",
+          "io",
+          "metadata",
+          "other"
+        ]
+      },
       "TorrentFilter": {
         "type": "string",
         "description": "Filters for the torrent list.",
@@ -8641,7 +8782,9 @@
           "queued",
           "stopped",
           "error",
-          "moving"
+          "moving",
+          "held",
+          "unknown"
         ]
       },
       "TorrentSummary": {
@@ -8655,6 +8798,7 @@
           "forced",
           "complete",
           "error",
+          "error_kind",
           "progress",
           "size",
           "total_size",
@@ -8693,6 +8837,7 @@
           "queue_position",
           "auto_management",
           "sequential",
+          "first_last_piece_priority",
           "private",
           "has_metadata",
           "piece_size",
@@ -8739,6 +8884,17 @@
               "null"
             ],
             "description": "Error text in the `error` state."
+          },
+          "error_kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TorrentErrorKind",
+                "description": "What kind of error, in the `error` state."
+              }
+            ]
           },
           "progress": {
             "type": "number",
@@ -8893,7 +9049,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Distributed copies among connected peers; `null` until measured."
+            "description": "Distributed copies among the connected peers and us (libtorrent's\n`distributed_copies`); `null` for a complete seed or before the\nmetadata."
           },
           "save_path": {
             "type": "string",
@@ -8992,6 +9148,10 @@
             "type": "boolean",
             "description": "Pieces are downloaded in order."
           },
+          "first_last_piece_priority": {
+            "type": "boolean",
+            "description": "The first and last pieces of each wanted file come first."
+          },
           "private": {
             "type": "boolean",
             "description": "Private torrent (BEP 27)."
@@ -9077,6 +9237,74 @@
           }
         }
       },
+      "TrackerEndpointInfo": {
+        "type": "object",
+        "description": "A tracker as announced through one listen socket.",
+        "required": [
+          "local",
+          "working",
+          "updating",
+          "fails",
+          "message",
+          "seeders",
+          "leechers",
+          "next_announce_in"
+        ],
+        "properties": {
+          "local": {
+            "type": "string",
+            "description": "The local listen address announced from (unspecified when listening\non every address of the family)."
+          },
+          "working": {
+            "type": "boolean",
+            "description": "The last announce through it succeeded."
+          },
+          "updating": {
+            "type": "boolean",
+            "description": "An announce through it is in flight."
+          },
+          "fails": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Consecutive failures.",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The last error, if any."
+          },
+          "seeders": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Seeders reported to this endpoint.",
+            "minimum": 0
+          },
+          "leechers": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Leechers reported to this endpoint.",
+            "minimum": 0
+          },
+          "next_announce_in": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds until its next announce.",
+            "minimum": 0
+          }
+        }
+      },
       "TrackerInfo": {
         "type": "object",
         "description": "One tracker.",
@@ -9089,7 +9317,9 @@
           "seeders",
           "leechers",
           "downloaded",
-          "next_announce_in"
+          "next_announce_in",
+          "updating",
+          "endpoints"
         ],
         "properties": {
           "url": {
@@ -9153,6 +9383,17 @@
             "format": "int64",
             "description": "Seconds until the next announce.",
             "minimum": 0
+          },
+          "updating": {
+            "type": "boolean",
+            "description": "An announce is in flight (any endpoint)."
+          },
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrackerEndpointInfo"
+            },
+            "description": "The tracker per listen socket (it is announced once per socket)."
           }
         }
       },
@@ -9162,7 +9403,8 @@
         "enum": [
           "not_contacted",
           "working",
-          "not_working"
+          "not_working",
+          "updating"
         ]
       },
       "TrackersResponse": {

@@ -1,6 +1,6 @@
 # ADR 0002: Persistence
 
-Status: accepted (2026-09-22)
+Status: superseded by [ADR 0004](0004-sqlite.md) (2026-09-23) for the storage layout and resume data; the ordering and crash-safety rules below still hold.
 
 ## Context
 

@@ -21,6 +21,12 @@ use crate::settings::valid_tracker_url;
 use crate::store::{RECORD_FORMAT, StopCondition, TorrentRecord};
 use crate::util::{blocking, hex, parse_hash};
 
+/// Whether a stored magnet needs holding once its metadata arrives.
+pub(crate) fn needs_hold(r: &TorrentRecord) -> bool {
+    r.magnet.is_some()
+        && (r.stop_condition != StopCondition::None || r.content_layout != ContentLayout::Original)
+}
+
 /// Largest `.torrent` accepted from a URL.
 const MAX_TORRENT_FILE: usize = 64 * 1024 * 1024;
 
@@ -322,8 +328,7 @@ impl Daemon {
         if stop_condition != StopCondition::None && !is_magnet {
             // A `.torrent` has its metadata, and a torrent added paused still
             // runs its initial check and stays stopped: both conditions hold
-            // race-free by adding it stopped. Magnets wait for the events
-            // (racy until the library can hold them, docs/gaps.md).
+            // by adding it stopped.
             stopped = true;
         }
         if stopped {
@@ -345,17 +350,21 @@ impl Daemon {
             name: o.rename.clone().filter(|n| !n.is_empty()),
             comment: None,
             auto_management: auto,
-            sequential: o.sequential,
+            first_last_piece_priority: o.first_last_piece_priority,
             share_limits: o.share_limits.unwrap_or_default(),
             source_url: p.source_url.clone(),
-            queue_position: None,
-            last_activity: None,
-            seen_complete: None,
             stop_condition,
+            // A magnet's layout waits for its metadata; a `.torrent`'s is
+            // applied below.
+            content_layout: if is_magnet {
+                o.content_layout
+            } else {
+                ContentLayout::Original
+            },
         };
-        // Record and metainfo first: a crash right after the engine add
-        // still finds the torrent on the next start. A stale resume file
-        // from an earlier life of the same torrent goes (AGENTS.md 4.8).
+        // Stored first: a crash right after the engine add still finds the
+        // torrent on the next start. Any old row of the same info-hash (and
+        // its resume data) is replaced.
         {
             let store = self.store.clone();
             let rec = record.clone();
@@ -364,22 +373,24 @@ impl Daemon {
                 Source::Magnet { .. } => None,
             };
             let _g = self.persist_lock.lock().await;
-            blocking(move || {
-                store.delete_torrent(&rec.info_hash)?;
-                if let Some(b) = &bytes {
-                    store.save_torrent_file(&rec.info_hash, b)?;
-                }
-                store.save_record(&rec)
-            })
-            .await?;
+            blocking(move || store.insert_torrent(&rec, bytes.as_deref())).await?;
         }
+        // A torrent is held once its metadata is known when the daemon has
+        // work to do before any file exists: a `.torrent` whose layout
+        // renames files (held at once), a magnet with a stop condition or a
+        // layout (held when the metadata arrives). `finish_hold` goes on.
+        let hold = if is_magnet {
+            needs_hold(&record)
+        } else {
+            !renames.is_empty()
+        };
         let dir = download_path.unwrap_or(save_path);
         let mut add = match p.source {
             Source::Metainfo { bytes } => AddTorrent::metainfo(bytes, dir),
             Source::Magnet { uri } => AddTorrent::magnet(uri, dir),
         }
-        .resume_dir(self.store.resume_dir())
-        .paused(stopped || !renames.is_empty())
+        .paused(stopped && !hold)
+        .hold_after_metadata(hold)
         .sequential(o.sequential)
         .preallocate(o.preallocate.unwrap_or(settings.preallocate))
         .auto_managed(!o.forced);
@@ -421,20 +432,20 @@ impl Daemon {
         if !is_magnet && !p.private {
             self.add_auto_trackers(id, &settings.add_trackers).await;
         }
-        for (index, path) in &renames {
-            if let Err(e) = self.session.rename_file(id, *index, path.clone()).await {
+        if !is_magnet {
+            if hold {
+                for (index, path) in &renames {
+                    if let Err(e) = self.session.rename_file(id, *index, path.clone()).await {
+                        self.logs
+                            .warn(format!("{}: content layout rename: {e}", p.name));
+                    }
+                }
+                self.finish_hold(p.hash, id).await;
+            } else if o.first_last_piece_priority
+                && let Err(e) = self.apply_first_last(id, true).await
+            {
                 self.logs
-                    .warn(format!("{}: content layout rename: {e}", p.name));
-            }
-        }
-        if !stopped && !renames.is_empty() {
-            let r = if o.forced {
-                self.session.force_resume(id).await
-            } else {
-                self.session.resume(id).await
-            };
-            if let Err(e) = r {
-                self.logs.warn(format!("{}: starting: {e}", p.name));
+                    .warn(format!("{}: first and last pieces: {e}", p.name));
             }
         }
         let name = o.rename.clone().filter(|n| !n.is_empty()).unwrap_or(p.name);
@@ -443,6 +454,72 @@ impl Daemon {
             hash: hash_hex,
             name,
         })
+    }
+
+    /// A held torrent (metadata known, no files yet): apply what waited for
+    /// the metadata (a magnet's layout, first and last piece priority), then
+    /// let it go on: checked and left stopped when a stop condition or the
+    /// user said so, else started (force-started if it was added forced).
+    pub(crate) async fn finish_hold(&self, hash: InfoHash, id: urtorrent::TorrentId) {
+        let Some(record) = self.state().torrents.get(&hash).map(|e| e.record.clone()) else {
+            return;
+        };
+        if record.content_layout != ContentLayout::Original {
+            let files: Vec<String> = self
+                .session
+                .files(id)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|f| f.path)
+                .collect();
+            for (index, path) in content_renames(&files, record.content_layout) {
+                if let Err(e) = self.session.rename_file(id, index, path).await {
+                    self.logs.warn(format!(
+                        "{}: content layout rename: {e}",
+                        self.name_of(&hash)
+                    ));
+                }
+            }
+        }
+        if record.first_last_piece_priority
+            && let Err(e) = self.apply_first_last(id, true).await
+        {
+            self.logs.warn(format!(
+                "{}: first and last pieces: {e}",
+                self.name_of(&hash)
+            ));
+        }
+        let stop = record.stopped || record.stop_condition != StopCondition::None;
+        let forced = self
+            .session
+            .status(id)
+            .await
+            .is_ok_and(|s| !s.auto_managed && !record.stopped);
+        let r = if stop {
+            self.session.release(id).await
+        } else if forced {
+            self.session.force_resume(id).await
+        } else {
+            self.session.resume(id).await
+        };
+        if let Err(e) = r {
+            self.logs
+                .warn(format!("{}: releasing: {e}", self.name_of(&hash)));
+        }
+        let _ = self
+            .update_record(hash, |r| {
+                r.content_layout = ContentLayout::Original;
+                if stop {
+                    r.stopped = true;
+                    r.stop_condition = StopCondition::None;
+                }
+            })
+            .await;
+        if record.stop_condition != StopCondition::None {
+            self.logs
+                .info(format!("stopped {} (stop condition)", self.name_of(&hash)));
+        }
     }
 
     /// Append the automatic tracker list, each URL in a tier of its own after

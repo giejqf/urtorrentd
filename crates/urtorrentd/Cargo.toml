@@ -13,7 +13,7 @@ workspace = true
 
 [dependencies]
 # The library, through its facade only (AGENTS.md rule 5).
-urtorrent = { path = "../../../urtorrent/crates/urtorrent", version = "0.11.4" }
+urtorrent = { path = "../../../urtorrent/crates/urtorrent", version = "0.13.1" }
 # HTTP API. tokio's runtime is fine here: it serves the API, never torrent I/O (AGENTS.md 4.2).
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net"] }
@@ -34,6 +34,8 @@ sha2 = "0.10"
 getrandom = "0.3"
 # .torrent files travel as base64 in JSON bodies.
 base64 = "0.22"
+# The daemon's state: one SQLite database (ADR 0004); SQLite is compiled in.
+rusqlite = { version = "0.40", default-features = false, features = ["bundled", "cache"] }
 # statvfs for free disk space, without unsafe code.
 rustix = { version = "1", features = ["fs"] }
 

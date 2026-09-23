@@ -252,6 +252,9 @@ pub struct AddOptions {
     /// Download pieces in order.
     #[serde(default)]
     pub sequential: bool,
+    /// Download the first and last pieces of each file first (previews).
+    #[serde(default)]
+    pub first_last_piece_priority: bool,
     /// File priorities in file order (0 = skip, 1..=7, higher first; 4 is normal).
     pub file_priorities: Option<Vec<u8>>,
     /// Allocate files at full size. Absent: the `preallocate` setting.
@@ -472,6 +475,28 @@ pub enum TorrentState {
     Error,
     /// Moving its content to a new directory.
     Moving,
+    /// Its metadata is known and it waits (no files created yet): a stop
+    /// condition fired, or the daemon is applying add options.
+    Held,
+    /// A state newer than this daemon knows.
+    Unknown,
+}
+
+/// What stopped a torrent in the `error` state, and so what brings it back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TorrentErrorKind {
+    /// Its files are gone (moved, deleted, a drive not mounted). `start`
+    /// looks again once they are back; `recheck` accepts what the disk holds
+    /// and downloads the rest.
+    ContentMissing,
+    /// Reading, writing or checking failed (disk full, permissions). `start`
+    /// restarts; `recheck` rechecks.
+    Io,
+    /// The metadata cannot be used. Only removing the torrent helps.
+    Metadata,
+    /// Something newer than this daemon knows.
+    Other,
 }
 
 /// One row of the torrent list.
@@ -492,6 +517,9 @@ pub struct TorrentSummary {
     /// Error text in the `error` state.
     #[schema(required = true)]
     pub error: Option<String>,
+    /// What kind of error, in the `error` state.
+    #[schema(required = true)]
+    pub error_kind: Option<TorrentErrorKind>,
     /// Progress over the wanted bytes, 0..=1.
     pub progress: f64,
     /// Wanted bytes (files not skipped).
@@ -543,7 +571,9 @@ pub struct TorrentSummary {
     /// Leechers in the swarm as trackers report it.
     #[schema(required = true)]
     pub swarm_leechers: Option<u32>,
-    /// Distributed copies among connected peers; `null` until measured.
+    /// Distributed copies among the connected peers and us (libtorrent's
+    /// `distributed_copies`); `null` for a complete seed or before the
+    /// metadata.
     #[schema(required = true)]
     pub availability: Option<f64>,
     /// Where the content belongs.
@@ -584,6 +614,8 @@ pub struct TorrentSummary {
     pub auto_management: bool,
     /// Pieces are downloaded in order.
     pub sequential: bool,
+    /// The first and last pieces of each wanted file come first.
+    pub first_last_piece_priority: bool,
     /// Private torrent (BEP 27).
     pub private: bool,
     /// The metadata is known.
@@ -707,6 +739,34 @@ pub enum TrackerStatus {
     Working,
     /// The last announce failed.
     NotWorking,
+    /// An announce is in flight.
+    Updating,
+}
+
+/// A tracker as announced through one listen socket.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TrackerEndpointInfo {
+    /// The local listen address announced from (unspecified when listening
+    /// on every address of the family).
+    pub local: String,
+    /// The last announce through it succeeded.
+    pub working: bool,
+    /// An announce through it is in flight.
+    pub updating: bool,
+    /// Consecutive failures.
+    pub fails: u32,
+    /// The last error, if any.
+    #[schema(required = true)]
+    pub message: Option<String>,
+    /// Seeders reported to this endpoint.
+    #[schema(required = true)]
+    pub seeders: Option<u32>,
+    /// Leechers reported to this endpoint.
+    #[schema(required = true)]
+    pub leechers: Option<u32>,
+    /// Seconds until its next announce.
+    #[schema(required = true)]
+    pub next_announce_in: Option<u64>,
 }
 
 /// One tracker.
@@ -735,6 +795,10 @@ pub struct TrackerInfo {
     /// Seconds until the next announce.
     #[schema(required = true)]
     pub next_announce_in: Option<u64>,
+    /// An announce is in flight (any endpoint).
+    pub updating: bool,
+    /// The tracker per listen socket (it is announced once per socket).
+    pub endpoints: Vec<TrackerEndpointInfo>,
 }
 
 /// A trackerless peer source.
@@ -884,6 +948,8 @@ pub struct PiecesResponse {
     pub states: Vec<PieceState>,
     /// Connected peers (and web seeds) with each piece, in piece order.
     pub availability: Vec<u32>,
+    /// Download priority of each piece (0 = skipped, 1..=7), in piece order.
+    pub priorities: Vec<u8>,
 }
 
 // ---------------------------------------------------------------- categories and tags

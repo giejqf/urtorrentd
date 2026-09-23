@@ -14,6 +14,9 @@ Read [AGENTS.md](AGENTS.md) first: it is the project charter.
 cargo run --release -p urtorrentd -- --data-dir ~/.local/share/urtorrentd --api-listen 127.0.0.1:8080
 ```
 
+All state is in one SQLite database, `<data dir>/urtorrentd.db`; back it up
+with `sqlite3 urtorrentd.db ".backup copy.db"`, even while the daemon runs.
+
 On the first start without a password the daemon prints a temporary one for
 the user `admin`; set a permanent login with
 `PUT /api/v1/auth/credentials`, or while stopped with

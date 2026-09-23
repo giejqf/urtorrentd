@@ -13,7 +13,7 @@ use urtorrent::{InfoHash, TorrentId};
 
 use super::Daemon;
 use crate::error::{ApiError, ApiResult};
-use crate::store::{self, Categories, Category, Tags};
+use crate::store::{Categories, Category, Tags};
 use crate::util::blocking;
 
 /// Validate a category name: `a`, `a/b`; no empty segments, no backslashes.
@@ -82,14 +82,14 @@ impl Daemon {
     async fn save_categories(&self) -> ApiResult<()> {
         let cats = self.state().categories.clone();
         let s = self.store.clone();
-        blocking(move || s.save(store::CATEGORIES, &cats)).await?;
+        blocking(move || s.save_categories(&cats)).await?;
         Ok(())
     }
 
     async fn save_tags(&self) -> ApiResult<()> {
         let tags = self.state().tags.clone();
         let s = self.store.clone();
-        blocking(move || s.save(store::TAGS, &tags)).await?;
+        blocking(move || s.save_tags(&tags)).await?;
         Ok(())
     }
 
@@ -190,9 +190,15 @@ impl Daemon {
             hit
         };
         self.save_categories().await?;
-        for h in &affected {
-            self.persist(*h).await?;
+        {
+            let mut st = self.state();
+            for h in &affected {
+                if let Some(e) = st.torrents.get_mut(h) {
+                    e.dirty = true;
+                }
+            }
         }
+        self.flush_records().await?;
         if !affected.is_empty() {
             self.relocate_managed(None).await;
         }
@@ -222,9 +228,15 @@ impl Daemon {
             hit
         };
         self.save_tags().await?;
-        for h in affected {
-            self.persist(h).await?;
+        {
+            let mut st = self.state();
+            for h in &affected {
+                if let Some(e) = st.torrents.get_mut(h) {
+                    e.dirty = true;
+                }
+            }
         }
+        self.flush_records().await?;
         Ok(())
     }
 
@@ -239,7 +251,7 @@ impl Daemon {
         if let Some(c) = &category {
             self.ensure_category(c).await?;
         }
-        self.update_record(hash, |r| r.category = category).await?;
+        self.edit_record(hash, |r| r.category = category)?;
         self.relocate_one(hash, id).await;
         Ok(())
     }
@@ -256,12 +268,11 @@ impl Daemon {
             self.ensure_tags(tags).await?;
         }
         let tags: BTreeSet<String> = tags.iter().cloned().collect();
-        self.update_record(hash, |r| match mode {
+        self.edit_record(hash, |r| match mode {
             TagMode::Add => r.tags.extend(tags),
             TagMode::Remove => r.tags.retain(|t| !tags.contains(t)),
             TagMode::Set => r.tags = tags,
         })
-        .await
     }
 
     /// Turn automatic management on or off; on moves the torrent to its
@@ -272,7 +283,7 @@ impl Daemon {
         id: TorrentId,
         on: bool,
     ) -> ApiResult<()> {
-        self.update_record(hash, |r| r.auto_management = on).await?;
+        self.edit_record(hash, |r| r.auto_management = on)?;
         if on {
             self.relocate_one(hash, id).await;
         }

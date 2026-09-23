@@ -2,15 +2,16 @@
 // Copyright (c) 2026 urtorrentd contributors
 
 //! The single consumer of `Session::events()` (AGENTS.md 4.4): keeps caches
-//! fresh, feeds the main log, persists magnets' metadata and runs the
-//! event-driven policies (stop conditions, download-path moves).
+//! fresh, feeds the main and peer logs, stores magnets' metadata, saves
+//! resume data at the moments that matter, and runs the event-driven
+//! policies (held magnets, download-path moves).
 
 use std::sync::{Arc, Weak};
 
-use urtorrent::{Event, EventStream, InfoHash, TorrentId};
+use urtorrent::{ErrorKind, Event, EventStream, InfoHash, TorrentId};
 
-use super::Daemon;
-use crate::store::StopCondition;
+use super::{Daemon, ResumeSave};
+use crate::log::LogLevel;
 use crate::util::{blocking, hex};
 
 pub(crate) async fn run(daemon: Weak<Daemon>, mut events: EventStream) {
@@ -25,6 +26,17 @@ pub(crate) async fn run(daemon: Weak<Daemon>, mut events: EventStream) {
     }
 }
 
+fn kind_text(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::ContentMissing => {
+            "its files are missing; start it once they are back, or recheck"
+        }
+        ErrorKind::Io => "a disk error; start or recheck it to retry",
+        ErrorKind::Metadata => "its metadata is unusable; remove it",
+        _ => "an error",
+    }
+}
+
 impl Daemon {
     fn hash_of(&self, id: TorrentId) -> Option<InfoHash> {
         self.state().by_id.get(&id).copied()
@@ -34,27 +46,37 @@ impl Daemon {
         match ev {
             Event::MetadataReceived { id } => self.on_metadata(id).await,
             Event::Checked { id, .. } => {
-                self.fire_stop_condition(id, StopCondition::FilesChecked)
-                    .await
+                // A fresh check result is worth keeping at once: a restart
+                // then skips the check.
+                if let Some(h) = self.hash_of(id) {
+                    self.save_resume(ResumeSave::One(h)).await;
+                }
             }
             Event::TorrentFinished { id } => self.on_finished(id).await,
-            Event::TorrentError { id, error } => {
+            Event::TorrentError {
+                id, error, kind, ..
+            } => {
                 if let Some(h) = self.hash_of(id) {
                     self.logs.log(
-                        crate::log::LogLevel::Error,
+                        LogLevel::Error,
                         format!(
-                            "torrent {} stopped with an error: {error}",
-                            self.name_of(&h)
+                            "torrent {} stopped: {error} ({})",
+                            self.name_of(&h),
+                            kind_text(kind)
                         ),
                     );
                 }
             }
-            Event::TrackerReply { id, .. }
-            | Event::TrackerError { id, .. }
-            | Event::ScrapeReply { id, .. } => {
-                if let Some(h) = self.hash_of(id) {
-                    self.invalidate_trackers(h);
-                }
+            Event::PeerBanned { id, ip, reason, .. } => {
+                let name = self.hash_of(id).map(|h| self.name_of(&h));
+                self.logs.peer(
+                    ip,
+                    true,
+                    match name {
+                        Some(n) => format!("{reason} ({n})"),
+                        None => reason,
+                    },
+                );
             }
             Event::PeerConnected { incoming: true, .. } => {
                 self.state().incoming_seen = true;
@@ -68,17 +90,16 @@ impl Daemon {
                 ));
                 let mut st = self.state();
                 for e in st.torrents.values_mut() {
-                    e.trackers = None;
+                    e.tracker_urls = None;
                     e.content = None;
-                    e.availability = None;
                 }
             }
             _ => {}
         }
     }
 
-    /// A magnet's metadata arrived: keep the `.torrent`, apply the policies
-    /// that needed it.
+    /// A magnet's metadata arrived: keep the `.torrent`, then apply what
+    /// waited for it.
     async fn on_metadata(self: &Arc<Self>, id: TorrentId) {
         let Some(hash) = self.hash_of(id) else {
             return;
@@ -87,7 +108,7 @@ impl Daemon {
             Ok(Some(bytes)) => {
                 let store = self.store.clone();
                 let h = hex(&hash);
-                if let Err(e) = blocking(move || store.save_torrent_file(&h, &bytes)).await {
+                if let Err(e) = blocking(move || store.save_metainfo(&h, &bytes)).await {
                     self.logs
                         .warn(format!("saving metadata of {}: {e}", hex(&hash)));
                 }
@@ -102,47 +123,37 @@ impl Daemon {
             let mut st = self.state();
             if let Some(e) = st.torrents.get_mut(&hash) {
                 e.content = None;
-                e.trackers = None;
+                e.tracker_urls = None;
             }
         }
+        let status = self.session.status(id).await;
         // Trackers from the settings only once we know the torrent is public
         // (AGENTS.md rule 2).
-        if let Ok(status) = self.session.status(id).await
-            && !status.private
+        if let Ok(s) = &status
+            && !s.private
         {
             let urls = self.settings().add_trackers;
             self.add_auto_trackers(id, &urls).await;
         }
         self.logs
             .info(format!("received metadata for {}", self.name_of(&hash)));
-        self.fire_stop_condition(id, StopCondition::MetadataReceived)
-            .await;
-    }
-
-    async fn fire_stop_condition(&self, id: TorrentId, reached: StopCondition) {
-        let Some(hash) = self.hash_of(id) else {
-            return;
-        };
-        let pending = self
-            .state()
-            .torrents
-            .get(&hash)
-            .map(|e| e.record.stop_condition);
-        if pending != Some(reached) {
-            return;
-        }
-        match self.stop_torrent(hash, id).await {
-            Ok(()) => self.logs.info(format!(
-                "stopped {} ({})",
-                self.name_of(&hash),
-                match reached {
-                    StopCondition::MetadataReceived => "metadata received",
-                    _ => "files checked",
+        match status {
+            Ok(s) if s.state == urtorrent::TorrentState::Held => {
+                self.finish_hold(hash, id).await;
+            }
+            _ => {
+                let first_last = self
+                    .state()
+                    .torrents
+                    .get(&hash)
+                    .is_some_and(|e| e.record.first_last_piece_priority);
+                if first_last && let Err(e) = self.apply_first_last(id, true).await {
+                    self.logs.warn(format!(
+                        "{}: first and last pieces: {e}",
+                        self.name_of(&hash)
+                    ));
                 }
-            )),
-            Err(e) => self
-                .logs
-                .warn(format!("stop condition on {}: {e}", hex(&hash))),
+            }
         }
     }
 
@@ -152,6 +163,7 @@ impl Daemon {
         };
         self.logs
             .info(format!("finished downloading {}", self.name_of(&hash)));
+        self.save_resume(ResumeSave::One(hash)).await;
         let target = {
             let st = self.state();
             st.torrents

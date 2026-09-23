@@ -124,6 +124,76 @@ async fn graceful_restart_restores_everything() {
     t.stop().await;
 }
 
+#[tokio::test]
+async fn a_0_1_data_directory_is_imported() {
+    common::init_log();
+    // What a 0.1.0 daemon left behind: JSON files and per-torrent files.
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let save = dir.path().join("downloads");
+    std::fs::create_dir_all(data.join("torrents")).unwrap();
+    std::fs::create_dir_all(data.join("resume")).unwrap();
+    std::fs::write(
+        data.join("settings.json"),
+        serde_json::to_vec(&common::settings(44, &save)).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(data.join("tags.json"), br#"["old"]"#).unwrap();
+    std::fs::write(
+        data.join("categories.json"),
+        br#"{"linux": {"save_path": null, "download_path": null}}"#,
+    )
+    .unwrap();
+    let f = fixture(
+        "legacy.iso",
+        &[("legacy.iso", 50_000)],
+        16_384,
+        None,
+        false,
+        81,
+    );
+    f.write_to(&save);
+    let record = json!({
+        "format": 1, "info_hash": f.hash, "save_path": save.to_string_lossy(),
+        "stopped": false, "category": "linux", "tags": ["old"], "name": "Legacy",
+        "sequential": false, "queue_position": 0, "last_activity": 1, "seen_complete": 1,
+    });
+    std::fs::write(
+        data.join(format!("torrents/{}.json", f.hash)),
+        serde_json::to_vec(&record).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        data.join(format!("torrents/{}.torrent", f.hash)),
+        &f.torrent,
+    )
+    .unwrap();
+
+    let t = TestDaemon::start_in(dir, 44, None).await;
+    let x = t
+        .wait_for(&f.hash, "seeding the imported torrent", 30, |x| {
+            x["state"] == "seeding"
+        })
+        .await;
+    assert_eq!(x["name"], "Legacy");
+    assert_eq!(x["category"], "linux");
+    assert_eq!(x["tags"], json!(["old"]));
+    assert_eq!(t.get("/api/v1/tags").await, json!(["old"]));
+    let data = t.dir.path().join("data");
+    assert!(data.join("urtorrentd.db").exists());
+    assert!(data.join("imported-0.1/torrents").is_dir());
+    assert!(!data.join("torrents").exists());
+    let log = t.get("/api/v1/log").await;
+    assert!(
+        log.as_array().unwrap().iter().any(|e| e["message"]
+            .as_str()
+            .unwrap()
+            .contains("imported 1 torrents")),
+        "{log}"
+    );
+    t.stop().await;
+}
+
 // ------------------------------------------------------------------ the binary
 
 fn free_port() -> u16 {

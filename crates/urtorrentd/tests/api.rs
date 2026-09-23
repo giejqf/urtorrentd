@@ -252,6 +252,49 @@ async fn settings_apply_live_and_report_restarts() {
     let app = t.get("/api/v1/app").await;
     assert_eq!(app["restart_required"], json!(["hash_threads"]));
 
+    // Address ranges: blocks and first-last ranges reach the engine.
+    let (st, v) = t
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({"banned_ip_ranges": ["10.0.0.0/8", "192.168.1.10-192.168.1.20"]})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let ranges = t.daemon.session().banned_ip_ranges().await.unwrap();
+    let as_text: Vec<(String, String)> = ranges
+        .iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect();
+    assert!(
+        as_text.contains(&("10.0.0.0".into(), "10.255.255.255".into())),
+        "{as_text:?}"
+    );
+    assert!(
+        as_text.contains(&("192.168.1.10".into(), "192.168.1.20".into())),
+        "{as_text:?}"
+    );
+    let (st, _) = t
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({"banned_ip_ranges": ["10.0.0.0/8"]})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(
+        t.daemon.session().banned_ip_ranges().await.unwrap().len(),
+        1
+    );
+    let (st, _) = t
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({"banned_ip_ranges": ["10.0.0.9-10.0.0.1"]})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+
     // Bans land in the settings and the peer log.
     let (st, _) = t
         .post(

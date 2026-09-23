@@ -3,7 +3,7 @@
 
 //! The daemon core: owns the urtorrent `Session`, the torrent registry
 //! (info-hash ↔ `TorrentId` plus the daemon's own record per torrent), the
-//! categories and tags, the policies, and persistence (AGENTS.md 4).
+//! categories and tags, the policies, and persistence (AGENTS.md 4, ADR 0004).
 
 mod add;
 mod events;
@@ -33,20 +33,25 @@ use crate::util::{self, blocking, hex, now, parse_hash};
 pub use add::{content_renames, decode_base64, parse_metadata};
 pub(crate) use ops::parse_peer_ip;
 
+/// A torrent's resume data is saved at most this often while it changes
+/// (the engine's own cadence in file mode), and at once when it finishes, is
+/// checked, or the daemon stops.
+pub(crate) const RESUME_SAVE_EVERY: Duration = Duration::from_secs(60);
+
 /// How the daemon is started.
 #[derive(Debug, Clone)]
 pub struct DaemonConfig {
     /// The data directory (created if missing).
     pub data_dir: PathBuf,
-    /// Settings for the very first start (no settings file yet); `None` uses
-    /// the defaults with a random listen port.
+    /// Settings for the very first start (no settings stored yet); `None`
+    /// uses the defaults with a random listen port.
     pub initial_settings: Option<Settings>,
 }
 
 /// Why the daemon could not start.
 #[derive(Debug, thiserror::Error)]
 pub enum StartError {
-    /// The data directory could not be read or written.
+    /// The data directory or its database could not be read or written.
     #[error("data directory: {0}")]
     Io(#[from] std::io::Error),
     /// The stored settings are invalid.
@@ -58,16 +63,6 @@ pub enum StartError {
     /// The HTTP client could not be built.
     #[error("http client: {0}")]
     Http(String),
-}
-
-/// Cached summary of a torrent's trackers for list views.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct TrackerSummary {
-    pub current: Option<String>,
-    pub urls: Vec<String>,
-    pub count: usize,
-    pub seeds: Option<u32>,
-    pub leechers: Option<u32>,
 }
 
 /// Where the content sits relative to the save path, for list views.
@@ -84,20 +79,21 @@ pub(crate) struct ContentLayoutInfo {
 pub(crate) struct Entry {
     pub id: TorrentId,
     pub record: TorrentRecord,
+    /// The record changed since it was last written.
+    pub dirty: bool,
     /// The torrent's own name as last seen (for log lines).
     pub name: Option<String>,
     /// Counters when first seen in this run (for the per-session figures).
     pub baseline: Option<(u64, u64)>,
     /// A storage move is running.
     pub moving: bool,
-    /// `None` = refresh before use.
-    pub trackers: Option<TrackerSummary>,
+    /// Tracker URLs, for magnet links; `None` = refresh before use. Changes
+    /// only when the list is edited or the metadata arrives.
+    pub tracker_urls: Option<Vec<String>>,
     /// `None` = refresh before use.
     pub content: Option<ContentLayoutInfo>,
-    /// Distributed copies and when they were measured.
-    pub availability: Option<(Instant, f64)>,
-    /// When the torrent was last seen seeding with no traffic started.
-    pub idle_since: Option<Instant>,
+    /// When the resume data was last saved.
+    pub resume_saved: Option<Instant>,
 }
 
 impl Entry {
@@ -105,13 +101,13 @@ impl Entry {
         Entry {
             id,
             record,
+            dirty: false,
             name: None,
             baseline: None,
             moving: false,
-            trackers: None,
+            tracker_urls: None,
             content: None,
-            availability: None,
-            idle_since: None,
+            resume_saved: None,
         }
     }
 }
@@ -206,8 +202,8 @@ impl Daemon {
             blocking(move || {
                 Ok((
                     s.load::<Credentials>(store::AUTH)?.unwrap_or_default(),
-                    s.load::<Categories>(store::CATEGORIES)?.unwrap_or_default(),
-                    s.load::<Tags>(store::TAGS)?.unwrap_or_default(),
+                    s.categories()?,
+                    s.tags()?,
                     s.load::<Totals>(store::TOTALS)?.unwrap_or_default(),
                     s.load_dht()?,
                 ))
@@ -218,9 +214,7 @@ impl Daemon {
         let temporary_password = auth.ensure_password()?;
 
         let session = settings.builder(dht_state).build().await?;
-        for ip in &settings.banned_ips {
-            session.ban_ip(*ip).await?;
-        }
+        settings::apply_bans(&session, &settings).await?;
         let events = session.events();
         let http = reqwest::Client::builder()
             .redirect(add::redirect_policy())
@@ -228,6 +222,7 @@ impl Daemon {
             .build()
             .map_err(|e| StartError::Http(e.to_string()))?;
 
+        let imported = store.imported();
         let daemon = Arc::new(Daemon {
             session,
             store,
@@ -254,11 +249,17 @@ impl Daemon {
             tasks: Mutex::new(Vec::new()),
         });
         daemon.logs.info(format!(
-            "urtorrentd {} started (peer port {}){}",
+            "urtorrentd {} on urtorrent {} started (peer port {}){}",
             env!("CARGO_PKG_VERSION"),
+            urtorrent::VERSION,
             daemon.session.listen_port(),
             if first_start { ", first start" } else { "" }
         ));
+        if imported > 0 {
+            daemon.logs.info(format!(
+                "imported {imported} torrents from a 0.1 data directory (the old files are in imported-0.1/)"
+            ));
+        }
         daemon.restore().await;
         let pump = tokio::spawn(events::run(Arc::downgrade(&daemon), events));
         let tick = tokio::spawn(tick::run(Arc::downgrade(&daemon)));
@@ -269,44 +270,27 @@ impl Daemon {
         Ok(daemon)
     }
 
-    /// Re-add every torrent the data directory holds, in their last queue order.
+    /// Re-add every stored torrent, in the order they were added (queue
+    /// positions come back from the resume data).
     async fn restore(&self) {
         let store = self.store.clone();
-        let loaded = blocking(move || {
-            let mut out = Vec::new();
-            for rec in store.load_records()? {
-                match rec {
-                    Ok(r) => {
-                        let bytes = store.load_torrent_file(&r.info_hash)?;
-                        out.push(Ok((r, bytes)));
-                    }
-                    Err(e) => out.push(Err(e)),
-                }
-            }
-            Ok(out)
-        })
-        .await;
-        let mut records = match loaded {
-            Ok(r) => r,
+        let stored = match blocking(move || store.load_torrents()).await {
+            Ok(s) => s,
             Err(e) => {
                 self.logs.warn(format!("reading saved torrents: {e}"));
                 return;
             }
         };
-        records.sort_by(|a, b| match (a, b) {
-            (Ok((ra, _)), Ok((rb, _))) => (ra.queue_position.unwrap_or(usize::MAX), &ra.info_hash)
-                .cmp(&(rb.queue_position.unwrap_or(usize::MAX), &rb.info_hash)),
-            _ => std::cmp::Ordering::Equal,
-        });
         let mut restored = 0usize;
-        for rec in records {
-            let (record, bytes) = match rec {
-                Ok(x) => x,
+        for t in stored {
+            let t = match t {
+                Ok(t) => t,
                 Err(e) => {
                     self.logs.warn(format!("unreadable torrent record {e}"));
                     continue;
                 }
             };
+            let record = t.record;
             let Some(hash) = parse_hash(&record.info_hash) else {
                 self.logs.warn(format!(
                     "torrent record with a bad info-hash: {}",
@@ -318,9 +302,11 @@ impl Daemon {
                 .download_path
                 .clone()
                 .unwrap_or_else(|| record.save_path.clone());
-            let add = match (bytes, &record.magnet) {
+            let mut add = match (t.metainfo, &record.magnet) {
                 (Some(b), _) => AddTorrent::metainfo(b, dir),
-                (None, Some(m)) => AddTorrent::magnet(m.clone(), dir),
+                (None, Some(m)) => {
+                    AddTorrent::magnet(m.clone(), dir).hold_after_metadata(add::needs_hold(&record))
+                }
                 (None, None) => {
                     self.logs.warn(format!(
                         "torrent {} has neither metainfo nor a magnet link; skipped",
@@ -329,8 +315,10 @@ impl Daemon {
                     continue;
                 }
             }
-            .resume_dir(self.store.resume_dir())
             .paused(record.stopped);
+            if let Some(r) = t.resume {
+                add = add.resume_data(r);
+            }
             match self.session.add_torrent(add).await {
                 Ok(id) => {
                     self.insert(hash, id, record);
@@ -437,9 +425,8 @@ impl Daemon {
         *self.closed.borrow()
     }
 
-    /// Stop: save queue order, activity and totals, the DHT state, then stop
-    /// the engine (trackers hear `stopped`, resume data is flushed).
-    /// Idempotent.
+    /// Stop: save resume data, records, totals and the DHT state, then stop
+    /// the engine (trackers hear `stopped`). Idempotent.
     pub async fn shutdown(&self) {
         if self.closed.send_replace(true) {
             return;
@@ -450,15 +437,10 @@ impl Daemon {
                 t.abort();
             }
         }
-        if let Ok(statuses) = self.session.statuses().await {
-            let mut st = self.state();
-            for s in statuses {
-                if let Some(e) = st.torrents.get_mut(&s.info_hash) {
-                    e.record.queue_position = Some(s.queue_position);
-                }
-            }
+        self.save_resume(ResumeSave::All).await;
+        if let Err(e) = self.flush_records().await {
+            self.logs.warn(format!("saving torrent records: {e}"));
         }
-        self.persist_all().await;
         self.save_totals().await;
         if let Ok(Some(dht)) = self.session.dht_state().await {
             let s = self.store.clone();
@@ -472,36 +454,110 @@ impl Daemon {
         self.logs.info("stopped");
     }
 
-    /// Write one torrent's record.
-    pub(crate) async fn persist(&self, hash: InfoHash) -> ApiResult<()> {
+    /// Change a torrent's record in memory; [`Daemon::flush_records`] writes
+    /// it (bulk actions change many and write them in one transaction).
+    pub(crate) fn edit_record(
+        &self,
+        hash: InfoHash,
+        f: impl FnOnce(&mut TorrentRecord),
+    ) -> ApiResult<()> {
+        let mut st = self.state();
+        let e = st
+            .torrents
+            .get_mut(&hash)
+            .ok_or_else(|| ApiError::torrent_not_found(&hex(&hash)))?;
+        f(&mut e.record);
+        e.dirty = true;
+        Ok(())
+    }
+
+    /// Change a torrent's record and write it.
+    pub(crate) async fn update_record(
+        &self,
+        hash: InfoHash,
+        f: impl FnOnce(&mut TorrentRecord),
+    ) -> ApiResult<()> {
+        self.edit_record(hash, f)?;
+        self.flush_records().await
+    }
+
+    /// Write every changed record, in one transaction.
+    pub(crate) async fn flush_records(&self) -> ApiResult<()> {
         let _g = self.persist_lock.lock().await;
-        let record = self.state().torrents.get(&hash).map(|e| e.record.clone());
-        if let Some(r) = record {
-            let s = self.store.clone();
-            blocking(move || s.save_record(&r)).await?;
+        let records: Vec<(InfoHash, TorrentRecord)> = {
+            let mut st = self.state();
+            st.torrents
+                .iter_mut()
+                .filter(|(_, e)| e.dirty)
+                .map(|(h, e)| {
+                    e.dirty = false;
+                    (*h, e.record.clone())
+                })
+                .collect()
+        };
+        if records.is_empty() {
+            return Ok(());
+        }
+        let s = self.store.clone();
+        let batch: Vec<TorrentRecord> = records.iter().map(|(_, r)| r.clone()).collect();
+        if let Err(e) = blocking(move || s.save_records(&batch)).await {
+            // Try again next time.
+            let mut st = self.state();
+            for (h, _) in &records {
+                if let Some(e) = st.torrents.get_mut(h) {
+                    e.dirty = true;
+                }
+            }
+            return Err(e.into());
         }
         Ok(())
     }
 
-    /// Write every record.
-    pub(crate) async fn persist_all(&self) {
-        let _g = self.persist_lock.lock().await;
-        let records: Vec<TorrentRecord> = self
-            .state()
-            .torrents
-            .values()
-            .map(|e| e.record.clone())
-            .collect();
-        let s = self.store.clone();
-        let r = blocking(move || {
-            for r in &records {
-                s.save_record(r)?;
+    /// Fetch and store resume data (which syncs the torrent's files first,
+    /// so it never claims data that is not on disk).
+    pub(crate) async fn save_resume(&self, which: ResumeSave) {
+        let Ok(statuses) = self.session.statuses().await else {
+            return;
+        };
+        let now = Instant::now();
+        let due: Vec<(InfoHash, TorrentId)> = {
+            let st = self.state();
+            statuses
+                .iter()
+                .filter(|s| s.has_metadata && s.state != urtorrent::TorrentState::Held)
+                .filter_map(|s| {
+                    let e = st.torrents.get(&s.info_hash)?;
+                    let pick = match which {
+                        ResumeSave::All => true,
+                        ResumeSave::Due => {
+                            s.needs_resume_save
+                                && e.resume_saved
+                                    .is_none_or(|t| now.duration_since(t) >= RESUME_SAVE_EVERY)
+                        }
+                        ResumeSave::One(h) => h == s.info_hash,
+                    };
+                    pick.then_some((s.info_hash, e.id))
+                })
+                .collect()
+        };
+        if due.is_empty() {
+            return;
+        }
+        let mut items = Vec::with_capacity(due.len());
+        for (h, id) in due {
+            match self.session.resume_data(id).await {
+                Ok(bytes) => {
+                    items.push((hex(&h), bytes));
+                    if let Some(e) = self.state().torrents.get_mut(&h) {
+                        e.resume_saved = Some(now);
+                    }
+                }
+                Err(e) => tracing::debug!("resume data of {}: {e}", hex(&h)),
             }
-            Ok(())
-        })
-        .await;
-        if let Err(e) = r {
-            self.logs.warn(format!("saving torrent records: {e}"));
+        }
+        let s = self.store.clone();
+        if let Err(e) = blocking(move || s.save_resume(&items)).await {
+            self.logs.warn(format!("saving resume data: {e}"));
         }
     }
 
@@ -519,23 +575,6 @@ impl Daemon {
         if let Err(e) = blocking(move || s.save(store::TOTALS, &totals)).await {
             self.logs.warn(format!("saving totals: {e}"));
         }
-    }
-
-    /// Change a torrent's record and persist it.
-    pub(crate) async fn update_record(
-        &self,
-        hash: InfoHash,
-        f: impl FnOnce(&mut TorrentRecord),
-    ) -> ApiResult<()> {
-        {
-            let mut st = self.state();
-            let e = st
-                .torrents
-                .get_mut(&hash)
-                .ok_or_else(|| ApiError::torrent_not_found(&hex(&hash)))?;
-            f(&mut e.record);
-        }
-        self.persist(hash).await
     }
 
     /// The torrent id for an info-hash string, or 404.
@@ -579,7 +618,8 @@ impl Daemon {
         }
     }
 
-    /// Run `f` for every selected torrent and report per torrent.
+    /// Run `f` for every selected torrent and report per torrent; the
+    /// records it changed are written in one transaction at the end.
     pub(crate) async fn bulk<F, Fut>(&self, hashes: &Hashes, f: F) -> ApiResult<BulkResult>
     where
         F: Fn(InfoHash, TorrentId) -> Fut,
@@ -599,6 +639,20 @@ impl Daemon {
                 }),
             }
         }
+        self.flush_records().await?;
         Ok(out)
     }
+}
+
+/// Which torrents' resume data to save.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResumeSave {
+    /// Changed ones not saved within [`RESUME_SAVE_EVERY`].
+    Due,
+    /// Every one with metadata (shutdown: queue moves change the positions
+    /// of torrents they do not mark as changed; the engine in file mode saves
+    /// them all when it stops too).
+    All,
+    /// This one, changed or not.
+    One(InfoHash),
 }

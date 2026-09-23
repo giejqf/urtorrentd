@@ -3,9 +3,7 @@
 
 //! Small helpers shared by the daemon and the API.
 
-use std::io::Write;
 use std::net::IpAddr;
-use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use urtorrent::InfoHash;
@@ -56,35 +54,6 @@ pub fn random_bytes<const N: usize>() -> std::io::Result<[u8; N]> {
     let mut b = [0u8; N];
     getrandom::fill(&mut b).map_err(|e| std::io::Error::other(e.to_string()))?;
     Ok(b)
-}
-
-/// Write `data` to `path` atomically: a temporary file in the same directory,
-/// `fsync`, rename over the target, then `fsync` the directory (AGENTS.md 4.8).
-pub fn atomic_write(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    let dir = path
-        .parent()
-        .ok_or_else(|| std::io::Error::other("path has no parent directory"))?;
-    std::fs::create_dir_all(dir)?;
-    let name = path
-        .file_name()
-        .ok_or_else(|| std::io::Error::other("path has no file name"))?
-        .to_string_lossy();
-    let tmp = dir.join(format!(".{name}.tmp"));
-    {
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(data)?;
-        f.sync_all()?;
-    }
-    std::fs::rename(&tmp, path)?;
-    std::fs::File::open(dir)?.sync_all()
-}
-
-/// Remove a file, treating "already gone" as success.
-pub fn remove_file(path: &Path) -> std::io::Result<()> {
-    match std::fs::remove_file(path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        other => other,
-    }
 }
 
 /// Percent-encode everything but RFC 3986 unreserved characters.
@@ -152,6 +121,45 @@ fn prefix_eq(a: &[u8], b: &[u8], bits: usize) -> bool {
     }
 }
 
+impl Cidr {
+    /// The first and last address of the block.
+    pub fn range(&self) -> (IpAddr, IpAddr) {
+        match self.net {
+            IpAddr::V4(n) => {
+                let bits = u32::from(n);
+                let mask = u32::MAX
+                    .checked_shl(32 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                (
+                    IpAddr::V4((bits & mask).into()),
+                    IpAddr::V4((bits | !mask).into()),
+                )
+            }
+            IpAddr::V6(n) => {
+                let bits = u128::from(n);
+                let mask = u128::MAX
+                    .checked_shl(128 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                (
+                    IpAddr::V6((bits & mask).into()),
+                    IpAddr::V6((bits | !mask).into()),
+                )
+            }
+        }
+    }
+}
+
+/// Parse an address range: a block (`10.0.0.0/8`, a bare address) or
+/// `first-last` in one family with `first <= last`.
+pub fn parse_ip_range(s: &str) -> Option<(IpAddr, IpAddr)> {
+    if let Some((a, b)) = s.split_once('-') {
+        let a: IpAddr = a.trim().parse().ok()?;
+        let b: IpAddr = b.trim().parse().ok()?;
+        return (a.is_ipv4() == b.is_ipv4() && a <= b).then_some((a, b));
+    }
+    Cidr::parse(s).map(|c| c.range())
+}
+
 /// Map an IPv4-mapped IPv6 address back to IPv4.
 pub fn normalize_ip(ip: IpAddr) -> IpAddr {
     match ip {
@@ -206,6 +214,38 @@ mod tests {
         let c = Cidr::parse("192.168.1.0/25").unwrap();
         assert!(c.contains("192.168.1.127".parse().unwrap()));
         assert!(!c.contains("192.168.1.128".parse().unwrap()));
+    }
+
+    #[test]
+    fn ranges() {
+        let r = |s: &str| parse_ip_range(s).map(|(a, b)| (a.to_string(), b.to_string()));
+        assert_eq!(
+            r("10.1.0.0/16"),
+            Some(("10.1.0.0".into(), "10.1.255.255".into()))
+        );
+        assert_eq!(
+            r("10.1.2.3/16"),
+            Some(("10.1.0.0".into(), "10.1.255.255".into()))
+        );
+        assert_eq!(
+            r("0.0.0.0/0"),
+            Some(("0.0.0.0".into(), "255.255.255.255".into()))
+        );
+        assert_eq!(r("1.2.3.4"), Some(("1.2.3.4".into(), "1.2.3.4".into())));
+        assert_eq!(
+            r("fd00::/8"),
+            Some((
+                "fd00::".into(),
+                "fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff".into()
+            ))
+        );
+        assert_eq!(
+            r("1.2.3.0-1.2.4.255"),
+            Some(("1.2.3.0".into(), "1.2.4.255".into()))
+        );
+        assert_eq!(r("1.2.4.0-1.2.3.0"), None);
+        assert_eq!(r("1.2.3.4-fd00::1"), None);
+        assert_eq!(r("nope"), None);
     }
 
     #[test]

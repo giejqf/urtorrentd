@@ -15,7 +15,7 @@ use super::Daemon;
 use crate::error::{ApiError, ApiResult};
 use crate::model::{
     self, FileInfo, LimitsRequest, PeerSourceInfo, PiecesResponse, QueueMoveTo, TorrentPatch,
-    TrackerInfo, TrackerStatus, TrackersResponse,
+    TrackerEndpointInfo, TrackerInfo, TrackerStatus, TrackersResponse,
 };
 use crate::settings::valid_tracker_url;
 use crate::store::StopCondition;
@@ -39,21 +39,21 @@ pub(crate) fn parse_peer_ip(s: &str) -> Option<IpAddr> {
 }
 
 impl Daemon {
-    /// Start (resume under the queue).
+    /// Start (resume under the queue). An errored torrent is recovered
+    /// (urtorrent 0.12): missing files are looked for again, an I/O error
+    /// restarts; unusable metadata is refused (`busy`).
     pub(crate) async fn start_torrent(&self, hash: InfoHash, id: TorrentId) -> ApiResult<()> {
-        self.refuse_errored(id).await?;
         self.session.resume(id).await?;
-        self.update_record(hash, |r| r.stopped = false).await
+        self.edit_record(hash, |r| r.stopped = false)
     }
 
     /// Stop.
     pub(crate) async fn stop_torrent(&self, hash: InfoHash, id: TorrentId) -> ApiResult<()> {
         self.session.pause(id).await?;
-        self.update_record(hash, |r| {
+        self.edit_record(hash, |r| {
             r.stopped = true;
             r.stop_condition = StopCondition::None;
         })
-        .await
     }
 
     /// Force start (`true`) or hand back to the queue (`false`).
@@ -64,40 +64,32 @@ impl Daemon {
         on: bool,
     ) -> ApiResult<()> {
         if on {
-            self.refuse_errored(id).await?;
             self.session.force_resume(id).await?;
-            self.update_record(hash, |r| r.stopped = false).await
+            self.edit_record(hash, |r| r.stopped = false)
         } else {
             self.session.set_auto_managed(id, true).await?;
             Ok(())
         }
     }
 
-    /// Start a full recheck; it runs in the background.
+    /// Start a full recheck; it runs in the background (the state shows
+    /// `checking`). It also clears an error (urtorrent 0.12), except for
+    /// unusable metadata, which is refused here rather than failing unseen.
     pub(crate) async fn recheck(self: &Arc<Self>, id: TorrentId) -> ApiResult<()> {
-        self.refuse_errored(id).await?;
+        let st = self.session.status(id).await?;
+        if st.error_kind == Some(urtorrent::ErrorKind::Metadata) {
+            return Err(ApiError::new(
+                axum::http::StatusCode::CONFLICT,
+                crate::error::ErrorCode::Busy,
+                "the torrent's metadata is unusable; only removing it helps",
+            ));
+        }
         let d = self.clone();
         tokio::spawn(async move {
             if let Err(e) = d.session.force_recheck(id).await {
                 d.logs.warn(format!("recheck failed: {e}"));
             }
         });
-        Ok(())
-    }
-
-    /// The library cannot clear a torrent's error: `resume` and
-    /// `force_recheck` do nothing on an errored torrent (and the recheck
-    /// reports success). Say so instead of claiming a success
-    /// (docs/gaps.md, item 1).
-    async fn refuse_errored(&self, id: TorrentId) -> ApiResult<()> {
-        let st = self.session.status(id).await?;
-        if st.state == urtorrent::TorrentState::Error {
-            return Err(ApiError::conflict(format!(
-                "the torrent stopped with an error ({}); it cannot be restarted or rechecked \
-                 yet: remove it and add it again",
-                st.error.unwrap_or_default()
-            )));
-        }
         Ok(())
     }
 
@@ -153,7 +145,60 @@ impl Daemon {
         on: bool,
     ) -> ApiResult<()> {
         self.session.set_sequential(id, on).await?;
-        self.update_record(hash, |r| r.sequential = on).await
+        let _ = hash;
+        Ok(())
+    }
+
+    /// First and last piece of each file first: remember it, and apply it
+    /// once the metadata is known.
+    pub(crate) async fn set_first_last(
+        &self,
+        hash: InfoHash,
+        id: TorrentId,
+        on: bool,
+    ) -> ApiResult<()> {
+        self.edit_record(hash, |r| r.first_last_piece_priority = on)?;
+        match self.apply_first_last(id, on).await {
+            Err(ApiError {
+                code: crate::error::ErrorCode::Busy,
+                ..
+            }) => Ok(()),
+            other => other,
+        }
+    }
+
+    /// Raise the first and last piece of every wanted file to the top
+    /// priority (`on`), or let the file priorities decide every piece again.
+    pub(crate) async fn apply_first_last(&self, id: TorrentId, on: bool) -> ApiResult<()> {
+        let files = self.session.files(id).await?;
+        if files.is_empty() {
+            return Err(ApiError::new(
+                axum::http::StatusCode::CONFLICT,
+                crate::error::ErrorCode::Busy,
+                "the metadata is not known yet",
+            ));
+        }
+        if !on {
+            let prios = files.iter().map(|f| f.priority).collect();
+            return Ok(self.session.set_file_priorities(id, prios).await?);
+        }
+        let t = Self::parsed_torrent(self.session.torrent_file(id).await?)?;
+        let plen = u64::from(t.info.piece_length.max(1));
+        let mut pieces = self.session.piece_priorities(id).await?;
+        for (f, file) in files.iter().zip(t.info.content_files()) {
+            if f.priority == 0 || file.length == 0 {
+                continue;
+            }
+            let first = usize::try_from(file.offset / plen).unwrap_or(usize::MAX);
+            let last =
+                usize::try_from((file.offset + file.length - 1) / plen).unwrap_or(usize::MAX);
+            for i in [first, last] {
+                if let Some(p) = pieces.get_mut(i) {
+                    *p = 7;
+                }
+            }
+        }
+        Ok(self.session.set_piece_priorities(id, pieces).await?)
     }
 
     /// Per-torrent limits (present fields only).
@@ -323,6 +368,7 @@ impl Daemon {
     /// Set the priority of some files.
     pub(crate) async fn set_file_priority(
         &self,
+        hash: InfoHash,
         id: TorrentId,
         indexes: &[usize],
         priority: u8,
@@ -341,7 +387,17 @@ impl Daemon {
                 .ok_or_else(|| ApiError::bad_request(format!("no file with index {i}")))?;
             *slot = priority;
         }
-        Ok(self.session.set_file_priorities(id, prios).await?)
+        self.session.set_file_priorities(id, prios).await?;
+        // File priorities decide every piece again: re-apply first/last.
+        let first_last = self
+            .state()
+            .torrents
+            .get(&hash)
+            .is_some_and(|e| e.record.first_last_piece_priority);
+        if first_last {
+            self.apply_first_last(id, true).await?;
+        }
+        Ok(())
     }
 
     /// Rename one file by its current path.
@@ -404,7 +460,7 @@ impl Daemon {
 
     pub(crate) fn invalidate_trackers(&self, hash: InfoHash) {
         if let Some(e) = self.state().torrents.get_mut(&hash) {
-            e.trackers = None;
+            e.tracker_urls = None;
         }
     }
 
@@ -422,7 +478,9 @@ impl Daemon {
                 .map(|t| TrackerInfo {
                     url: t.url.clone(),
                     tier: t.tier,
-                    status: if t.working {
+                    status: if t.updating {
+                        TrackerStatus::Updating
+                    } else if t.working {
                         TrackerStatus::Working
                     } else if t.fails > 0 {
                         TrackerStatus::NotWorking
@@ -435,6 +493,21 @@ impl Daemon {
                     leechers: t.leechers,
                     downloaded: t.downloaded,
                     next_announce_in: t.next_announce_in.map(|d| d.as_secs()),
+                    updating: t.updating,
+                    endpoints: t
+                        .endpoints
+                        .iter()
+                        .map(|ep| TrackerEndpointInfo {
+                            local: ep.local.to_string(),
+                            working: ep.working,
+                            updating: ep.updating,
+                            fails: ep.fails,
+                            message: ep.last_error.clone(),
+                            seeders: ep.seeders,
+                            leechers: ep.leechers,
+                            next_announce_in: ep.next_announce_in.map(|d| d.as_secs()),
+                        })
+                        .collect(),
                 })
                 .collect(),
             dht: PeerSourceInfo {
@@ -640,6 +713,7 @@ impl Daemon {
                 })
                 .collect(),
             availability: pieces.iter().map(|p| p.availability).collect(),
+            priorities: pieces.iter().map(|p| p.priority).collect(),
         })
     }
 

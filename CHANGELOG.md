@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-23
+
+Persistence moves to SQLite, and the daemon follows urtorrent 0.13.1, which
+closed the gap list the daemon had filed (`docs/gaps.md`). Breaking: the
+data directory's format (0.1 directories are imported on the first start),
+and new enum values in the API (`TorrentState::held` / `unknown`,
+`TrackerStatus::updating`).
+
+### Changed
+
+- **All state lives in one SQLite database**, `urtorrentd.db` (ADR 0004):
+  settings, credentials, categories, tags, totals, the DHT state, and per
+  torrent the record, the `.torrent` and the library's resume data. One
+  transaction per change set (a bulk action over thousands of torrents is one
+  commit) instead of two `fsync`s per file; the per-minute rewrite of every
+  record is gone. The daemon now holds the resume data itself: saved when the
+  library says it changed (at most once a minute), after checks and
+  completions, and for every torrent at shutdown.
+- A 0.1 data directory is imported in one transaction on the first start; the
+  old files move to `imported-0.1/`.
+- Built on urtorrent 0.13.1. List rows take the working tracker, swarm
+  counts, availability (distributed copies), `sequential` and the activity
+  times from `statuses()`; the caches and mirrored fields that stood in for
+  them are gone, and the activity times now survive restarts.
+- **Errored torrents recover**: `start` looks for missing files again or
+  retries after a disk error, `recheck` clears the error and rechecks; only
+  unusable metadata is refused (`409 busy`). The torrent's `error_kind`
+  (`content_missing`, `io`, `metadata`) is in the API.
+- **Magnets are held** when a stop condition or a content layout needs it:
+  nothing is downloaded before the stop, and the layout is applied before any
+  file exists. A `.torrent` whose layout renames files is held at once.
+
+### Added
+
+- First and last piece of each file first: `options.first_last_piece_priority`
+  and `POST /torrents/first-last-piece-priority` (urtorrent 0.13 piece
+  priorities); piece priorities in `GET /torrents/{hash}/pieces`.
+- Banned address ranges: the `banned_ip_ranges` setting (`10.0.0.0/8`,
+  `fd00::/8`, `first-last`).
+- Tracker rows per listen socket (`endpoints`) and an `updating` status.
+- Peers the engine bans for corrupt data appear in the peer log.
+
 ## [0.1.0] - 2026-09-23
 
 The first release: a daemon on urtorrent 0.11.4 with a typed HTTP API that

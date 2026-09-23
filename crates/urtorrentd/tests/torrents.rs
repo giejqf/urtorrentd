@@ -684,7 +684,7 @@ async fn policies_stop_conditions_share_limits_download_path() {
 }
 
 #[tokio::test]
-async fn errored_torrents_are_not_restarted_silently() {
+async fn errored_torrents_recover() {
     let seeder = TestDaemon::start(38, |_| {}).await;
     let leecher = TestDaemon::start(39, |_| {}).await;
     let f = fixture(
@@ -728,21 +728,169 @@ async fn errored_torrents_are_not_restarted_silently() {
         .await;
     assert!(e["error"].is_string(), "{e}");
 
-    for (action, body) in [
-        ("start", json!({"hashes": [hash.clone()]})),
-        ("recheck", json!({"hashes": [hash.clone()]})),
-        (
-            "force-start",
-            json!({"hashes": [hash.clone()], "value": true}),
-        ),
-    ] {
-        let (s, v) = leecher
-            .post(&format!("/api/v1/torrents/{action}"), body)
-            .await;
-        assert_eq!(s, StatusCode::OK);
-        assert_eq!(v["applied"], json!([]), "{action}: {v}");
-        assert_eq!(v["failed"][0]["error"]["code"], "conflict", "{action}: {v}");
-    }
+    assert_eq!(e["error_kind"], "io", "{e}");
+
+    // Recovery (urtorrent 0.12): once the directory is writable again,
+    // `start` retries and the download completes.
+    let mut perms = std::fs::metadata(&locked).unwrap().permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+    std::fs::set_permissions(&locked, perms).unwrap();
+    let (s, v) = leecher
+        .post("/api/v1/torrents/start", json!({"hashes": [hash.clone()]}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["applied"], json!([hash.clone()]), "{v}");
+    let (s, _) = leecher
+        .post(
+            "/api/v1/torrents/peers",
+            json!({"hashes": [hash.clone()], "peers": [seeder.peer_addr()]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let t = leecher
+        .wait_for(&hash, "recovered and complete", 60, |x| {
+            x["complete"] == true
+        })
+        .await;
+    assert_eq!(t["error"], Value::Null);
+    assert_eq!(
+        std::fs::read(locked.join("locked.bin")).unwrap(),
+        f.files[0].1
+    );
     seeder.stop().await;
     leecher.stop().await;
+}
+
+#[tokio::test]
+async fn magnets_are_held_for_stop_conditions_and_layouts() {
+    let seeder = TestDaemon::start(51, |_| {}).await;
+    let leecher = TestDaemon::start(52, |_| {}).await;
+    let f = fixture(
+        "Season",
+        &[("e1.mkv", 50_000), ("e2.mkv", 40_000)],
+        16_384,
+        None,
+        false,
+        61,
+    );
+    f.write_to(&seeder.save_path());
+    let hash = seeder.add(&f, json!({})).await;
+    seeder
+        .wait_for(&hash, "seeding", 30, |x| x["state"] == "seeding")
+        .await;
+
+    // A magnet that stops once its metadata is known, laid out without its
+    // top-level folder: held by the engine, so nothing is downloaded before
+    // the daemon applies the layout.
+    let (s, v) = leecher
+        .post(
+            "/api/v1/torrents",
+            json!({"urls": [hash.clone()], "options": {"stop_condition": "metadata_received", "content_layout": "no_subfolder"}}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let (s, _) = leecher
+        .post(
+            "/api/v1/torrents/peers",
+            json!({"hashes": [hash.clone()], "peers": [seeder.peer_addr()]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let t = leecher
+        .wait_for(&hash, "stopped after its metadata", 30, |x| {
+            x["has_metadata"] == true && x["state"] == "stopped"
+        })
+        .await;
+    assert_eq!(t["downloaded"], 0, "no payload before the stop: {t}");
+    let files = leecher.get(&format!("/api/v1/torrents/{hash}/files")).await;
+    let paths: Vec<&str> = files
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(paths, vec!["e1.mkv", "e2.mkv"]);
+
+    // Started, it downloads into the new layout.
+    let (s, v) = leecher
+        .post("/api/v1/torrents/start", json!({"hashes": [hash.clone()]}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["applied"], json!([hash.clone()]), "{v}");
+    let (s, v) = leecher
+        .post(
+            "/api/v1/torrents/peers",
+            json!({"hashes": [hash.clone()], "peers": [seeder.peer_addr()]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["applied"], json!([hash.clone()]), "{v}");
+    leecher
+        .wait_for(&hash, "complete", 30, |x| x["complete"] == true)
+        .await;
+    let save = leecher.save_path();
+    assert_eq!(std::fs::read(save.join("e1.mkv")).unwrap(), f.files[0].1);
+    assert!(!save.join("Season").exists());
+    seeder.stop().await;
+    leecher.stop().await;
+}
+
+#[tokio::test]
+async fn first_and_last_pieces_first() {
+    let t = TestDaemon::start(53, |_| {}).await;
+    // Two files over 16 KiB pieces: a.bin covers pieces 0..=3, b.bin 3..=5.
+    let f = fixture(
+        "pair",
+        &[("a.bin", 60_000), ("b.bin", 30_000)],
+        16_384,
+        None,
+        false,
+        71,
+    );
+    let hash = t
+        .add(
+            &f,
+            json!({"stopped": true, "first_last_piece_priority": true}),
+        )
+        .await;
+    let d = t.torrent(&hash).await;
+    assert_eq!(d["first_last_piece_priority"], true);
+    let p = t.get(&format!("/api/v1/torrents/{hash}/pieces")).await;
+    let prios: Vec<u64> = p["priorities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_u64().unwrap())
+        .collect();
+    assert_eq!(prios.len(), 6);
+    assert_eq!(prios[0], 7, "{prios:?}");
+    assert_eq!(prios[3], 7, "a's last and b's first: {prios:?}");
+    assert_eq!(prios[5], 7, "{prios:?}");
+    assert!(prios[1] < 7 && prios[2] < 7 && prios[4] < 7, "{prios:?}");
+
+    // File priorities decide every piece again; the flag re-applies.
+    let (s, _) = t
+        .post(
+            &format!("/api/v1/torrents/{hash}/files/priority"),
+            json!({"indexes": [1], "priority": 0}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let p = t.get(&format!("/api/v1/torrents/{hash}/pieces")).await;
+    assert_eq!(p["priorities"][0], 7);
+    assert_eq!(p["priorities"][5], 0, "b is skipped now");
+
+    // Off: back to what the file priorities say.
+    let (s, v) = t
+        .post(
+            "/api/v1/torrents/first-last-piece-priority",
+            json!({"hashes": [hash.clone()], "value": false}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["applied"], json!([hash.clone()]));
+    let p = t.get(&format!("/api/v1/torrents/{hash}/pieces")).await;
+    assert!(p["priorities"][0].as_u64().unwrap() < 7, "{p}");
+    assert_eq!(t.torrent(&hash).await["first_last_piece_priority"], false);
+    t.stop().await;
 }

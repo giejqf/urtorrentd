@@ -57,8 +57,9 @@ pub(crate) async fn set_file_priority(
     Path(p): Path<HashPath>,
     Json(req): Json<FilePriorityRequest>,
 ) -> ApiResult<StatusCode> {
-    let (_, id) = d.resolve(&p.hash)?;
-    d.set_file_priority(id, &req.indexes, req.priority).await?;
+    let (h, id) = d.resolve(&p.hash)?;
+    d.set_file_priority(h, id, &req.indexes, req.priority)
+        .await?;
     Ok(no_content())
 }
 

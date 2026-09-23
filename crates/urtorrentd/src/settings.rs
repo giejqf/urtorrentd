@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use urtorrent::{ActiveLimits, EncryptionMode, Profile, SessionBuilder, TransportPolicy};
 use utoipa::ToSchema;
 
-use crate::util::Cidr;
+use crate::util::{Cidr, parse_ip_range};
 
 /// A present patch field (even `null`) is `Some`, an absent one `None`.
 fn patch_field<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
@@ -104,6 +104,9 @@ settings! {
     max_uploads_per_torrent: Option<u32> = None, nullable = true;
     /// Addresses banned from every torrent.
     banned_ips: Vec<IpAddr> = Vec::new(), nullable = false, schema = Vec<String>;
+    /// Address ranges banned from every torrent: `10.0.0.0/8`, `fd00::/8`, or
+    /// `first-last` (`1.2.3.0-1.2.4.255`).
+    banned_ip_ranges: Vec<String> = Vec::new(), nullable = false;
     /// Global download limit in bytes per second; `null` = unlimited.
     download_limit: Option<u64> = None, nullable = true;
     /// Global upload limit in bytes per second; `null` = unlimited.
@@ -301,6 +304,13 @@ impl Settings {
                 ));
             }
         }
+        for r in &self.banned_ip_ranges {
+            if parse_ip_range(r).is_none() {
+                return Err(format!(
+                    "banned_ip_ranges: {r:?} is not a range (`10.0.0.0/8` or `first-last`)"
+                ));
+            }
+        }
         for c in &self.api_auth_whitelist {
             if Cidr::parse(c).is_none() {
                 return Err(format!("api_auth_whitelist: {c:?} is not an address block"));
@@ -452,6 +462,26 @@ pub async fn apply_live(
     if old.active_limits() != new.active_limits() {
         session.set_active_limits(new.active_limits()).await?;
     }
+    if old.banned_ip_ranges != new.banned_ip_ranges {
+        for r in old
+            .banned_ip_ranges
+            .iter()
+            .filter(|r| !new.banned_ip_ranges.contains(r))
+        {
+            if let Some((a, b)) = parse_ip_range(r) {
+                session.unban_ip_range(a, b).await?;
+            }
+        }
+        for r in new
+            .banned_ip_ranges
+            .iter()
+            .filter(|r| !old.banned_ip_ranges.contains(r))
+        {
+            if let Some((a, b)) = parse_ip_range(r) {
+                session.ban_ip_range(a, b).await?;
+            }
+        }
+    }
     if old.banned_ips != new.banned_ips {
         for ip in new
             .banned_ips
@@ -466,6 +496,22 @@ pub async fn apply_live(
             .filter(|ip| !new.banned_ips.contains(ip))
         {
             session.unban_ip(*ip).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Apply the settings' bans to a new session.
+pub async fn apply_bans(
+    session: &urtorrent::Session,
+    settings: &Settings,
+) -> Result<(), urtorrent::Error> {
+    for ip in &settings.banned_ips {
+        session.ban_ip(*ip).await?;
+    }
+    for r in &settings.banned_ip_ranges {
+        if let Some((a, b)) = parse_ip_range(r) {
+            session.ban_ip_range(a, b).await?;
         }
     }
     Ok(())

@@ -140,8 +140,8 @@ our endpoints are named in `docs/api.md`, which keeps the full, current table.
 | `torrents` | `addTrackers`, `editTracker`, `removeTrackers`, `addWebSeeds`, `editWebSeed`, `removeWebSeeds`, `addPeers` | L `add_tracker` / `remove_tracker` / `add_web_seed` / `remove_web_seed` / `add_peer` (edit = remove + add at the same tier) |
 | `torrents` | `categories`, `createCategory`, `editCategory`, `removeCategories`, `setCategory`, `tags`, `createTags`, `deleteTags`, `addTags`, `removeTags`, `setTags`, `rename`, `setComment`, `setAutoManagement` | D. **`setAutoManagement` is qBittorrent's Automatic Torrent Management (save path from category), not urtorrent's `auto_managed` (the queue).** |
 | `torrents` | `parseMetadata` | L (metainfo parsing only, nothing added) |
-| `torrents` | `fetchMetadata`, `saveMetadata` | P: the library has no metadata-only fetch (`docs/gaps.md`) |
-| `torrents` | `toggleFirstLastPiecePrio` | U: library gap (candidate `set_piece_priorities`, `docs/config.md`) |
+| `torrents` | `fetchMetadata`, `saveMetadata` | D, planned: a held torrent (`hold_after_metadata`, urtorrent 0.12) previewed, then released or removed |
+| `torrents` | `toggleFirstLastPiecePrio` | L `set_piece_priorities` (urtorrent 0.13), the pieces chosen by the daemon |
 | `torrents` | `setSuperSeeding`, `SSLParameters`, `setSSLParameters` | U: library non-goals |
 | `rss` | all | D, later milestone (`docs/config.md` lists RSS as frontend work). U until then |
 | `search` | all | U: non-goal |
@@ -169,7 +169,8 @@ crates/urtorrentd/src/
   api/                  axum handlers, one module per feature group; guard.rs = auth
   model.rs              every request / response type (ToSchema)
   settings.rs           Settings / SettingsPatch from one field list, live apply
-  store.rs auth.rs log.rs sync.rs error.rs util.rs
+  store.rs              the SQLite database: schema, migrations, 0.1.0 import (ADR 0004)
+  auth.rs log.rs sync.rs error.rs util.rs
 crates/urtorrentd/tests/  API tests on real engines, restart / kill -9, schema, coverage
 sdk/typescript/         generates TypeScript types from openapi.json and type-checks a client
 xtask/                  check, openapi, sdk
@@ -181,7 +182,7 @@ docs/adr/               design decisions
 ```
 
 Depend on the facade only: `urtorrent = { path = "../urtorrent/crates/urtorrent", version =
-"0.11.4" }` during development (the version is the oldest library release the daemon is
+"0.13.1" }` during development (the version is the oldest library release the daemon is
 tested against; raise it when the daemon starts using something newer). CI checks both repos out side by side. Switch to a pinned git revision or a
 crates.io version once one is published. The library is `0.x`, so a minor bump is
 breaking: pin the minor. The facade re-exports what the daemon needs, including
@@ -239,18 +240,19 @@ add, and `Profile` for identity.
 - `TorrentId` is per process: it never appears in the API or on disk. The registry maps
   hash → (`TorrentId`, daemon record). Parse before adding (`Torrent::parse` /
   `MagnetLink::parse`) so the hash is known before `add_torrent`.
-- `statuses()` is the cheap list snapshot. It leaves out trackers and files. Never answer
-  a list endpoint with one `status(id)` or `trackers(id)` per torrent: urtorrent handles
-  10 000 torrents in a session, and the daemon must not be the bottleneck.
-- Per-torrent detail that listings need (the current tracker, tracker count, scrape
-  counts, availability) comes from caches. Refresh them from events (`TrackerReply`,
-  `TrackerError`, `ScrapeReply`, `PieceFinished`, `MetadataReceived`, ...) and from
-  on-demand detail calls. Wanting a field in `statuses()` is a `docs/gaps.md` entry, not
-  an N+1 loop.
-- **One** task consumes `Session::events()`. It updates caches, feeds the main log, runs
-  event-driven policies (stop conditions, download-path moves, magnet persistence) and
-  on `Event::Lagged` does a full resync from `statuses()`. Other code subscribes to the
-  daemon, not to the engine.
+- `statuses()` is the list snapshot, and since urtorrent 0.12 it carries what a list row
+  needs: working tracker, tracker count, swarm counts, distributed copies, `sequential`,
+  activity times, error kind. Never answer a list endpoint with one `status(id)` or
+  `trackers(id)` per torrent: urtorrent handles 10 000 torrents in a session, and the
+  daemon must not be the bottleneck.
+- Two caches remain, both changed only by edits: tracker URLs (for list rows' magnet
+  links) and the content path. Wanting a field in `statuses()` is a `docs/gaps.md` entry,
+  not an N+1 loop.
+- **One** task consumes `Session::events()`. It updates caches, feeds the main and peer
+  logs (`PeerBanned`), stores magnets' metadata, saves resume data after checks and
+  completions, runs event-driven policies (held magnets, download-path moves) and on
+  `Event::Lagged` drops the caches. Other code subscribes to the daemon, not to the
+  engine.
 
 ### 4.5 Long operations
 
@@ -277,12 +279,12 @@ includes removals (torrents, categories, tags) and the session's transfer state.
 ### 4.7 Feature notes (what the reference offers, sourced from the library)
 
 - **States.** The library's `TorrentState` (fetching metadata, queued for checking,
-  checking, downloading, seeding, queued, paused, error) plus flags the daemon derives:
-  *stalled* (running with no payload flowing), *forced* (running, not auto-managed),
-  *moving*. The reference filters its list by these (downloading, seeding, completed,
-  stopped, running, active, inactive, stalled, checking, moving, errored), and so must
-  ours. A "missing files" error needs an error kind the library does not expose yet
-  (`docs/gaps.md`).
+  checking, downloading, seeding, queued, paused, held, error) plus flags the daemon
+  derives: *stalled* (running with no payload flowing), *forced* (running, not
+  auto-managed), *moving*. The reference filters its list by these (downloading,
+  seeding, completed, stopped, running, active, inactive, stalled, checking, moving,
+  errored), and so must ours. Errors carry a kind (`content_missing`, `io`,
+  `metadata`); `start` and `recheck` recover the first two (urtorrent 0.12).
 - **Queue semantics are already qBittorrent's** (library Q26). Stop = `pause` (leaves the
   queue). Start = `resume` (rejoins it). Force start = `force_resume`, undone with
   `set_auto_managed(true)`. The queue position comes from `queue_position`.
@@ -292,48 +294,62 @@ includes removals (torrents, categories, tags) and the session's transfer state.
   cap, per-session counters (the daemon subtracts a baseline taken at add or at daemon
   start), ratio, ETA, popularity, magnet URI, content path, and per-file piece ranges
   (computed from the metainfo). Peer counts per discovery source come from
-  `PeerInfo::source` (`Dht`, `Pex`, `Lsd`). Facts the library does not track (last seen
-  complete, last activity) are `null` or honestly derived, and listed in `docs/gaps.md`.
-- **File priorities.** The library takes `0` (skip) and `1..=7`. Expose skip / normal /
-  high / maximum and pick the mapping once, in `docs/api.md`. File indexes follow the
-  library's content-file order, and padding files (BEP 47) are never listed.
-- **Add parameters with no library switch.**
-  - Content layout: add paused, `rename_file`, then start.
-  - Stop condition: pause on `MetadataReceived` / `Checked`.
-  - Add to top of queue: `move_in_queue(Top)`.
-  - Rename, category, tags and share limits: the daemon record.
-  - Record each of these in `docs/api.md`.
-  - First/last piece priority and skip-checking are unsupported. They are rejected, not
-    ignored.
+  `PeerInfo::source` (`Dht`, `Pex`, `Lsd`).
+- **File and piece priorities.** The library takes `0` (skip) and `1..=7` per file, and
+  per piece since 0.13. File indexes follow the library's content-file order, and
+  padding files (BEP 47) are never listed. First-and-last-piece-first is the daemon's:
+  it raises those pieces with `set_piece_priorities` and re-applies after every file
+  priority change (which decides every piece again).
+- **Holding.** When the daemon has work to do before any file exists, the torrent is
+  added with `hold_after_metadata`: a `.torrent` whose content layout renames files
+  (held at once), a magnet with a stop condition or a layout (held when the metadata
+  arrives; it stops like qBittorrent's "metadata received" condition). `finish_hold`
+  renames, applies piece priorities, then `release`s (checked, stays stopped) or
+  starts it. A `.torrent` with a stop condition is simply added paused: its initial
+  check still runs.
+- **Add parameters with no library switch.** Add to top of queue: `move_in_queue(Top)`.
+  Rename, category, tags and share limits: the daemon record. Skip-checking is
+  unsupported (rule 1). Record each in `docs/api.md`.
 - **Adding from a URL.** The daemon fetches `http(s)` URLs itself with a cookie jar, over
   rustls (no OpenSSL, as in the library). The `User-Agent` is the `user_agent` field of
   the active identity `Profile`, never a hardcoded string. Private trackers see these
   requests.
 
-### 4.8 Persistence and restart
+### 4.8 Persistence and restart ([ADR 0004](docs/adr/0004-sqlite.md))
 
-The daemon restarts from three things (`docs/config.md`, "Daemon persistence"):
+Everything persistent is in one SQLite database, `<data dir>/urtorrentd.db` (WAL,
+`synchronous = FULL`, schema version in `user_version`, `store.rs`):
 
-1. **The metainfo.** Write `<hash>.torrent` from `torrent_file(id)`. For a magnet, persist
-   the URI until `MetadataReceived`, then write the `.torrent` and drop the URI:
-   `torrent_file` is `None` until the metadata arrives.
-2. **Resume data.** Default: engine-managed `resume_dir` (atomic, periodic, flushed on
-   shutdown). Caller-held blobs (`resume_data(id)` / `AddTorrent::resume_data`, polled via
-   `needs_resume_save`) are the alternative; ADR 0002 chose `resume_dir`. With `resume_dir`,
-   plain `remove_torrent` **leaves `<hash>.resume` behind** (the engine writes a final one
-   when the torrent stops). The daemon deletes it, or a later re-add would restore stale
-   state. `remove_torrent_with_files` deletes it itself.
-3. **The daemon's own record** per torrent: save path, stopped or running, category, tags,
-   display-name override, share limits, download path, added-by-URL source, and anything
-   else the resume data does not hold (`docs/resume.md`, "Not in the blob"). Categories,
-   settings and API key hashes live in their own files.
+1. **The metainfo** (`torrents.metainfo`), stored when a `.torrent` is added or when a
+   magnet's metadata arrives (`torrent_file` is `None` before); until then the record
+   holds the magnet link.
+2. **Resume data** (`torrents.resume`), the library's bytes, never parsed here. The
+   daemon fetches `resume_data(id)` when `needs_resume_save` is set, at most once a
+   minute per torrent, at once after a check and when a download finishes, and for every
+   torrent at shutdown; it passes the bytes back with `AddTorrent::resume_data`. The
+   library syncs the content before returning them, so they never claim data that is
+   not on disk. The resume data holds the have-set, counters, activity times, queue
+   position, trackers, priorities and per-torrent settings.
+3. **The daemon's own record** (`torrents.record`, JSON): save and download path,
+   stopped, category, tags, name and comment overrides, automatic management,
+   first-and-last-piece flag, share limits, source URL, a pending stop condition or
+   layout. Settings, credentials (hashes), totals and the DHT state are in `state`;
+   categories and tags have their own tables.
 
-- Every write is atomic: tmp file, `fsync`, rename, directory `fsync`. After `kill -9` at
-  any point, a restart must bring every torrent back.
-- Startup order: load settings → build the `Session` (listen, identity profile, limits,
-  queue limits, `dht_state`) → re-add every torrent (paused where recorded, in queue
-  order) → start the API. Shutdown order: stop taking API requests → save `dht_state()`
-  → (blobs mode: fetch `resume_data`) → `session.shutdown().await` → flush daemon records.
+- **One transaction per change set**: records are marked dirty and written together
+  (a bulk action is one commit; the tick flushes within 2 s whatever events and
+  policies changed).
+- **Order**: a row is inserted before the engine add and deleted after the engine
+  removal; updates never re-create a deleted row. After `kill -9` a restart brings every
+  torrent back, at worst with a minute-old resume state.
+- **Formats**: the schema migrates on open; a 0.1.0 data directory (JSON files) is
+  imported once and its files moved to `imported-0.1/`. Every release reads every format
+  it ever wrote.
+- Startup order: open the database → build the `Session` (listen, identity profile,
+  limits, queue limits, bans, `dht_state`) → re-add every torrent in insertion order
+  with its resume data (queue positions come back from it) → start the API. Shutdown
+  order: stop taking API requests → resume data for every torrent → records → totals →
+  `dht_state()` → `session.shutdown().await`.
 
 ### 4.9 Settings
 
@@ -407,9 +423,11 @@ the lab passwordless `sudo`, `opentracker` and the cached oracle (run
 ## 6. Milestones
 
 Each milestone ends with its tests green. Status: **0.1.0 released (2026-09-23)** with D0 to
-D4 done except the alternative-limits scheduler, which moved to the later list. The
-"planned" rows of `docs/api.md` and `docs/settings.md` are the remaining work; what they
-need from the library is in `docs/gaps.md`.
+D4 done except the alternative-limits scheduler, which moved to the later list. **0.2.0**
+moved persistence to SQLite and aligned with urtorrent 0.13 (error recovery, holding,
+piece priorities, address ranges, list-view fields). The "planned" rows of `docs/api.md`
+and `docs/settings.md` are the remaining work; `docs/gaps.md` has what is still open
+upstream.
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -444,7 +462,8 @@ need from the library is in `docs/gaps.md`.
 - Dependencies: keep the tree small and justify every new one in the PR. In use: `axum`,
   `tokio`, `utoipa` + `utoipa-axum` (the schema), `serde`, `serde_json`, `thiserror`,
   `tracing`, `tracing-subscriber`, `clap`, `reqwest` on rustls (URL adds), `argon2` and
-  `sha2` (credentials), `getrandom`, `base64`, `rustix` (free space, no `unsafe`).
+  `sha2` (credentials), `getrandom`, `base64`, `rustix` (free space, no `unsafe`),
+  `rusqlite` with SQLite compiled in (persistence, ADR 0004).
   `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with the library's licence
   allow-list. It does **not** ban `mio` here (4.2).
 - Commands (keep them working forever):
@@ -485,11 +504,13 @@ need from the library is in `docs/gaps.md`.
 - **Licence: Apache-2.0.**
 - **A typed API schema generated from the code**, so frontends get an SDK from a
   generator with end-to-end type safety (ADR 0003).
+- **SQLite for all persistent state** (2026-09-23, ADR 0004), with resume data held by
+  the daemon in the database.
 
 ### Settled in ADRs (defaults taken while building; revisit with the maintainer if needed)
 
 - **API style**: resource-oriented JSON under `/api/v1` (ADR 0001).
-- **Resume storage**: engine-managed `resume_dir`, not caller-held blobs (ADR 0002).
+- **On-disk layout**: one data directory holding `urtorrentd.db` (ADR 0004).
 
 ### Still open (defaults assumed; confirm with the maintainer in the PR that depends on it)
 
@@ -498,7 +519,6 @@ need from the library is in `docs/gaps.md`.
 - **Scope beyond the library.** Torrent creation (`torrentcreator/*`): unsupported by
   default, even though the daemon could do it without the library. RSS and watch folders:
   planned after 0.1.0 (section 6).
-- **On-disk layout.** One data dir (`$XDG_DATA_HOME/urtorrentd`) as ADR 0002 and
-  `store.rs` describe; logs go to stderr / journald, not files.
+- **Logs** go to stderr / journald and `GET /log`, not to files.
 - **API listen address.** Default `127.0.0.1:8080` (loopback only); exposing it is a
   deliberate `--api-listen`.

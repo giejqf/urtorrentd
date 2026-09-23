@@ -149,6 +149,20 @@ pub(crate) async fn set_sequential(
     ))
 }
 
+/// Download the first and last pieces of each wanted file first (`value:
+/// true`), or let the file priorities decide every piece again (`false`).
+#[utoipa::path(post, path = "/torrents/first-last-piece-priority", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn set_first_last_piece_priority(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<ToggleRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let on = req.value;
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| d.set_first_last(h, id, on))
+            .await?,
+    ))
+}
+
 /// Change rate limits and connection / upload slot caps.
 #[utoipa::path(post, path = "/torrents/limits", tag = "torrents", responses((status = 200, body = BulkResult)))]
 pub(crate) async fn set_torrent_limits(
@@ -176,7 +190,7 @@ pub(crate) async fn set_share_limits(
     let limits = req.share_limits;
     Ok(Json(
         d.bulk(&req.hashes, |h, _| {
-            d.update_record(h, move |r| r.share_limits = limits)
+            std::future::ready(d.edit_record(h, move |r| r.share_limits = limits))
         })
         .await?,
     ))

@@ -50,7 +50,7 @@ an API daemon. **unsupported**: with the reason.
 | `autorun_on_torrent_added_enabled` | planned | run a program when a torrent is added |
 | `autorun_on_torrent_added_program` | planned | as above |
 | `autorun_program` | planned | as above |
-| `banned_IPs` | setting | `banned_ips` (also `POST /transfer/bans`) |
+| `banned_IPs` | setting | `banned_ips` (also `POST /transfer/bans`); ranges in `banned_ip_ranges` |
 | `bdecode_depth_limit` | fixed | library bounds (bencode nesting 32) |
 | `bdecode_token_limit` | fixed | library bounds |
 | `bittorrent_protocol` | setting | `transports` |
@@ -115,7 +115,7 @@ an API daemon. **unsupported**: with the reason.
 | `idn_support_enabled` | n/a | a display concern |
 | `ignore_ssl_errors` | unsupported | the library always validates certificates |
 | `incomplete_files_ext` | unsupported | the library writes final file names (docs/gaps.md) |
-| `ip_filter_enabled` | unsupported | IP filter files are a library non-goal; single addresses: `banned_ips` |
+| `ip_filter_enabled` | unsupported | IP filter files are a library non-goal; addresses and ranges: `banned_ips`, `banned_ip_ranges` |
 | `ip_filter_path` | unsupported | as above |
 | `ip_filter_trackers` | unsupported | as above |
 | `limit_lan_peers` | fixed | library |
@@ -180,7 +180,7 @@ an API daemon. **unsupported**: with the reason.
 | `request_queue_size` | fixed | library |
 | `resolve_peer_countries` | unsupported | no GeoIP database |
 | `resolve_peer_host_names` | unsupported | no reverse DNS for peers |
-| `resume_data_storage_type` | fixed | engine-managed resume files (ADR 0002) |
+| `resume_data_storage_type` | fixed | SQLite: resume data lives in the daemon's database (ADR 0004) |
 | `rss_auto_downloading_enabled` | planned | RSS |
 | `rss_download_repack_proper_episodes` | planned | RSS |
 | `rss_fetch_delay` | planned | RSS |

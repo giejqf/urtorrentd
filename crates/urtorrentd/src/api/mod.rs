@@ -216,6 +216,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(torrents::delete_torrents))
         .routes(routes!(torrents::move_torrents_in_queue))
         .routes(routes!(torrents::set_sequential))
+        .routes(routes!(torrents::set_first_last_piece_priority))
         .routes(routes!(torrents::set_torrent_limits))
         .routes(routes!(torrents::set_share_limits))
         .routes(routes!(torrents::set_location))

@@ -1,24 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 urtorrentd contributors
 
-//! The periodic tick: activity tracking (last activity, last seen
-//! complete, per-run baselines), share limits, and flushing records and
-//! totals. Policy only: it reads snapshots and calls public operations.
+//! The periodic tick: per-run baselines, share limits, resume data that is
+//! due, changed records, and the all-time totals. Policy only: it reads
+//! snapshots and calls public operations.
 
 use std::sync::{Arc, Weak};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use urtorrent::{InfoHash, TorrentId, TorrentState as L, TorrentStatus};
 
-use super::{Daemon, Entry};
+use super::{Daemon, Entry, ResumeSave};
 use crate::settings::{Settings, ShareLimitAction};
 use crate::store::{RatioLimit, TimeLimit};
 use crate::util::now;
 
 const TICK: Duration = Duration::from_secs(2);
-/// Records and totals are flushed every this many ticks (they are also
-/// written at shutdown).
-const FLUSH_EVERY: u64 = 30;
+/// Totals are saved every this many ticks (and at shutdown).
+const TOTALS_EVERY: u64 = 30;
 
 pub(crate) async fn run(daemon: Weak<Daemon>) {
     let mut interval = tokio::time::interval(TICK);
@@ -33,12 +32,21 @@ pub(crate) async fn run(daemon: Weak<Daemon>) {
             return;
         }
         d.tick_once().await;
+        d.save_resume(ResumeSave::Due).await;
+        if let Err(e) = d.flush_records().await {
+            d.logs.warn(format!("saving torrent records: {e}"));
+        }
         n += 1;
-        if n.is_multiple_of(FLUSH_EVERY) {
-            d.persist_all().await;
+        if n.is_multiple_of(TOTALS_EVERY) {
             d.save_totals().await;
         }
     }
+}
+
+/// When payload last moved, unix seconds (the library keeps these across
+/// restarts).
+pub(crate) fn last_activity(s: &TorrentStatus) -> Option<u64> {
+    s.last_download.max(s.last_upload)
 }
 
 /// Which share limit a seeding torrent has reached, if any.
@@ -46,7 +54,7 @@ fn share_limit_reached(
     s: &TorrentStatus,
     e: &Entry,
     settings: &Settings,
-    now: Instant,
+    unix: u64,
 ) -> Option<&'static str> {
     let limits = e.record.share_limits;
     let ratio_limit = match limits.ratio {
@@ -73,11 +81,11 @@ fn share_limit_reached(
     if let Some(limit) = time(
         limits.inactive_seeding_time,
         settings.max_inactive_seeding_time,
-    ) && e
-        .idle_since
-        .is_some_and(|t| now.duration_since(t).as_secs() >= limit)
-    {
-        return Some("inactive seeding time");
+    ) {
+        let since = last_activity(s).or(s.completed_on).unwrap_or(s.added_on);
+        if unix.saturating_sub(since) >= limit {
+            return Some("inactive seeding time");
+        }
     }
     None
 }
@@ -87,7 +95,7 @@ impl Daemon {
         let Ok(statuses) = self.session.statuses().await else {
             return;
         };
-        let (unix, instant) = (now(), Instant::now());
+        let unix = now();
         let mut hits: Vec<(InfoHash, TorrentId, ShareLimitAction, &'static str)> = Vec::new();
         {
             let mut st = self.state();
@@ -102,19 +110,10 @@ impl Daemon {
                 if e.name.as_deref() != Some(s.name.as_str()) {
                     e.name = Some(s.name.clone());
                 }
-                if s.download_rate > 0 || s.upload_rate > 0 {
-                    e.record.last_activity = Some(unix);
-                    e.idle_since = None;
-                } else if e.idle_since.is_none() {
-                    e.idle_since = Some(instant);
-                }
-                if s.complete || s.seeds > 0 {
-                    e.record.seen_complete = Some(unix);
-                }
                 if s.complete
                     && s.state == L::Seeding
                     && !e.moving
-                    && let Some(why) = share_limit_reached(s, e, &settings, instant)
+                    && let Some(why) = share_limit_reached(s, e, &settings, unix)
                 {
                     let action = e
                         .record

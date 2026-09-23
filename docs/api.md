@@ -59,16 +59,16 @@ handler names (`list_torrents`, `add_torrents`, `get_torrent`, ...).
 | POST | `/torrents/parse` | Describe a `.torrent` without adding it |
 | POST | `/torrents/start`, `/stop`, `/force-start`, `/recheck`, `/reannounce`, `/delete` | Bulk lifecycle |
 | POST | `/torrents/queue` | Move in the queue (top, up, down, bottom) |
-| POST | `/torrents/sequential`, `/limits`, `/share-limits`, `/location`, `/category`, `/tags`, `/auto-management`, `/peers` | Bulk settings and peers |
+| POST | `/torrents/sequential`, `/first-last-piece-priority`, `/limits`, `/share-limits`, `/location`, `/category`, `/tags`, `/auto-management`, `/peers` | Bulk settings and peers |
 | GET, PATCH | `/torrents/{hash}` | Everything about one torrent; change its name or comment |
 | GET | `/torrents/{hash}/files` | Files with progress, priority, piece range, availability |
 | POST | `/torrents/{hash}/files/priority`, `/files/rename`, `/folders/rename` | File priorities and renames |
-| GET, POST | `/torrents/{hash}/trackers` | Trackers and DHT / PEX / LSD sources; add trackers |
+| GET, POST | `/torrents/{hash}/trackers` | Trackers (with a row per listen socket) and DHT / PEX / LSD sources; add trackers |
 | POST | `/torrents/{hash}/trackers/remove`, `/trackers/edit` | Remove or replace trackers |
 | GET, POST | `/torrents/{hash}/webseeds` | Web seeds; add |
 | POST | `/torrents/{hash}/webseeds/remove`, `/webseeds/edit` | Remove or replace web seeds |
 | GET | `/torrents/{hash}/peers` | Connected peers |
-| GET | `/torrents/{hash}/pieces`, `/pieces/hashes` | Piece states and availability; piece hashes |
+| GET | `/torrents/{hash}/pieces`, `/pieces/hashes` | Piece states, availability and priorities; piece hashes |
 | GET | `/torrents/{hash}/torrent-file` | The `.torrent` (current trackers and web seeds) |
 | GET, POST, PUT | `/categories` | Categories; create; edit |
 | POST | `/categories/remove` | Remove categories |
@@ -92,8 +92,8 @@ handler names (`list_torrents`, `add_torrents`, `get_torrent`, ...).
 | `stopped` | `options.stopped` |
 | `forced` | `options.forced` |
 | `addToTopOfQueue` | `options.add_to_top_of_queue` |
-| `stopCondition` | `options.stop_condition` |
-| `contentLayout` | `options.content_layout` (`.torrent` files; magnets keep the original layout) |
+| `stopCondition` | `options.stop_condition` (magnets: held when the metadata arrives, nothing downloaded) |
+| `contentLayout` | `options.content_layout` (magnets: applied while held once the metadata arrives) |
 | `rename` | `options.rename` |
 | `upLimit`, `dlLimit` | `options.upload_limit`, `options.download_limit` |
 | `ratioLimit`, `seedingTimeLimit`, `inactiveSeedingTimeLimit`, `shareLimitAction` | `options.share_limits` |
@@ -101,7 +101,7 @@ handler names (`list_torrents`, `add_torrents`, `get_torrent`, ...).
 | `sequentialDownload` | `options.sequential` |
 | `filePriorities` | `options.file_priorities` |
 | `skip_checking` | unsupported: skipping verification would advertise unverified data (AGENTS.md rule 1) |
-| `firstLastPiecePrio` | unsupported: no piece priorities in the library (docs/gaps.md) |
+| `firstLastPiecePrio` | `options.first_last_piece_priority` |
 | `downloader` | not applicable: one built-in downloader; `options.cookie` sets the `Cookie` header |
 | (none) | `options.max_connections`, `options.max_uploads`, `options.preallocate` |
 
@@ -144,7 +144,7 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `transfer/speedLimitsMode` | done | `GET /transfer` (`alt_speed_enabled`) |
 | `transfer/setSpeedLimitsMode` | done | `PUT /transfer/alt-speed` |
 | `transfer/toggleSpeedLimitsMode` | done | `PUT /transfer/alt-speed` |
-| `transfer/banPeers` | done | `POST /transfer/bans` |
+| `transfer/banPeers` | done | `POST /transfer/bans` (ranges: the `banned_ip_ranges` setting) |
 | `torrents/count` | done | `GET /torrents/count` |
 | `torrents/info` | done | `GET /torrents` |
 | `torrents/properties` | done | `GET /torrents/{hash}` |
@@ -171,7 +171,7 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `torrents/setDownloadLimit` | done | `POST /torrents/limits` |
 | `torrents/setShareLimits` | done | `POST /torrents/share-limits` |
 | `torrents/toggleSequentialDownload` | done | `POST /torrents/sequential` (set, not toggle) |
-| `torrents/toggleFirstLastPiecePrio` | unsupported | the library has no piece priorities (docs/gaps.md) |
+| `torrents/toggleFirstLastPiecePrio` | done | `POST /torrents/first-last-piece-priority` (set, not toggle) |
 | `torrents/setSuperSeeding` | unsupported | super-seeding is a library non-goal |
 | `torrents/setForceStart` | done | `POST /torrents/force-start` |
 | `torrents/delete` | done | `POST /torrents/delete` |
@@ -203,7 +203,7 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `torrents/export` | done | `GET /torrents/{hash}/torrent-file` |
 | `torrents/SSLParameters` | unsupported | SSL torrents are a library non-goal |
 | `torrents/setSSLParameters` | unsupported | as above |
-| `torrents/fetchMetadata` | planned | needs a metadata-only fetch in the library (docs/gaps.md) |
+| `torrents/fetchMetadata` | planned | a metadata preview; the library's hold (0.12) makes it possible |
 | `torrents/parseMetadata` | done | `POST /torrents/parse` |
 | `torrents/saveMetadata` | planned | with `fetchMetadata` |
 | `rss/addFolder` | planned | RSS (after 0.1.0) |

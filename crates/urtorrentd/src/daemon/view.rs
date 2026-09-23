@@ -2,26 +2,22 @@
 // Copyright (c) 2026 urtorrentd contributors
 
 //! Read models: torrent list rows, torrent detail, transfer info. List rows
-//! come from the cheap `statuses()` snapshot plus caches the event pump keeps
-//! fresh, never from one detail call per torrent (AGENTS.md 4.4).
+//! come from the `statuses()` snapshot (which carries the tracker summary,
+//! distributed copies, activity times and the sequential flag since
+//! urtorrent 0.12), plus two caches that only change on edits: tracker URLs
+//! for magnet links and the content path (AGENTS.md 4.4).
 
 use std::path::Path;
-use std::time::{Duration, Instant};
 
 use urtorrent::{InfoHash, TorrentId, TorrentStatus};
 
-use super::{ContentLayoutInfo, Daemon, Entry, State, TrackerSummary};
+use super::{ContentLayoutInfo, Daemon, Entry, State};
 use crate::error::ApiResult;
 use crate::model::{
-    ConnectionStatus, TorrentDetail, TorrentFilter, TorrentListQuery, TorrentSort, TorrentState,
-    TorrentSummary, TransferInfo,
+    ConnectionStatus, TorrentDetail, TorrentErrorKind, TorrentFilter, TorrentListQuery,
+    TorrentSort, TorrentState, TorrentSummary, TransferInfo,
 };
 use crate::util::{blocking, hex, now, percent_encode};
-
-/// How long a measured availability is reused.
-const AVAILABILITY_TTL: Duration = Duration::from_secs(10);
-/// Availability measurements per list request (each is one `pieces()` call).
-const AVAILABILITY_BUDGET: usize = 32;
 
 /// Share ratio: uploaded over downloaded. A torrent that downloaded less than
 /// 1% of what it has (added complete, or mostly) divides by what it has
@@ -33,28 +29,6 @@ pub(crate) fn ratio(uploaded: u64, downloaded: u64, have: u64) -> Option<f64> {
         downloaded
     };
     (base > 0).then(|| uploaded as f64 / base as f64)
-}
-
-fn distributed_copies(pieces: &[urtorrent::PieceInfo]) -> f64 {
-    let Some(min) = pieces.iter().map(|p| p.availability).min() else {
-        return 0.0;
-    };
-    let above = pieces.iter().filter(|p| p.availability > min).count();
-    f64::from(min) + above as f64 / pieces.len() as f64
-}
-
-fn summarize_trackers(list: &[urtorrent::TrackerStatus]) -> TrackerSummary {
-    TrackerSummary {
-        current: list
-            .iter()
-            .filter(|t| t.working)
-            .min_by_key(|t| t.tier)
-            .map(|t| t.url.clone()),
-        urls: list.iter().map(|t| t.url.clone()).collect(),
-        count: list.len(),
-        seeds: list.iter().filter_map(|t| t.seeders).max(),
-        leechers: list.iter().filter_map(|t| t.leechers).max(),
-    }
 }
 
 fn layout_of(files: &[urtorrent::FileStatus]) -> Option<ContentLayoutInfo> {
@@ -107,6 +81,15 @@ fn opt_limit(v: u64) -> Option<u64> {
     (v > 0).then_some(v)
 }
 
+fn error_kind(k: urtorrent::ErrorKind) -> TorrentErrorKind {
+    match k {
+        urtorrent::ErrorKind::ContentMissing => TorrentErrorKind::ContentMissing,
+        urtorrent::ErrorKind::Io => TorrentErrorKind::Io,
+        urtorrent::ErrorKind::Metadata => TorrentErrorKind::Metadata,
+        _ => TorrentErrorKind::Other,
+    }
+}
+
 /// Build a list row.
 pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummary {
     use urtorrent::TorrentState as L;
@@ -123,9 +106,11 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
             L::Queued => TorrentState::Queued,
             L::Paused => TorrentState::Stopped,
             L::Error => TorrentState::Error,
+            L::Held => TorrentState::Held,
+            _ => TorrentState::Unknown,
         }
     };
-    let running = !matches!(s.state, L::Paused | L::Error);
+    let running = !matches!(s.state, L::Paused | L::Error | L::Held);
     let stalled = match s.state {
         L::Downloading => s.download_rate == 0,
         L::Seeding => s.upload_rate == 0,
@@ -136,7 +121,7 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
     let ratio = ratio(s.uploaded, s.downloaded, s.total_wanted_done);
     let active_secs = s.active_time.as_secs();
     let name = r.name.clone().unwrap_or_else(|| s.name.clone());
-    let trackers = e.trackers.clone().unwrap_or_default();
+    let urls = e.tracker_urls.clone().unwrap_or_default();
     let (content_path, root_path) = match &e.content {
         Some(c) => (
             Some(join(&s.save_path, &c.content)),
@@ -146,13 +131,14 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
     };
     TorrentSummary {
         hash: hex(&s.info_hash),
-        magnet_uri: magnet_uri(&s.info_hash, &s.name, &trackers.urls),
+        magnet_uri: magnet_uri(&s.info_hash, &s.name, &urls),
         name,
         state,
         stalled,
         forced: running && !s.auto_managed,
         complete: s.complete,
         error: s.error.clone(),
+        error_kind: s.error_kind.map(error_kind),
         progress: s.wanted_progress(),
         size: s.total_wanted,
         total_size: s.total_size,
@@ -175,9 +161,9 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
         max_uploads: s.max_uploads,
         peers: s.peers,
         seeds: s.seeds,
-        swarm_seeds: trackers.seeds,
-        swarm_leechers: trackers.leechers,
-        availability: e.availability.map(|(_, a)| a),
+        swarm_seeds: s.swarm_seeders,
+        swarm_leechers: s.swarm_leechers,
+        availability: s.distributed_copies().map(f64::from),
         save_path: r.save_path.clone(),
         download_path: r.download_path.clone(),
         content_path,
@@ -186,28 +172,25 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
         tags: r.tags.iter().cloned().collect(),
         added_on: s.added_on,
         completed_on: s.completed_on,
-        last_activity: if s.download_rate > 0 || s.upload_rate > 0 {
-            Some(now())
-        } else {
-            r.last_activity
-        },
+        last_activity: super::tick::last_activity(s),
         seen_complete: if s.complete || s.seeds > 0 {
             Some(now())
         } else {
-            r.seen_complete
+            s.last_seen_complete
         },
         active_time: active_secs,
         seeding_time: s.seeding_time.as_secs(),
         queue_position: s.queue_position,
         auto_management: r.auto_management,
-        sequential: r.sequential,
+        sequential: s.sequential,
+        first_last_piece_priority: r.first_last_piece_priority,
         private: s.private,
         has_metadata: s.has_metadata,
         piece_size: s.piece_length,
         pieces_have: s.pieces_have,
         pieces_total: s.pieces_total,
-        tracker: trackers.current,
-        trackers_count: trackers.count,
+        tracker: s.working_tracker.clone(),
+        trackers_count: s.trackers_count,
         comment: r.comment.clone().or_else(|| s.comment.clone()),
         created_by: s.created_by.clone(),
         creation_date: s.creation_date,
@@ -222,14 +205,17 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
 
 /// Whether a row passes a state filter.
 pub(crate) fn filter_matches(f: TorrentFilter, t: &TorrentSummary) -> bool {
-    let running = !matches!(t.state, TorrentState::Stopped | TorrentState::Error);
+    let running = !matches!(
+        t.state,
+        TorrentState::Stopped | TorrentState::Error | TorrentState::Held
+    );
     let active = t.download_rate > 0 || t.upload_rate > 0;
     match f {
         TorrentFilter::All => true,
         TorrentFilter::Downloading => !t.complete,
         TorrentFilter::Seeding => t.complete && running,
         TorrentFilter::Completed => t.complete,
-        TorrentFilter::Stopped => t.state == TorrentState::Stopped,
+        TorrentFilter::Stopped => matches!(t.state, TorrentState::Stopped | TorrentState::Held),
         TorrentFilter::Running => running,
         TorrentFilter::Active => active,
         TorrentFilter::Inactive => !active,
@@ -271,38 +257,29 @@ fn sort_rows(rows: &mut [TorrentSummary], key: TorrentSort) {
 }
 
 impl Daemon {
-    /// Fill the caches list rows need, for the torrents that need it.
+    /// Fill the caches list rows need (tracker URLs, content path), for the
+    /// torrents whose cache was invalidated.
     async fn refresh_caches(&self, statuses: &[TorrentStatus]) {
-        let (tracker_ids, content_ids, avail_ids) = {
-            let mut st = self.state();
-            let now = Instant::now();
-            let (mut t, mut c, mut a) = (Vec::new(), Vec::new(), Vec::new());
+        let (tracker_ids, content_ids) = {
+            let st = self.state();
+            let (mut t, mut c) = (Vec::new(), Vec::new());
             for s in statuses {
-                let Some(e) = st.torrents.get_mut(&s.info_hash) else {
+                let Some(e) = st.torrents.get(&s.info_hash) else {
                     continue;
                 };
-                if e.trackers.is_none() {
+                if e.tracker_urls.is_none() {
                     t.push((s.info_hash, e.id));
                 }
                 if e.content.is_none() && s.has_metadata {
                     c.push((s.info_hash, e.id));
                 }
-                let stale = e
-                    .availability
-                    .is_none_or(|(at, _)| now.duration_since(at) > AVAILABILITY_TTL);
-                if stale {
-                    if s.peers == 0 {
-                        e.availability = Some((now, 0.0));
-                    } else if a.len() < AVAILABILITY_BUDGET {
-                        a.push((s.info_hash, e.id));
-                    }
-                }
             }
-            (t, c, a)
+            (t, c)
         };
         for (h, id) in tracker_ids {
             if let Ok(list) = self.session.trackers(id).await {
-                self.set_cache(h, |e| e.trackers = Some(summarize_trackers(&list)));
+                let urls: Vec<String> = list.into_iter().map(|t| t.url).collect();
+                self.set_cache(h, |e| e.tracker_urls = Some(urls));
             }
         }
         for (h, id) in content_ids {
@@ -310,12 +287,6 @@ impl Daemon {
                 && let Some(layout) = layout_of(&files)
             {
                 self.set_cache(h, |e| e.content = Some(layout));
-            }
-        }
-        for (h, id) in avail_ids {
-            if let Ok(pieces) = self.session.pieces(id).await {
-                let a = distributed_copies(&pieces);
-                self.set_cache(h, |e| e.availability = Some((Instant::now(), a)));
             }
         }
     }
@@ -382,15 +353,13 @@ impl Daemon {
     /// One torrent in full.
     pub(crate) async fn detail(&self, hash: InfoHash, id: TorrentId) -> ApiResult<TorrentDetail> {
         let s = self.session.status(id).await?;
-        let pieces = self.session.pieces(id).await.unwrap_or_default();
         let files = self.session.files(id).await.unwrap_or_default();
         let st = &mut *self.state();
         let e = st
             .torrents
             .get_mut(&hash)
             .ok_or_else(|| crate::error::ApiError::torrent_not_found(&hex(&hash)))?;
-        e.trackers = Some(summarize_trackers(&s.trackers));
-        e.availability = Some((Instant::now(), distributed_copies(&pieces)));
+        e.tracker_urls = Some(s.trackers.iter().map(|t| t.url.clone()).collect());
         if let Some(layout) = layout_of(&files) {
             e.content = Some(layout);
         }
