@@ -12,6 +12,7 @@ use urtorrent::{InfoHash, TorrentId, TorrentState as L, TorrentStatus};
 
 use super::{Daemon, Entry, ResumeSave};
 use crate::settings::{Settings, ShareLimitAction};
+use crate::stats::{Flush, Sample};
 use crate::store::{RatioLimit, TimeLimit};
 use crate::util::now;
 
@@ -39,6 +40,11 @@ pub(crate) async fn run(daemon: Weak<Daemon>) {
         n += 1;
         if n.is_multiple_of(TOTALS_EVERY) {
             d.save_totals().await;
+        }
+        if let Ok(stats) = &d.stats
+            && let Err(e) = stats.flush(now(), Flush::Due, d.stats_retention()).await
+        {
+            d.logs.warn(format!("saving statistics: {e}"));
         }
     }
 }
@@ -95,6 +101,12 @@ impl Daemon {
         let Ok(statuses) = self.session.statuses().await else {
             return;
         };
+        let recording = self.stats.as_ref().is_ok_and(|s| s.recording());
+        let session_stats = if recording {
+            self.session.stats().await.ok()
+        } else {
+            None
+        };
         let unix = now();
         let mut hits: Vec<(InfoHash, TorrentId, ShareLimitAction, &'static str)> = Vec::new();
         {
@@ -106,6 +118,9 @@ impl Daemon {
                 };
                 if e.baseline.is_none() {
                     e.baseline = Some((s.downloaded, s.uploaded));
+                    if e.resume_restored {
+                        e.resume_mark.get_or_insert(super::ResumeMark::of(s));
+                    }
                 }
                 if e.name.as_deref() != Some(s.name.as_str()) {
                     e.name = Some(s.name.clone());
@@ -122,6 +137,31 @@ impl Daemon {
                         .unwrap_or(settings.share_limit_action);
                     hits.push((s.info_hash, e.id, action, why));
                 }
+            }
+            if let Ok(stats) = &self.stats
+                && recording
+            {
+                // Under the registry lock: a removal cannot slip between a
+                // sample and its observation.
+                let samples: Vec<Sample<'_>> = statuses
+                    .iter()
+                    .filter_map(|s| {
+                        let e = st.torrents.get(&s.info_hash)?;
+                        Some(Sample {
+                            hash: s.info_hash,
+                            status: s,
+                            state: super::view::api_state(s, e.moving),
+                            name: e.record.name.as_deref().unwrap_or(&s.name),
+                            fresh: !e.resume_restored,
+                            ratio: super::view::ratio(
+                                s.uploaded,
+                                s.downloaded,
+                                s.total_wanted_done,
+                            ),
+                        })
+                    })
+                    .collect();
+                stats.observe(unix, &samples, session_stats.as_ref());
             }
         }
         for (hash, id, action, why) in hits {

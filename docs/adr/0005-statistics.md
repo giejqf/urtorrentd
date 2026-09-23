@@ -1,0 +1,80 @@
+# ADR 0005: Statistics in their own database
+
+Status: accepted (2026-09-23, maintainer decisions from the analytics plan).
+Amends ADR 0004: `urtorrentd.db` still holds all state; recorded history
+lives next to it in `stats.db`.
+
+## Context
+
+The maintainer wants history: what each torrent seeded over time, its
+traffic by time of day and by where peers are, and more analyses of that
+kind. The library gives snapshots (`statuses()` with all-time counters,
+`stats()`, `peers(id)`) and events; nothing in it keeps history, and it
+should not (a frontend concern, `../urtorrent/docs/config.md`).
+
+qBittorrent keeps no history either (its statistics window shows all-time
+totals only), so there is no checklist entry to follow: the design is ours.
+
+## Decision
+
+- **A second SQLite file, `<data dir>/stats.db`.** History is large, written
+  every minute and disposable. Apart from the state it cannot slow down or
+  bloat the database that must survive, backups of the state stay small,
+  and deleting `stats.db` loses history only. `synchronous = NORMAL` (WAL):
+  a power cut may lose the last flush, never corrupt the file. If it cannot
+  be opened (corrupt, newer schema), the daemon starts without statistics
+  and says so in the log; `/stats` answers `503 unavailable`.
+- **Counter differences only** (AGENTS.md rule 1). Every tick (2 s) adds the
+  differences of the library's counters to in-memory buckets: never a rate
+  times a time, never interpolated. A torrent restored with its resume data
+  starts from a baseline; one whose counters began at zero in this run
+  (added now, or restored without resume data) counts from zero. A counter
+  that goes back (a re-add) restarts its baseline. Maxima (peers, seeds,
+  connections) are sampled at those ticks.
+- **What is kept:**
+  - per torrent, minute and hour buckets of bytes down and up with the most
+    peers and seeds seen, written only when bytes moved;
+  - per torrent, one row per UTC day it ran or moved data: bytes, seconds
+    running and seeding, the all-time counters and ratio at the day's last
+    observation, the most swarm seeders and leechers the trackers reported.
+    This is the seeding history, and it covers idle seeds too;
+  - session-wide minute, hour and day buckets (bytes, peers, connections,
+    DHT nodes, torrents);
+  - a timeline per torrent: added, metadata, finished, moved, error,
+    removed, and state changes (checking states excluded: a check at every
+    start would flood it);
+  - recording periods (daemon start to stop, or recording switched on and
+    off), so a client can tell "nothing moved" from "nothing was recorded".
+    An abrupt stop leaves the period ended at its last write.
+- **Writes**: additive upserts, one transaction a minute and before every
+  query (so the API is current to the last tick). Days in which only
+  running time accumulated are written every 15 minutes: a seedbox has
+  thousands of idle seeds. All steps are written in parallel, not rolled up,
+  so each is complete within its retention.
+- **Retention** (settings, seconds, `null` = forever): minutes 48 h, hours
+  90 days, days, timeline and periods forever. Applied hourly. A removed
+  torrent keeps its history, with its name and removal time, until that
+  expires or `DELETE /stats/torrents/{hash}` purges it.
+- **API** under `/stats` (typed like the rest, ADR 0003): series take
+  `from`, `to` (bucket starts, inclusive) and `step`; without `step` the
+  finest step kept for the whole range is used, capped at 10 000 buckets.
+  Charts, and heatmaps binned in the viewer's time zone, are client work:
+  the daemon has no time-zone database and no UI (non-goal).
+- **Geolocation (next, 0.6.0)**: a `.mmdb` file the user provides (GeoLite2
+  or DB-IP Lite), no downloads by the daemon; country and ASN, never city;
+  peer addresses are aggregated when observed and never written to disk.
+  Per-peer bytes come from `peers(id)` deltas and the final counters in
+  `Event::PeerDisconnected`; breakdowns report what they cannot attribute
+  (web seeds, disconnects lost to `Lagged`) as `unattributed`, so they add
+  up to the torrent's traffic.
+
+## Consequences
+
+- One more file in the data directory, and at most one small write
+  transaction a minute (plus the idle-day batch every 15 minutes).
+- After `kill -9`, statistics lose at most the last minute (15 for idle
+  days' time); the torrent counters roll back to their last resume save (at
+  most a minute old since 0.5.0), so a day's `uploaded` can exceed what the
+  all-time counter gained by that much. Both are observations; neither is
+  edited to match the other.
+- A tick that sees no torrent change writes session buckets only.

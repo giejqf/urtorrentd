@@ -25,8 +25,9 @@ use urtorrent::{AddTorrent, InfoHash, Session, TorrentId};
 use crate::auth::{Auth, Credentials};
 use crate::error::{ApiError, ApiResult};
 use crate::log::Logs;
-use crate::model::{BulkFailure, BulkResult, Hashes};
+use crate::model::{BulkFailure, BulkResult, Hashes, TimelineKind};
 use crate::settings::{self, Settings, SettingsPatch};
+use crate::stats::Stats;
 use crate::store::{self, Categories, Store, Tags, TorrentRecord, Totals};
 use crate::sync::SyncState;
 use crate::util::{self, blocking, hex, now, parse_hash};
@@ -95,6 +96,11 @@ pub(crate) struct Entry {
     pub content: Option<ContentLayoutInfo>,
     /// When the resume data was last saved.
     pub resume_saved: Option<Instant>,
+    /// What the stored resume data holds of the counters: as of the last
+    /// save, or as first seen in this run when restored from that data.
+    pub resume_mark: Option<ResumeMark>,
+    /// Restored with stored resume data.
+    pub resume_restored: bool,
 }
 
 impl Entry {
@@ -109,6 +115,8 @@ impl Entry {
             tracker_urls: None,
             content: None,
             resume_saved: None,
+            resume_mark: None,
+            resume_restored: false,
         }
     }
 }
@@ -147,6 +155,9 @@ pub struct Daemon {
     pub(crate) temporary_password: Option<String>,
     pub(crate) http: reqwest::Client,
     pub(crate) sync: Mutex<SyncState>,
+    /// The statistics recorder, or why `stats.db` could not be opened (the
+    /// daemon runs without statistics then).
+    pub(crate) stats: Result<Stats, String>,
     shutdown_requested: watch::Sender<bool>,
     closed: watch::Sender<bool>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
@@ -213,6 +224,14 @@ impl Daemon {
         };
         let auth = Auth::new(creds);
         let temporary_password = auth.ensure_password()?;
+        // Statistics are disposable: a database that cannot be opened turns
+        // them off for this run, not the daemon.
+        let stats = {
+            let (dir, on) = (cfg.data_dir.clone(), settings.stats_enabled);
+            blocking(move || Stats::open(&dir, on, now()))
+                .await
+                .map_err(|e| e.to_string())
+        };
 
         let session = settings.builder(dht_state).build().await?;
         settings::apply_bans(&session, &settings).await?;
@@ -245,6 +264,7 @@ impl Daemon {
             temporary_password,
             http,
             sync: Mutex::new(SyncState::default()),
+            stats,
             shutdown_requested: watch::channel(false).0,
             closed: watch::channel(false).0,
             tasks: Mutex::new(Vec::new()),
@@ -256,6 +276,12 @@ impl Daemon {
             daemon.session.listen_port(),
             if first_start { ", first start" } else { "" }
         ));
+        if let Err(e) = &daemon.stats {
+            daemon.logs.warn(format!(
+                "statistics are off for this run: {e} (delete {} to start over)",
+                crate::stats::db::STATS_DB_FILE
+            ));
+        }
         if imported > 0 {
             daemon.logs.info(format!(
                 "imported {imported} torrents from a 0.1 data directory (the old files are in imported-0.1/)"
@@ -317,12 +343,16 @@ impl Daemon {
                 }
             }
             .paused(record.stopped);
+            let has_resume = t.resume.is_some();
             if let Some(r) = t.resume {
                 add = add.resume_data(r);
             }
             match self.session.add_torrent(add).await {
                 Ok(id) => {
                     self.insert(hash, id, record);
+                    if has_resume && let Some(e) = self.state().torrents.get_mut(&hash) {
+                        e.resume_restored = true;
+                    }
                     restored += 1;
                 }
                 Err(e) => self.logs.warn(format!(
@@ -387,6 +417,21 @@ impl Daemon {
             blocking(move || s.save(store::SETTINGS, &v)).await?;
         }
         let save_path_changed = old.save_path != new.save_path;
+        if old.stats_enabled != new.stats_enabled
+            && let Ok(stats) = &self.stats
+        {
+            let retention = crate::stats::db::Retention {
+                minute: new.stats_minute_retention,
+                hour: new.stats_hour_retention,
+                day: new.stats_day_retention,
+            };
+            if let Err(e) = stats
+                .set_recording(new.stats_enabled, now(), retention)
+                .await
+            {
+                self.logs.warn(format!("statistics: {e}"));
+            }
+        }
         if old.incomplete_file_suffix != new.incomplete_file_suffix {
             self.spawn_suffix_change(
                 old.incomplete_file_suffix.clone(),
@@ -414,6 +459,13 @@ impl Daemon {
             self.relocate_managed(None).await;
         }
         Ok(new)
+    }
+
+    /// Record a timeline event (while statistics are recorded).
+    pub(crate) fn stats_event(&self, hash: InfoHash, kind: TimelineKind, detail: Option<String>) {
+        if let Ok(stats) = &self.stats {
+            stats.event(now(), hash, kind, detail);
+        }
     }
 
     /// Ask the process to shut down (the `/app/shutdown` endpoint, and the
@@ -452,11 +504,16 @@ impl Daemon {
                 t.abort();
             }
         }
-        self.save_resume(ResumeSave::All).await;
+        self.save_resume(ResumeSave::Changed).await;
         if let Err(e) = self.flush_records().await {
             self.logs.warn(format!("saving torrent records: {e}"));
         }
         self.save_totals().await;
+        if let Ok(stats) = &self.stats
+            && let Err(e) = stats.stop(now(), self.stats_retention()).await
+        {
+            self.logs.warn(format!("saving statistics: {e}"));
+        }
         if let Ok(Some(dht)) = self.session.dht_state().await {
             let s = self.store.clone();
             if let Err(e) = blocking(move || s.save_dht(&dht)).await {
@@ -535,7 +592,7 @@ impl Daemon {
             return;
         };
         let now = Instant::now();
-        let due: Vec<(InfoHash, TorrentId)> = {
+        let due: Vec<(InfoHash, TorrentId, ResumeMark)> = {
             let st = self.state();
             statuses
                 .iter()
@@ -543,15 +600,15 @@ impl Daemon {
                 .filter_map(|s| {
                     let e = st.torrents.get(&s.info_hash)?;
                     let pick = match which {
-                        ResumeSave::All => true,
-                        ResumeSave::Due => {
-                            s.needs_resume_save
-                                && e.resume_saved
-                                    .is_none_or(|t| now.duration_since(t) >= RESUME_SAVE_EVERY)
-                        }
                         ResumeSave::One(h) => h == s.info_hash,
+                        _ => which.picks(
+                            s.needs_resume_save,
+                            ResumeMark::of(s),
+                            e.resume_mark,
+                            e.resume_saved.map(|t| now.duration_since(t)),
+                        ),
                     };
-                    pick.then_some((s.info_hash, e.id))
+                    pick.then_some((s.info_hash, e.id, ResumeMark::of(s)))
                 })
                 .collect()
         };
@@ -559,12 +616,15 @@ impl Daemon {
             return;
         }
         let mut items = Vec::with_capacity(due.len());
-        for (h, id) in due {
+        for (h, id, mark) in due {
             match self.session.resume_data(id).await {
                 Ok(bytes) => {
                     items.push((hex(&h), bytes));
                     if let Some(e) = self.state().torrents.get_mut(&h) {
                         e.resume_saved = Some(now);
+                        // The data may hold newer counters than the status
+                        // read before it; that only costs one more save.
+                        e.resume_mark = Some(mark);
                     }
                 }
                 Err(e) => tracing::debug!("resume data of {}: {e}", hex(&h)),
@@ -662,12 +722,90 @@ impl Daemon {
 /// Which torrents' resume data to save.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResumeSave {
-    /// Changed ones not saved within [`RESUME_SAVE_EVERY`].
+    /// Changed ones not saved within [`RESUME_SAVE_EVERY`]: marked by the
+    /// library, or with transfer counters that moved (the library does not
+    /// mark those, so a seed's upload would otherwise wait for a shutdown).
     Due,
-    /// Every one with metadata (shutdown: queue moves change the positions
-    /// of torrents they do not mark as changed; the engine in file mode saves
-    /// them all when it stops too).
-    All,
+    /// Every one that changed at all, activity times included (shutdown).
+    Changed,
     /// This one, changed or not.
     One(InfoHash),
+}
+
+/// The counters resume data carries that do not set `needs_resume_save`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ResumeMark {
+    downloaded: u64,
+    uploaded: u64,
+    active_time: Duration,
+}
+
+impl ResumeMark {
+    pub(crate) fn of(s: &urtorrent::TorrentStatus) -> ResumeMark {
+        ResumeMark {
+            downloaded: s.downloaded,
+            uploaded: s.uploaded,
+            active_time: s.active_time,
+        }
+    }
+}
+
+impl ResumeSave {
+    /// Whether a torrent is saved: `marked` is the library's flag, `stored`
+    /// what the stored data holds (unknown = changed), `since` the time
+    /// since the last save in this run.
+    fn picks(
+        self,
+        marked: bool,
+        now: ResumeMark,
+        stored: Option<ResumeMark>,
+        since: Option<Duration>,
+    ) -> bool {
+        match self {
+            ResumeSave::Due => {
+                let moved = stored
+                    .is_none_or(|m| m.downloaded != now.downloaded || m.uploaded != now.uploaded);
+                (marked || moved) && since.is_none_or(|d| d >= RESUME_SAVE_EVERY)
+            }
+            ResumeSave::Changed => marked || stored != Some(now),
+            ResumeSave::One(_) => true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::{RESUME_SAVE_EVERY, ResumeMark, ResumeSave};
+
+    fn mark(down: u64, up: u64, active: u64) -> ResumeMark {
+        ResumeMark {
+            downloaded: down,
+            uploaded: up,
+            active_time: Duration::from_secs(active),
+        }
+    }
+
+    #[test]
+    fn resume_saves_follow_changes() {
+        let stored = Some(mark(10, 20, 100));
+        let long = Some(RESUME_SAVE_EVERY);
+        let short = Some(Duration::from_secs(5));
+        let due = ResumeSave::Due;
+        // Marked by the library, or a seed's upload moved: due once a minute.
+        assert!(due.picks(true, mark(10, 20, 100), stored, long));
+        assert!(due.picks(false, mark(10, 25, 160), stored, long));
+        assert!(!due.picks(false, mark(10, 25, 160), stored, short));
+        // Only the activity time moved: not worth a save of its own.
+        assert!(!due.picks(false, mark(10, 20, 160), stored, long));
+        // Never saved, and not restored from stored data.
+        assert!(due.picks(false, mark(0, 0, 0), None, None));
+        // Shutdown: anything that changed, activity time included.
+        let changed = ResumeSave::Changed;
+        assert!(changed.picks(false, mark(10, 20, 160), stored, short));
+        assert!(changed.picks(true, mark(10, 20, 100), stored, short));
+        assert!(!changed.picks(false, mark(10, 20, 100), stored, short));
+        assert!(changed.picks(false, mark(10, 20, 100), None, None));
+    }
 }

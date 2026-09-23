@@ -15,6 +15,7 @@ pub mod error;
 pub mod log;
 pub mod model;
 pub mod settings;
+pub(crate) mod stats;
 pub mod store;
 pub mod sync;
 pub mod util;

@@ -66,6 +66,41 @@ resumes where it left off (or gets everything, if that revision is too old).
 Browsers cannot set headers on `EventSource`: use the login cookie; other
 clients can send the API key. Polling `GET /sync` stays for scripts.
 
+## Statistics ([ADR 0005](adr/0005-statistics.md))
+
+The daemon records history in `<data dir>/stats.db` (settings:
+`stats_enabled`, retention per step; [settings.md](settings.md)). Series are
+bytes and seconds per bucket, computed from differences of the library's
+counters, never from rates. Each bucket is named by its start `t` (unix
+seconds, UTC-aligned); buckets in which nothing moved are left out, and
+`periods` says when anything was recorded at all (a gap outside every
+period means the daemon was down or recording was off).
+
+```sh
+# A torrent's last day, per minute (the default step is the finest one kept)
+GET /api/v1/stats/torrents/<hash>/traffic
+{"hash": "...", "name": "...", "removed": null, "from": 1790112000, "to": 1790198400, "step": "minute",
+ "points": [{"t": 1790197140, "downloaded": 0, "uploaded": 4194304, "peers_max": 3, "seeds_max": 0}, ...],
+ "periods": [{"started": 1790100000, "ended": null, "clean": true}]}
+
+# Its seeding history: a row per UTC day it ran or moved data
+GET /api/v1/stats/torrents/<hash>/days?from=1787000000
+{"days": [{"t": 1790121600, "uploaded": 734003200, "seeding_time": 86400, "uploaded_total": 9663676416,
+           "ratio": 4.5, "swarm_seeds_max": 41, "swarm_leechers_max": 7, ...}], ...}
+
+# What seeded most this week, and what happened to it
+GET /api/v1/stats/top?from=1789593600&by=uploaded&limit=10
+GET /api/v1/stats/timeline?hash=<hash>
+```
+
+A time-of-day pattern (an hour × weekday heatmap) is the hourly series
+binned in the viewer's time zone; `sdk/typescript/check.ts` shows it.
+Removed torrents keep their history (with `removed` set) until the retention
+expires or `DELETE /stats/torrents/{hash}` purges it. Peer maxima are
+sampled every 2 s, so a short connection may not show. If `stats.db` cannot
+be opened, the daemon runs without statistics and `/stats` answers
+`503 unavailable`.
+
 ## Endpoints
 
 | Method | Path | What |
@@ -104,6 +139,13 @@ clients can send the API key. Polling `GET /sync` stays for scripts.
 | GET | `/sync` | Incremental updates: everything, then changes since `rev` |
 | GET | `/events` | The same updates pushed as server-sent events |
 | GET | `/log`, `/log/peers` | Main log; peer (ban) log |
+| GET | `/stats` | What the statistics database holds: size, torrents, oldest bucket per step |
+| GET | `/stats/transfer` | Session traffic over time, with the recording periods |
+| GET | `/stats/torrents/{hash}/traffic` | A torrent's traffic over time (minute, hour or day buckets) |
+| GET | `/stats/torrents/{hash}/days` | A torrent's days: bytes, running and seeding time, all-time counters, ratio, swarm size |
+| DELETE | `/stats/torrents/{hash}` | Delete a torrent's history |
+| GET | `/stats/top` | Torrents ranked by bytes up or down over a range (removed ones too) |
+| GET | `/stats/timeline` | What happened to torrents (added, finished, moved, errors, state changes, removed) |
 
 ## Adding torrents: qBittorrent's `torrents/add` parameters
 

@@ -1214,3 +1214,312 @@ pub struct SyncResponse {
     /// Session-wide transfer state (always sent).
     pub transfer: TransferInfo,
 }
+
+// ---- Statistics (`/stats`, ADR 0005) ----
+
+/// The bucket size of a statistics series. Each bucket is named by its start
+/// (`t`, unix seconds, aligned to UTC minutes, hours or days).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StatsStep {
+    /// 60 seconds.
+    Minute,
+    /// 3600 seconds.
+    Hour,
+    /// 86400 seconds (UTC days).
+    Day,
+}
+
+/// The time range of a statistics series.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct StatsRangeQuery {
+    /// Buckets starting at or after this time, unix seconds; default: one
+    /// day before `to`.
+    pub from: Option<u64>,
+    /// Buckets starting at or before this time, unix seconds; default: now.
+    pub to: Option<u64>,
+    /// Bucket size; default: the finest one kept for the whole range, with
+    /// at most 10 000 buckets.
+    pub step: Option<StatsStep>,
+}
+
+/// A period in which statistics were recorded: the daemon ran with
+/// `stats_enabled` on. Outside every period nothing is known (the daemon was
+/// down or recording was off); inside one, a missing bucket means nothing
+/// moved.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct StatsPeriod {
+    /// When recording started, unix seconds.
+    pub started: u64,
+    /// When it ended, unix seconds; `null` = still recording.
+    #[schema(required = true)]
+    pub ended: Option<u64>,
+    /// Ended by a shutdown or by turning recording off (`true` while still
+    /// recording). `false`: the daemon stopped abruptly and `ended` is its
+    /// last write (up to a minute early).
+    pub clean: bool,
+}
+
+/// Session-wide traffic in one bucket. Bytes are payload, as in
+/// `TransferInfo`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct TransferPoint {
+    /// Bucket start, unix seconds.
+    pub t: u64,
+    /// Bytes downloaded in the bucket.
+    pub downloaded: u64,
+    /// Bytes uploaded in the bucket.
+    pub uploaded: u64,
+    /// Most peers connected at one observation (every 2 s).
+    pub peers_max: u32,
+    /// Most connections (peers plus dials in progress) at one observation.
+    pub connections_max: u32,
+    /// Most DHT nodes known at one observation.
+    pub dht_nodes_max: u32,
+    /// Most torrents in the session at one observation.
+    pub torrents_max: u32,
+}
+
+/// Session-wide traffic over time.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TransferStats {
+    /// The range, unix seconds.
+    pub from: u64,
+    /// The range, unix seconds.
+    pub to: u64,
+    /// The bucket size.
+    pub step: StatsStep,
+    /// Buckets in which the session was recorded, oldest first.
+    pub points: Vec<TransferPoint>,
+    /// Recording periods overlapping the range, oldest first.
+    pub periods: Vec<StatsPeriod>,
+}
+
+/// One torrent's traffic in one bucket. Buckets in which nothing moved are
+/// left out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct TrafficPoint {
+    /// Bucket start, unix seconds.
+    pub t: u64,
+    /// Payload bytes downloaded in the bucket.
+    pub downloaded: u64,
+    /// Payload bytes uploaded in the bucket.
+    pub uploaded: u64,
+    /// Most peers connected at one observation (every 2 s).
+    pub peers_max: u32,
+    /// Most seeds connected at one observation (every 2 s).
+    pub seeds_max: u32,
+}
+
+/// One torrent's traffic over time.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TorrentTraffic {
+    /// Info-hash.
+    pub hash: String,
+    /// Name as last recorded.
+    #[schema(required = true)]
+    pub name: Option<String>,
+    /// When the torrent was removed, unix seconds; `null` = still in the
+    /// session (or removed while recording was off).
+    #[schema(required = true)]
+    pub removed: Option<u64>,
+    /// The range, unix seconds.
+    pub from: u64,
+    /// The range, unix seconds.
+    pub to: u64,
+    /// The bucket size.
+    pub step: StatsStep,
+    /// Buckets in which data moved, oldest first.
+    pub points: Vec<TrafficPoint>,
+    /// Recording periods overlapping the range, oldest first.
+    pub periods: Vec<StatsPeriod>,
+}
+
+/// One torrent's day (UTC): its seeding history. A day is recorded when the
+/// torrent was running or moved data.
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+pub struct TorrentDay {
+    /// Day start, unix seconds (00:00 UTC).
+    pub t: u64,
+    /// Payload bytes downloaded that day.
+    pub downloaded: u64,
+    /// Payload bytes uploaded that day.
+    pub uploaded: u64,
+    /// Most peers connected at one observation (every 2 s).
+    pub peers_max: u32,
+    /// Most seeds connected at one observation (every 2 s).
+    pub seeds_max: u32,
+    /// Seconds the torrent was running that day.
+    pub active_time: u64,
+    /// Seconds it was seeding that day.
+    pub seeding_time: u64,
+    /// All-time bytes downloaded at the day's last observation.
+    pub downloaded_total: u64,
+    /// All-time bytes uploaded at the day's last observation.
+    pub uploaded_total: u64,
+    /// All-time seconds running at the day's last observation.
+    pub active_time_total: u64,
+    /// All-time seconds seeding at the day's last observation.
+    pub seeding_time_total: u64,
+    /// Share ratio at the day's last observation (as `ratio` in the torrent
+    /// list); `null` = nothing to divide by.
+    #[schema(required = true)]
+    pub ratio: Option<f64>,
+    /// Most seeders the trackers reported for the swarm; `null` = no report.
+    #[schema(required = true)]
+    pub swarm_seeds_max: Option<u32>,
+    /// Most leechers the trackers reported for the swarm; `null` = no report.
+    #[schema(required = true)]
+    pub swarm_leechers_max: Option<u32>,
+}
+
+/// One torrent's days.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TorrentDays {
+    /// Info-hash.
+    pub hash: String,
+    /// Name as last recorded.
+    #[schema(required = true)]
+    pub name: Option<String>,
+    /// When the torrent was removed, unix seconds; `null` = still in the
+    /// session (or removed while recording was off).
+    #[schema(required = true)]
+    pub removed: Option<u64>,
+    /// The range, unix seconds.
+    pub from: u64,
+    /// The range, unix seconds.
+    pub to: u64,
+    /// Recorded days, oldest first.
+    pub days: Vec<TorrentDay>,
+}
+
+/// What torrents are ranked by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TopMetric {
+    /// Bytes uploaded in the range.
+    Uploaded,
+    /// Bytes downloaded in the range.
+    Downloaded,
+}
+
+/// Query of the torrent ranking.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct TopQuery {
+    /// Range start, unix seconds; default: one day before `to`.
+    pub from: Option<u64>,
+    /// Range end, unix seconds; default: now.
+    pub to: Option<u64>,
+    /// Ranked by; default `uploaded`.
+    pub by: Option<TopMetric>,
+    /// At most this many torrents (1 to 1000); default 10.
+    pub limit: Option<u32>,
+}
+
+/// A torrent's traffic over a range.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct TopTorrent {
+    /// Info-hash.
+    pub hash: String,
+    /// Name as last recorded.
+    #[schema(required = true)]
+    pub name: Option<String>,
+    /// When the torrent was removed, unix seconds; `null` = still in the
+    /// session (or removed while recording was off).
+    #[schema(required = true)]
+    pub removed: Option<u64>,
+    /// Payload bytes downloaded in the range.
+    pub downloaded: u64,
+    /// Payload bytes uploaded in the range.
+    pub uploaded: u64,
+}
+
+/// Torrents ranked by their traffic over a range (removed ones included).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TopTorrents {
+    /// The range, unix seconds.
+    pub from: u64,
+    /// The range, unix seconds.
+    pub to: u64,
+    /// The buckets summed (the finest kept for the whole range); the range
+    /// is widened to whole buckets.
+    pub step: StatsStep,
+    /// Highest first; torrents that moved nothing are left out.
+    pub torrents: Vec<TopTorrent>,
+}
+
+/// What happened to a torrent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineKind {
+    /// Added.
+    Added,
+    /// A magnet link's metadata arrived.
+    Metadata,
+    /// Every wanted piece is downloaded.
+    Finished,
+    /// The content moved (`detail`: the new directory).
+    Moved,
+    /// It stopped with an error (`detail`: the message).
+    Error,
+    /// Removed.
+    Removed,
+    /// Its state changed to `state` (checking states are not recorded).
+    State,
+}
+
+/// Query of the timeline.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct TimelineQuery {
+    /// One torrent (info-hash); default: all.
+    pub hash: Option<String>,
+    /// Events at or after this time, unix seconds; default: all.
+    pub from: Option<u64>,
+    /// Events at or before this time, unix seconds; default: now.
+    pub to: Option<u64>,
+    /// At most this many events, the newest (1 to 10 000); default 100.
+    pub limit: Option<u32>,
+}
+
+/// An event of a torrent's life.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct TimelineEvent {
+    /// When, unix seconds.
+    pub t: u64,
+    /// Info-hash.
+    pub hash: String,
+    /// The torrent's name as last recorded.
+    #[schema(required = true)]
+    pub name: Option<String>,
+    /// What happened.
+    pub kind: TimelineKind,
+    /// The new state (`kind` = `state`).
+    #[schema(required = true)]
+    pub state: Option<TorrentState>,
+    /// The new directory (`moved`) or the error (`error`).
+    #[schema(required = true)]
+    pub detail: Option<String>,
+}
+
+/// What the statistics database holds.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct StatsInfo {
+    /// Recording is on (`stats_enabled`).
+    pub enabled: bool,
+    /// Size of the database file, bytes.
+    pub size: u64,
+    /// Torrents with history, removed ones included.
+    pub torrents: u64,
+    /// Oldest per-minute bucket kept, unix seconds; `null` = none.
+    #[schema(required = true)]
+    pub oldest_minute: Option<u64>,
+    /// Oldest per-hour bucket kept, unix seconds; `null` = none.
+    #[schema(required = true)]
+    pub oldest_hour: Option<u64>,
+    /// Oldest day kept, unix seconds; `null` = none.
+    #[schema(required = true)]
+    pub oldest_day: Option<u64>,
+}

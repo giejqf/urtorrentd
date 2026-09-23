@@ -48,6 +48,26 @@ export async function demo(): Promise<void> {
     console.log(Object.keys(sync.data.torrents), sync.data.torrents_removed, sync.data.transfer.download_rate);
   }
 
+  // Statistics: a torrent's hourly traffic, for a heatmap binned in the
+  // viewer's time zone.
+  const hourly = await api.GET("/api/v1/stats/torrents/{hash}/traffic", {
+    params: { path: { hash: "0123456789abcdef0123456789abcdef01234567" }, query: { step: "hour" } },
+  });
+  const heat = new Map<string, number>();
+  for (const p of hourly.data?.points ?? []) {
+    const at = new Date(p.t * 1000);
+    const cell = `${at.getDay()}:${at.getHours()}`;
+    heat.set(cell, (heat.get(cell) ?? 0) + p.uploaded);
+  }
+  const days = await api.GET("/api/v1/stats/torrents/{hash}/days", {
+    params: { path: { hash: "0123456789abcdef0123456789abcdef01234567" } },
+  });
+  const ratios: (number | null)[] = days.data?.days.map((d: Schemas["TorrentDay"]) => d.ratio) ?? [];
+  const top = await api.GET("/api/v1/stats/top", { params: { query: { by: "uploaded", limit: 5 } } });
+  console.log(heat, ratios, top.data?.torrents.map((t) => [t.name, t.uploaded, t.removed]));
+
+  // @ts-expect-error: not a step.
+  await api.GET("/api/v1/stats/transfer", { params: { query: { step: "week" } } });
   // @ts-expect-error: `hashes` is a list of info-hashes or "all".
   await api.POST("/api/v1/torrents/stop", { body: { hashes: 42 } });
   // @ts-expect-error: not a filter.

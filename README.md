@@ -16,6 +16,8 @@ cargo run --release -p urtorrentd -- --data-dir ~/.local/share/urtorrentd --api-
 
 All state is in one SQLite database, `<data dir>/urtorrentd.db`; back it up
 with `sqlite3 urtorrentd.db ".backup copy.db"`, even while the daemon runs.
+Recorded history (statistics) is in `<data dir>/stats.db`: disposable,
+deleting it loses the history only.
 
 On the first start without a password the daemon prints a temporary one for
 the user `admin`; set a permanent login with
@@ -32,6 +34,8 @@ profile that allows it).
 - Settings: [docs/settings.md](docs/settings.md).
 - Live updates: `GET /api/v1/events` pushes what changed as server-sent
   events (`EventSource` in a browser); `GET /api/v1/sync` is the polled form.
+- History: `/api/v1/stats/...` has traffic per torrent and for the session
+  over time, each torrent's seeding days, rankings and a timeline.
 
 ```sh
 curl -s -c jar -H 'content-type: application/json' \

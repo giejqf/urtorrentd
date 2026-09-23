@@ -170,8 +170,9 @@ crates/urtorrentd/src/
   model.rs              every request / response type (ToSchema)
   settings.rs           Settings / SettingsPatch from one field list, live apply
   store.rs              the SQLite database: schema, migrations, 0.1.0 import (ADR 0004)
+  stats/                history (ADR 0005): the sampler (mod.rs), stats.db (db.rs), /stats (query.rs)
   auth.rs log.rs sync.rs error.rs util.rs
-crates/urtorrentd/tests/  API tests on real engines, restart / kill -9, schema, coverage
+crates/urtorrentd/tests/  API tests on real engines, restart / kill -9, statistics, schema, coverage
 sdk/typescript/         generates TypeScript types from openapi.json and type-checks a client
 xtask/                  check, openapi, sdk
 docs/api.md             our API: every endpoint, plus the checklist mapping (section 3)
@@ -182,7 +183,7 @@ docs/adr/               design decisions
 ```
 
 Depend on the facade only: `urtorrent = { path = "../urtorrent/crates/urtorrent", version =
-"0.13.1" }` during development (the version is the oldest library release the daemon is
+"0.13.2" }` during development (the version is the oldest library release the daemon is
 tested against; raise it when the daemon starts using something newer). CI checks both repos out side by side. Switch to a pinned git revision or a
 crates.io version once one is published. The library is `0.x`, so a minor bump is
 breaking: pin the minor. The facade re-exports what the daemon needs, including
@@ -329,16 +330,18 @@ includes removals (torrents, categories, tags) and the session's transfer state.
 
 ### 4.8 Persistence and restart ([ADR 0004](docs/adr/0004-sqlite.md))
 
-Everything persistent is in one SQLite database, `<data dir>/urtorrentd.db` (WAL,
+Everything persistent is in one SQLite database (recorded history is apart, in
+`stats.db`, 4.11), `<data dir>/urtorrentd.db` (WAL,
 `synchronous = FULL`, schema version in `user_version`, `store.rs`):
 
 1. **The metainfo** (`torrents.metainfo`), stored when a `.torrent` is added or when a
    magnet's metadata arrives (`torrent_file` is `None` before); until then the record
    holds the magnet link.
 2. **Resume data** (`torrents.resume`), the library's bytes, never parsed here. The
-   daemon fetches `resume_data(id)` when `needs_resume_save` is set, at most once a
-   minute per torrent, at once after a check and when a download finishes, and for every
-   torrent at shutdown; it passes the bytes back with `AddTorrent::resume_data`. The
+   daemon fetches `resume_data(id)` when `needs_resume_save` is set or the transfer
+   counters moved (the library does not mark those), at most once a minute per torrent,
+   at once after a check and when a download finishes, and at shutdown for every torrent
+   that changed since its last save (activity times included); it passes the bytes back with `AddTorrent::resume_data`. The
    library syncs the content before returning them, so they never claim data that is
    not on disk. The resume data holds the have-set, counters, activity times, queue
    position, trackers, priorities and per-torrent settings.
@@ -401,6 +404,29 @@ run-on-completion later. Treat it as a security boundary.
   by the library. The daemon validates its own (save and download paths, export
   directories): no NULs, and normalise before use.
 
+### 4.11 Statistics ([ADR 0005](docs/adr/0005-statistics.md))
+
+History the library does not keep, recorded by the daemon in `<data dir>/stats.db` (a
+second SQLite file: large, written every minute, disposable; `synchronous = NORMAL`).
+
+- **Counter differences only** (rule 1): the tick hands its `statuses()` and `stats()`
+  to `Stats::observe` (under the registry lock, so a removal cannot slip in between),
+  which adds the differences of the library's counters to in-memory buckets. Never a
+  rate times a time, never interpolated. Restored torrents start from a baseline; torrents
+  whose counters began at zero in this run count from zero. Maxima are sampled per tick.
+- **Kept**: per-torrent minute and hour traffic (only when bytes moved), a row per torrent
+  per UTC day it ran or moved data (the seeding history: bytes, running and seeding time,
+  all-time counters, ratio, swarm size), session buckets, a timeline (added, metadata,
+  finished, moved, error, removed, non-checking state changes) and recording periods.
+- **Writes**: additive upserts, once a minute and before every query; idle days every 15
+  minutes. Retention (settings) is applied hourly. Removed torrents keep their history.
+- A `stats.db` that cannot be opened turns statistics off for the run (logged, `/stats`
+  answers 503); it never stops the daemon.
+- Next (maintainer decisions, 2026-09-23): geolocation from a user-supplied `.mmdb`
+  (country and ASN, never city, peer addresses never stored), then breakdowns by client,
+  discovery source, transport, IP version, tracker, category and tag. Breakdowns report
+  what they cannot attribute as `unattributed`, so they add up.
+
 ## 5. Testing
 
 1. **Unit.** Unit and state-flag derivation, the sync diff engine, request parsing, auth
@@ -421,7 +447,11 @@ run-on-completion later. Treat it as a security boundary.
    netns lab, opentracker and the qBittorrent oracle as a peer). Drive `urtorrentd` over
    its API to leech from and seed to the oracle, and to stop, start, recheck, move and
    delete.
-6. **Restart and crash** (`tests/restart.rs`). Stop gracefully and restart in process:
+6. **Statistics** (`tests/stats.rs`). A real transfer's minute, hour and day series add
+   up to the library's counters; history outlives removal and restarts (restored
+   counters are baselines, not new traffic); recording periods and switching recording
+   off; a broken `stats.db` leaves the daemon running.
+7. **Restart and crash** (`tests/restart.rs`). Stop gracefully and restart in process:
    everything is back, including categories, tags, queue order, limits, magnets without
    metadata, and stopped torrents; removed torrents stay removed. The real binary is
    killed with `kill -9` and comes back with its torrents, then stops cleanly on SIGTERM
@@ -441,7 +471,8 @@ piece priorities, address ranges, list-view fields). The "planned" rows of `docs
 and `docs/settings.md` are the remaining work; `docs/gaps.md` has what is still open
 upstream. **0.3.0** added the incomplete-file suffix and verified staging downloads that
 move to their category's directory on completion. **0.4.0** pushes the sync diffs as
-server-sent events (4.6).
+server-sent events (4.6). **0.5.0** records statistics (4.11) and aligns with urtorrent
+0.13.2 (resume data saved when it changed, counters included).
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -458,6 +489,10 @@ server-sent events (4.6).
 - **D4 Frontend policies.** Categories, tags, automatic torrent management, share limits,
   alternative limits, download path, stop conditions, content layout, auto-added trackers
   (never on private torrents), settings coverage. **Released as 0.1.0.**
+- **Analytics** (4.11, the plan of 2026-09-23): 0.5.0 history and seeding days (done);
+  0.6.0 geolocation (country and ASN on live peers and in history); 0.7.0 breakdowns,
+  tracker reliability, idle-seed report, opt-in scrape for completed-download counts.
+  Later: data-usage caps (needs wire-level counters upstream), Prometheus `/metrics`.
 - **Later, each on request:** the alternative-limits scheduler, RSS, watch folders,
   run-on-completion, notifications, HTTPS for the API, the client key-value store,
   metadata preview (`fetchMetadata`). Anything that needs a library change lands in
@@ -521,11 +556,16 @@ server-sent events (4.6).
   generator with end-to-end type safety (ADR 0003).
 - **SQLite for all persistent state** (2026-09-23, ADR 0004), with resume data held by
   the daemon in the database.
+- **Analytics** (2026-09-23, ADR 0005): history in a separate `stats.db`; retention
+  minutes 48 h, hours 90 days, days forever; removed torrents keep their history;
+  geolocation from a user-supplied `.mmdb` file, country and ASN only, peer addresses
+  never stored.
 
 ### Settled in ADRs (defaults taken while building; revisit with the maintainer if needed)
 
 - **API style**: resource-oriented JSON under `/api/v1` (ADR 0001).
-- **On-disk layout**: one data directory holding `urtorrentd.db` (ADR 0004).
+- **On-disk layout**: one data directory holding `urtorrentd.db` (ADR 0004) and
+  `stats.db` (ADR 0005).
 
 ### Still open (defaults assumed; confirm with the maintainer in the PR that depends on it)
 

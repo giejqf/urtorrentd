@@ -1,0 +1,438 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 urtorrentd contributors
+
+//! Statistics (ADR 0005): traffic per torrent and for the session over time,
+//! each torrent's days (its seeding history), and a timeline of what
+//! happened to it.
+//!
+//! The tick hands every snapshot to [`Stats::observe`], which adds the
+//! differences of the library's counters to in-memory buckets (never rate
+//! times time, never interpolated: AGENTS.md rule 1). A flush writes them to
+//! `stats.db` once a minute, and before every query, so the API sees
+//! everything up to the last tick. Minute and hour buckets are written only
+//! when bytes moved; a torrent's day is written when it ran or moved data.
+
+pub(crate) mod db;
+mod query;
+
+use std::collections::HashMap;
+use std::io;
+use std::path::Path;
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use urtorrent::{InfoHash, SessionStats, TorrentStatus};
+
+use crate::model::{StatsStep, TimelineKind, TorrentState};
+use crate::util::{blocking, hex};
+use db::{
+    Batch, Day, EventRow, Meta, Retention, SessionTraffic, StatsDb, Totals, Traffic, max_opt,
+};
+
+/// Flushes happen at most this often from the tick, seconds.
+const FLUSH_EVERY: u64 = 60;
+/// Days in which only running time accumulated are written this often
+/// (a busy seedbox has thousands of idle seeds), seconds.
+const IDLE_DAYS_EVERY: u64 = 900;
+/// Retention is applied this often, seconds.
+const PRUNE_EVERY: u64 = 3600;
+
+/// What the tick hands over for one torrent.
+pub(crate) struct Sample<'a> {
+    /// The torrent.
+    pub hash: InfoHash,
+    /// Its snapshot.
+    pub status: &'a TorrentStatus,
+    /// Its state as the API shows it.
+    pub state: TorrentState,
+    /// Its name as the API shows it.
+    pub name: &'a str,
+    /// Its counters started at zero in this run (added now, or restored
+    /// without stored resume data), so the first observation counts in full.
+    pub fresh: bool,
+    /// Its share ratio as the API shows it.
+    pub ratio: Option<f64>,
+}
+
+/// The counters of the last observation.
+#[derive(Debug, Clone, Copy)]
+struct Seen {
+    downloaded: u64,
+    uploaded: u64,
+    active: u64,
+    seeding: u64,
+    /// The last state that was not a checking state.
+    stable: Option<TorrentState>,
+}
+
+/// States recorded on the timeline (a check at every start would flood it).
+fn stable(s: TorrentState) -> bool {
+    !matches!(
+        s,
+        TorrentState::CheckingQueued | TorrentState::Checking | TorrentState::Unknown
+    )
+}
+
+fn saturating_u32(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+/// A timeline event not written yet: (time, torrent, kind, state, detail).
+type Pending = (
+    u64,
+    InfoHash,
+    TimelineKind,
+    Option<TorrentState>,
+    Option<String>,
+);
+
+/// What is observed and not written yet.
+#[derive(Debug, Default)]
+struct Acc {
+    /// The recording period; `None` = not recording.
+    period: Option<i64>,
+    /// Counters are not comparable with the last ones (recording was off):
+    /// the next observation only takes new baselines.
+    rebase: bool,
+    seen: HashMap<InfoHash, Seen>,
+    session_seen: (u64, u64),
+    meta: HashMap<InfoHash, (String, u64)>,
+    traffic: HashMap<(InfoHash, StatsStep, u64), Traffic>,
+    /// Days, and whether data moved in them since the last flush.
+    days: HashMap<(InfoHash, u64), (Day, bool)>,
+    session: HashMap<(StatsStep, u64), SessionTraffic>,
+    events: Vec<Pending>,
+    last_flush: u64,
+    last_idle_days: u64,
+    last_prune: u64,
+}
+
+impl Acc {
+    /// Take what a flush writes: everything, or all but the days in which
+    /// only running time accumulated.
+    fn take(&mut self, now: u64, idle_days: bool) -> Batch {
+        let mut b = Batch {
+            period: self.period.map(|p| (p, now)),
+            ..Default::default()
+        };
+        let mut hashes = Vec::new();
+        for ((h, step, t), x) in self.traffic.drain() {
+            hashes.push(h);
+            b.traffic.push((hex(&h), step, t, x));
+        }
+        let mut keep = HashMap::new();
+        for ((h, t), (d, moved)) in self.days.drain() {
+            if moved || idle_days {
+                hashes.push(h);
+                b.days.push((hex(&h), t, d));
+            } else {
+                keep.insert((h, t), (d, false));
+            }
+        }
+        self.days = keep;
+        for ((step, t), x) in self.session.drain() {
+            b.session.push((step, t, x));
+        }
+        for (t, h, kind, state, detail) in self.events.drain(..) {
+            hashes.push(h);
+            b.events.push(EventRow {
+                t,
+                hash: hex(&h),
+                kind,
+                state,
+                detail,
+            });
+        }
+        for h in hashes {
+            if let Some((name, size)) = self.meta.get(&h) {
+                b.meta.entry(hex(&h)).or_insert_with(|| Meta {
+                    name: Some(name.clone()),
+                    size: Some(*size),
+                });
+            }
+        }
+        // Removed torrents are needed only for what this batch writes.
+        let seen = &self.seen;
+        self.meta.retain(|h, _| seen.contains_key(h));
+        b
+    }
+}
+
+/// When a flush runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Flush {
+    /// From the tick: if [`FLUSH_EVERY`] passed.
+    Due,
+    /// Everything now (before a query, at shutdown).
+    All,
+}
+
+/// The statistics recorder.
+pub(crate) struct Stats {
+    db: Arc<StatsDb>,
+    acc: Mutex<Acc>,
+    /// Flushes are written in order (days carry the latest totals).
+    flush_lock: tokio::sync::Mutex<()>,
+}
+
+impl Stats {
+    /// Open `stats.db` in `dir`, recording from `now` if `enabled`.
+    pub(crate) fn open(dir: &Path, enabled: bool, now: u64) -> io::Result<Stats> {
+        let db = StatsDb::open(dir)?;
+        let period = if enabled {
+            Some(db.start_period(now)?)
+        } else {
+            None
+        };
+        Ok(Stats {
+            db: Arc::new(db),
+            acc: Mutex::new(Acc {
+                period,
+                last_flush: now,
+                last_idle_days: now,
+                ..Default::default()
+            }),
+            flush_lock: tokio::sync::Mutex::new(()),
+        })
+    }
+
+    fn acc(&self) -> MutexGuard<'_, Acc> {
+        self.acc.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Whether recording is on.
+    pub(crate) fn recording(&self) -> bool {
+        self.acc().period.is_some()
+    }
+
+    /// The current recording period.
+    pub(crate) fn period(&self) -> Option<i64> {
+        self.acc().period
+    }
+
+    /// Add one tick's snapshots.
+    pub(crate) fn observe(&self, t: u64, samples: &[Sample<'_>], session: Option<&SessionStats>) {
+        let mut a = self.acc();
+        if a.period.is_none() {
+            return;
+        }
+        let rebase = std::mem::take(&mut a.rebase);
+        let (minute, hour, day) = (
+            StatsStep::Minute.start(t),
+            StatsStep::Hour.start(t),
+            StatsStep::Day.start(t),
+        );
+        for s in samples {
+            let st = s.status;
+            let now = Seen {
+                downloaded: st.downloaded,
+                uploaded: st.uploaded,
+                active: st.active_time.as_secs(),
+                seeding: st.seeding_time.as_secs(),
+                stable: stable(s.state).then_some(s.state),
+            };
+            let prev = a.seen.get(&s.hash).copied();
+            let base = match prev {
+                Some(p) if !rebase => p,
+                None if s.fresh && !rebase => Seen {
+                    downloaded: 0,
+                    uploaded: 0,
+                    active: 0,
+                    seeding: 0,
+                    stable: None,
+                },
+                _ => now,
+            };
+            // A counter that went back (the torrent was re-added) restarts.
+            let delta = |cur: u64, old: u64| cur.saturating_sub(old);
+            let (down, up) = (
+                delta(now.downloaded, base.downloaded),
+                delta(now.uploaded, base.uploaded),
+            );
+            let (active, seeding) = (
+                delta(now.active, base.active),
+                delta(now.seeding, base.seeding),
+            );
+            let old_state = prev.and_then(|p| p.stable);
+            if let (Some(new), Some(old)) = (now.stable, old_state)
+                && new != old
+            {
+                a.events
+                    .push((t, s.hash, TimelineKind::State, Some(new), None));
+            }
+            a.seen.insert(
+                s.hash,
+                Seen {
+                    stable: now.stable.or(old_state),
+                    ..now
+                },
+            );
+            if a.meta
+                .get(&s.hash)
+                .is_none_or(|(n, size)| n != s.name || *size != st.total_size)
+            {
+                a.meta.insert(s.hash, (s.name.to_string(), st.total_size));
+            }
+            let traffic = Traffic {
+                downloaded: down,
+                uploaded: up,
+                peers_max: saturating_u32(st.peers),
+                seeds_max: saturating_u32(st.seeds),
+            };
+            let moved = down > 0 || up > 0;
+            if moved {
+                for (step, t) in [(StatsStep::Minute, minute), (StatsStep::Hour, hour)] {
+                    a.traffic
+                        .entry((s.hash, step, t))
+                        .or_default()
+                        .add(&traffic);
+                }
+            }
+            if moved || active > 0 || seeding > 0 {
+                let (d, day_moved) = a.days.entry((s.hash, day)).or_default();
+                d.traffic.add(&traffic);
+                d.active_time += active;
+                d.seeding_time += seeding;
+                d.totals = Totals {
+                    downloaded: now.downloaded,
+                    uploaded: now.uploaded,
+                    active_time: now.active,
+                    seeding_time: now.seeding,
+                    ratio: s.ratio,
+                };
+                d.swarm_seeds_max = max_opt(d.swarm_seeds_max, st.swarm_seeders);
+                d.swarm_leechers_max = max_opt(d.swarm_leechers_max, st.swarm_leechers);
+                *day_moved |= moved;
+            }
+        }
+        if let Some(ss) = session {
+            let (down0, up0) = if rebase {
+                (ss.downloaded, ss.uploaded)
+            } else {
+                a.session_seen
+            };
+            let x = SessionTraffic {
+                downloaded: ss.downloaded.saturating_sub(down0),
+                uploaded: ss.uploaded.saturating_sub(up0),
+                peers_max: saturating_u32(ss.peers),
+                connections_max: saturating_u32(ss.connections),
+                dht_nodes_max: saturating_u32(ss.dht_nodes),
+                torrents_max: saturating_u32(ss.torrents),
+            };
+            a.session_seen = (ss.downloaded, ss.uploaded);
+            for step in StatsStep::ALL {
+                a.session.entry((step, step.start(t))).or_default().add(&x);
+            }
+        }
+    }
+
+    /// Record a timeline event.
+    pub(crate) fn event(&self, t: u64, hash: InfoHash, kind: TimelineKind, detail: Option<String>) {
+        let mut a = self.acc();
+        if a.period.is_some() {
+            a.events.push((t, hash, kind, None, detail));
+        }
+    }
+
+    /// A torrent left the session: a later add of the same hash starts from
+    /// zero.
+    pub(crate) fn forget(&self, hash: &InfoHash) {
+        self.acc().seen.remove(hash);
+    }
+
+    /// Write what was observed (see [`Flush`]), and apply the retention
+    /// when it is due.
+    pub(crate) async fn flush(
+        &self,
+        now: u64,
+        mode: Flush,
+        retention: Retention,
+    ) -> io::Result<()> {
+        let _order = self.flush_lock.lock().await;
+        let (batch, prune) = {
+            let mut a = self.acc();
+            if mode == Flush::Due && now < a.last_flush + FLUSH_EVERY {
+                return Ok(());
+            }
+            a.last_flush = now;
+            let idle_days = mode == Flush::All || now >= a.last_idle_days + IDLE_DAYS_EVERY;
+            if idle_days {
+                a.last_idle_days = now;
+            }
+            let prune = now >= a.last_prune + PRUNE_EVERY;
+            if prune {
+                a.last_prune = now;
+            }
+            (a.take(now, idle_days), prune)
+        };
+        let db = self.db.clone();
+        blocking(move || {
+            db.write(&batch)?;
+            if prune {
+                db.prune(now, &retention)?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    /// Turn recording on or off. Off writes what is pending and ends the
+    /// period; on starts a new one, with fresh baselines.
+    pub(crate) async fn set_recording(
+        &self,
+        on: bool,
+        now: u64,
+        retention: Retention,
+    ) -> io::Result<()> {
+        if on == self.recording() {
+            return Ok(());
+        }
+        if on {
+            let db = self.db.clone();
+            let id = blocking(move || db.start_period(now)).await?;
+            let mut a = self.acc();
+            a.period = Some(id);
+            a.rebase = true;
+            a.seen.clear();
+            Ok(())
+        } else {
+            self.stop(now, retention).await
+        }
+    }
+
+    /// Write what is pending and end the recording period (shutdown).
+    pub(crate) async fn stop(&self, now: u64, retention: Retention) -> io::Result<()> {
+        self.flush(now, Flush::All, retention).await?;
+        let period = self.acc().period.take();
+        if let Some(id) = period {
+            let db = self.db.clone();
+            blocking(move || db.end_period(id, now)).await?;
+        }
+        Ok(())
+    }
+
+    /// The database, for queries.
+    pub(crate) fn db(&self) -> Arc<StatsDb> {
+        self.db.clone()
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn buckets_are_aligned() {
+        assert_eq!(StatsStep::Minute.start(3_725), 3_720);
+        assert_eq!(StatsStep::Hour.start(3_725), 3_600);
+        assert_eq!(StatsStep::Day.start(90_000), 86_400);
+    }
+
+    #[test]
+    fn checking_is_not_a_timeline_state() {
+        assert!(!stable(TorrentState::Checking));
+        assert!(!stable(TorrentState::CheckingQueued));
+        assert!(stable(TorrentState::Seeding));
+        assert!(stable(TorrentState::Stopped));
+    }
+}

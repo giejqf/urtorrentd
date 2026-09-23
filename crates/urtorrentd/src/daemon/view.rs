@@ -90,26 +90,31 @@ fn error_kind(k: urtorrent::ErrorKind) -> TorrentErrorKind {
     }
 }
 
+/// A torrent's state as the API shows it.
+pub(crate) fn api_state(s: &TorrentStatus, moving: bool) -> TorrentState {
+    use urtorrent::TorrentState as L;
+    if moving {
+        return TorrentState::Moving;
+    }
+    match s.state {
+        L::FetchingMetadata => TorrentState::Metadata,
+        L::QueuedForChecking => TorrentState::CheckingQueued,
+        L::Checking => TorrentState::Checking,
+        L::Downloading => TorrentState::Downloading,
+        L::Seeding => TorrentState::Seeding,
+        L::Queued => TorrentState::Queued,
+        L::Paused => TorrentState::Stopped,
+        L::Error => TorrentState::Error,
+        L::Held => TorrentState::Held,
+        _ => TorrentState::Unknown,
+    }
+}
+
 /// Build a list row.
 pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummary {
     use urtorrent::TorrentState as L;
     let r = &e.record;
-    let state = if e.moving {
-        TorrentState::Moving
-    } else {
-        match s.state {
-            L::FetchingMetadata => TorrentState::Metadata,
-            L::QueuedForChecking => TorrentState::CheckingQueued,
-            L::Checking => TorrentState::Checking,
-            L::Downloading => TorrentState::Downloading,
-            L::Seeding => TorrentState::Seeding,
-            L::Queued => TorrentState::Queued,
-            L::Paused => TorrentState::Stopped,
-            L::Error => TorrentState::Error,
-            L::Held => TorrentState::Held,
-            _ => TorrentState::Unknown,
-        }
-    };
+    let state = api_state(s, e.moving);
     let running = !matches!(s.state, L::Paused | L::Error | L::Held);
     let stalled = match s.state {
         L::Downloading => s.download_rate == 0,

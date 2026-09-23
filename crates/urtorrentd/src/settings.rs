@@ -175,6 +175,17 @@ settings! {
     api_max_auth_failures: u32 = 5, nullable = false;
     /// Seconds an address stays banned after too many failed logins.
     api_ban_duration: u64 = 3600, nullable = false;
+    /// Record statistics (`/stats`): traffic per torrent and for the session,
+    /// each torrent's days, the timeline. Off: nothing new is recorded, what
+    /// was recorded stays.
+    stats_enabled: bool = true, nullable = false;
+    /// Seconds per-minute statistics are kept; `null` = forever.
+    stats_minute_retention: Option<u64> = Some(172_800), nullable = true;
+    /// Seconds per-hour statistics are kept; `null` = forever.
+    stats_hour_retention: Option<u64> = Some(7_776_000), nullable = true;
+    /// Seconds days, the timeline and recording periods are kept; `null` =
+    /// forever.
+    stats_day_retention: Option<u64> = None, nullable = true;
     /// Loopback clients need no authentication.
     api_bypass_local_auth: bool = false, nullable = false;
     /// Address blocks (`10.0.0.0/8`, `fd00::/8`) whose clients need no authentication.

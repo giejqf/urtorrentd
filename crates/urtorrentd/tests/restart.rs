@@ -124,6 +124,58 @@ async fn graceful_restart_restores_everything() {
     t.stop().await;
 }
 
+/// The library does not mark resume data for transfer counters: the daemon
+/// saves a torrent whose counters moved, and at shutdown every torrent that
+/// changed, so what a seed uploaded survives the restart.
+#[tokio::test]
+async fn a_seeds_upload_survives_a_restart() {
+    let seeder = TestDaemon::start(45, |_| {}).await;
+    let leecher = TestDaemon::start(46, |_| {}).await;
+    let f = fixture(
+        "shared.bin",
+        &[("shared.bin", 300_000)],
+        16_384,
+        None,
+        false,
+        21,
+    );
+    f.write_to(&seeder.save_path());
+    let hash = seeder.add(&f, json!({})).await;
+    seeder
+        .wait_for(&hash, "seeding", 30, |x| x["state"] == "seeding")
+        .await;
+    leecher.add(&f, json!({})).await;
+    let (s, _) = leecher
+        .post(
+            "/api/v1/torrents/peers",
+            json!({"hashes": [hash.clone()], "peers": [seeder.peer_addr()]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    leecher
+        .wait_for(&hash, "download", 60, |x| x["complete"] == true)
+        .await;
+    let before = seeder
+        .wait_for(&hash, "upload counted", 30, |x| {
+            x["uploaded"].as_u64().unwrap() >= 300_000
+        })
+        .await["uploaded"]
+        .as_u64()
+        .unwrap();
+    leecher.stop().await;
+
+    let dir = seeder.stop().await;
+    let seeder = TestDaemon::start_in(dir, 45, None).await;
+    let t = seeder
+        .wait_for(&hash, "seeding after restart", 30, |x| {
+            x["state"] == "seeding"
+        })
+        .await;
+    assert!(t["uploaded"].as_u64().unwrap() >= before, "{t}");
+    assert_eq!(t["uploaded_session"], 0, "{t}");
+    seeder.stop().await;
+}
+
 #[tokio::test]
 async fn a_0_1_data_directory_is_imported() {
     common::init_log();

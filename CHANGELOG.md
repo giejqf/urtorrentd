@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-23
+
+### Added
+
+- **Statistics** (ADR 0005), recorded in `<data dir>/stats.db`: per-torrent
+  traffic by minute and hour, a row per torrent per day it ran or moved data
+  (its seeding history: bytes, running and seeding time, all-time counters,
+  ratio, swarm size), session traffic, a timeline (added, metadata,
+  finished, moved, error, removed, state changes) and the periods in which
+  anything was recorded. All from differences of the library's counters.
+  Endpoints: `GET /stats`, `/stats/transfer`,
+  `/stats/torrents/{hash}/traffic`, `/stats/torrents/{hash}/days`,
+  `/stats/top`, `/stats/timeline`, `DELETE /stats/torrents/{hash}`. Removed
+  torrents keep their history.
+- Settings `stats_enabled`, `stats_minute_retention` (48 h),
+  `stats_hour_retention` (90 days), `stats_day_retention` (forever).
+- Error code `unavailable` (503): a `stats.db` that cannot be opened turns
+  statistics off for the run instead of stopping the daemon.
+
+### Changed
+
+- urtorrent 0.13.2. It marks resume data for every change the data records
+  (trackers, per-torrent settings, the queue flag, queue moves), so shutdown
+  saves only the torrents that changed instead of all of them.
+
+### Fixed
+
+- A seed's transfer counters were saved only at a clean shutdown: the
+  library does not mark resume data for counters, so after `kill -9` a
+  seed's upload fell back to its last save (possibly days old). The daemon
+  now saves a torrent whose counters moved, at most once a minute.
+
 ## [0.4.0] - 2026-09-23
 
 ### Added

@@ -15,7 +15,7 @@ use super::Daemon;
 use crate::error::{ApiError, ApiResult, ErrorCode};
 use crate::model::{
     AddFailure, AddOptions, AddTorrentsRequest, AddTorrentsResponse, AddedTorrent, ContentLayout,
-    MetadataFile, TorrentMetadata,
+    MetadataFile, TimelineKind, TorrentMetadata,
 };
 use crate::settings::valid_tracker_url;
 use crate::store::{RECORD_FORMAT, StopCondition, TorrentRecord};
@@ -421,6 +421,7 @@ impl Daemon {
             }
         };
         self.insert(p.hash, id, record);
+        self.stats_event(p.hash, TimelineKind::Added, None);
 
         // Daemon-side options around the engine add. Failures here leave the
         // torrent added and are logged.

@@ -14,12 +14,12 @@ use urtorrent::{InfoHash, QueueMove, Torrent, TorrentId};
 use super::Daemon;
 use crate::error::{ApiError, ApiResult};
 use crate::model::{
-    self, FileInfo, LimitsRequest, PeerSourceInfo, PiecesResponse, QueueMoveTo, TorrentPatch,
-    TrackerEndpointInfo, TrackerInfo, TrackerStatus, TrackersResponse,
+    self, FileInfo, LimitsRequest, PeerSourceInfo, PiecesResponse, QueueMoveTo, TimelineKind,
+    TorrentPatch, TrackerEndpointInfo, TrackerInfo, TrackerStatus, TrackersResponse,
 };
 use crate::settings::valid_tracker_url;
 use crate::store::StopCondition;
-use crate::util::{hex, normalize_ip};
+use crate::util::{hex, normalize_ip, now};
 
 fn usize_of(n: u32) -> usize {
     usize::try_from(n).unwrap_or(usize::MAX)
@@ -115,6 +115,10 @@ impl Daemon {
             let mut st = self.state();
             st.by_id.remove(&id);
             st.torrents.remove(&hash);
+            if let Ok(stats) = &self.stats {
+                stats.forget(&hash);
+                stats.event(now(), hash, TimelineKind::Removed, None);
+            }
         }
         let _g = self.persist_lock.lock().await;
         let (store, h) = (self.store.clone(), hex(&hash));
@@ -259,6 +263,7 @@ impl Daemon {
                         })
                         .await;
                     d.logs.info(format!("moved {} to {path}", hex(&hash)));
+                    d.stats_event(hash, TimelineKind::Moved, Some(path.clone()));
                 }
                 Err(e) => d
                     .logs

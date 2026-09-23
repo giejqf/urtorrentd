@@ -12,6 +12,7 @@ mod categories;
 mod events;
 mod guard;
 mod logs;
+mod stats;
 mod sync;
 mod torrent;
 mod torrents;
@@ -32,7 +33,7 @@ use utoipa_axum::routes;
 
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ErrorBody, ErrorCode};
-use crate::model::{DirectoryMode, TorrentFilter, TorrentSort};
+use crate::model::{DirectoryMode, StatsStep, TopMetric, TorrentFilter, TorrentSort};
 
 /// The API base path.
 pub const BASE: &str = "/api/v1";
@@ -131,7 +132,7 @@ impl Modify for ErrorResponses {
             ("404", "No such torrent or resource."),
             ("409", "Conflicts with the current state."),
             ("500", "Disk or internal failure."),
-            ("503", "Shutting down."),
+            ("503", "Shutting down, or statistics unavailable."),
         ];
         for item in doc.paths.paths.values_mut() {
             for op in [
@@ -181,7 +182,15 @@ Errors always have the `ErrorBody` shape with a stable `code`."
     security(("session" = []), ("api_key" = [])),
     // Schemas only referenced from query parameters are not collected
     // automatically; `every_ref_resolves` in tests/openapi.rs guards this.
-    components(schemas(ErrorBody, ErrorCode, TorrentFilter, TorrentSort, DirectoryMode)),
+    components(schemas(
+        ErrorBody,
+        ErrorCode,
+        TorrentFilter,
+        TorrentSort,
+        DirectoryMode,
+        StatsStep,
+        TopMetric
+    )),
     tags(
         (name = "auth", description = "Login sessions and API keys."),
         (name = "app", description = "The daemon: information, settings, shutdown, file system."),
@@ -191,6 +200,7 @@ Errors always have the `ErrorBody` shape with a stable `code`."
         (name = "transfer", description = "Session-wide transfer state, speed limits and bans."),
         (name = "sync", description = "Incremental updates: polled (`/sync`) or pushed as server-sent events (`/events`)."),
         (name = "log", description = "The main log and the peer log."),
+        (name = "stats", description = "Recorded history: traffic per torrent and for the session, seeding days, rankings, the timeline."),
     )
 )]
 struct ApiDoc;
@@ -253,6 +263,13 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(transfer::ban_peers))
         .routes(routes!(sync::sync))
         .routes(routes!(events::stream_events))
+        .routes(routes!(stats::get_stats_info))
+        .routes(routes!(stats::get_transfer_stats))
+        .routes(routes!(stats::get_torrent_traffic))
+        .routes(routes!(stats::get_torrent_days))
+        .routes(routes!(stats::delete_torrent_stats))
+        .routes(routes!(stats::get_top_torrents))
+        .routes(routes!(stats::get_timeline))
         .routes(routes!(logs::get_main_log))
         .routes(routes!(logs::get_peer_log));
     (public, protected)

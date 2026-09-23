@@ -10,7 +10,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "paths": {
     "/api/v1/app": {
@@ -92,7 +92,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -176,7 +176,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -267,7 +267,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -349,7 +349,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -443,7 +443,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -545,7 +545,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -632,7 +632,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -729,7 +729,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -821,7 +821,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -913,7 +913,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1007,7 +1007,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1123,7 +1123,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1237,7 +1237,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1353,7 +1353,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1460,7 +1460,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1551,7 +1551,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1650,7 +1650,856 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "What the statistics database holds.",
+        "operationId": "get_stats_info",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/timeline": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "What happened to torrents, newest first.",
+        "operationId": "get_timeline",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "query",
+            "description": "One torrent (info-hash); default: all.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Events at or after this time, unix seconds; default: all.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Events at or before this time, unix seconds; default: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many events, the newest (1 to 10 000); default 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TimelineEvent"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/top": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Torrents ranked by their traffic over a range.",
+        "operationId": "get_top_torrents",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Range start, unix seconds; default: one day before `to`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Range end, unix seconds; default: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "description": "Ranked by; default `uploaded`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TopMetric"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many torrents (1 to 1000); default 10.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopTorrents"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/torrents/{hash}": {
+      "delete": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Delete a torrent's history (a torrent still in the session starts a new\none).",
+        "operationId": "delete_torrent_stats",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "description": "Info-hash, 40 hex characters.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/torrents/{hash}/days": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "One torrent's days: its seeding history (removed torrents too). The\ndefault range is the last 30 days; `step` is ignored.",
+        "operationId": "get_torrent_days",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "description": "Info-hash, 40 hex characters.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Buckets starting at or after this time, unix seconds; default: one\nday before `to`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Buckets starting at or before this time, unix seconds; default: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "step",
+            "in": "query",
+            "description": "Bucket size; default: the finest one kept for the whole range, with\nat most 10 000 buckets.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StatsStep"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TorrentDays"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/torrents/{hash}/traffic": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "One torrent's traffic over time (removed torrents too).",
+        "operationId": "get_torrent_traffic",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "description": "Info-hash, 40 hex characters.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Buckets starting at or after this time, unix seconds; default: one\nday before `to`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Buckets starting at or before this time, unix seconds; default: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "step",
+            "in": "query",
+            "description": "Bucket size; default: the finest one kept for the whole range, with\nat most 10 000 buckets.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StatsStep"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TorrentTraffic"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/transfer": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Session-wide traffic over time.",
+        "operationId": "get_transfer_stats",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Buckets starting at or after this time, unix seconds; default: one\nday before `to`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Buckets starting at or before this time, unix seconds; default: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "step",
+            "in": "query",
+            "description": "Bucket size; default: the finest one kept for the whole range, with\nat most 10 000 buckets.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StatsStep"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferStats"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1754,7 +2603,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1848,7 +2697,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1940,7 +2789,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2034,7 +2883,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2213,7 +3062,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2312,7 +3161,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2413,7 +3262,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2514,7 +3363,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2605,7 +3454,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2706,7 +3555,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2807,7 +3656,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2908,7 +3757,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3009,7 +3858,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3110,7 +3959,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3211,7 +4060,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3312,7 +4161,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3413,7 +4262,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3514,7 +4363,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3615,7 +4464,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3716,7 +4565,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3817,7 +4666,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3918,7 +4767,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4019,7 +4868,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4120,7 +4969,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4222,7 +5071,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4325,7 +5174,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4430,7 +5279,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4535,7 +5384,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4640,7 +5489,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4745,7 +5594,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4850,7 +5699,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4952,7 +5801,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5057,7 +5906,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5164,7 +6013,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5266,7 +6115,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5369,7 +6218,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5474,7 +6323,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5579,7 +6428,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5684,7 +6533,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5787,7 +6636,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5892,7 +6741,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5997,7 +6846,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6088,7 +6937,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6182,7 +7031,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6276,7 +7125,7 @@
             }
           },
           "503": {
-            "description": "Shutting down.",
+            "description": "Shutting down, or statistics unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6975,6 +7824,7 @@
           "invalid_torrent",
           "download_failed",
           "shutting_down",
+          "unavailable",
           "io",
           "internal"
         ]
@@ -7699,6 +8549,10 @@
           "api_session_timeout",
           "api_max_auth_failures",
           "api_ban_duration",
+          "stats_enabled",
+          "stats_minute_retention",
+          "stats_hour_retention",
+          "stats_day_retention",
           "api_bypass_local_auth",
           "api_auth_whitelist",
           "api_allowed_hosts",
@@ -8069,6 +8923,41 @@
             "default": 3600,
             "minimum": 0
           },
+          "stats_enabled": {
+            "type": "boolean",
+            "description": "Record statistics (`/stats`): traffic per torrent and for the session,\neach torrent's days, the timeline. Off: nothing new is recorded, what\nwas recorded stays.",
+            "default": true
+          },
+          "stats_minute_retention": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds per-minute statistics are kept; `null` = forever.",
+            "default": 172800,
+            "minimum": 0
+          },
+          "stats_hour_retention": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds per-hour statistics are kept; `null` = forever.",
+            "default": 7776000,
+            "minimum": 0
+          },
+          "stats_day_retention": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds days, the timeline and recording periods are kept; `null` =\nforever.",
+            "default": null,
+            "minimum": 0
+          },
           "api_bypass_local_auth": {
             "type": "boolean",
             "description": "Loopback clients need no authentication.",
@@ -8402,6 +9291,37 @@
             "description": "Seconds an address stays banned after too many failed logins.",
             "minimum": 0
           },
+          "stats_enabled": {
+            "type": "boolean",
+            "description": "Record statistics (`/stats`): traffic per torrent and for the session,\neach torrent's days, the timeline. Off: nothing new is recorded, what\nwas recorded stays."
+          },
+          "stats_minute_retention": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds per-minute statistics are kept; `null` = forever.",
+            "minimum": 0
+          },
+          "stats_hour_retention": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds per-hour statistics are kept; `null` = forever.",
+            "minimum": 0
+          },
+          "stats_day_retention": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds days, the timeline and recording periods are kept; `null` =\nforever.",
+            "minimum": 0
+          },
           "api_bypass_local_auth": {
             "type": "boolean",
             "description": "Loopback clients need no authentication."
@@ -8488,6 +9408,102 @@
             "description": "The new limits."
           }
         }
+      },
+      "StatsInfo": {
+        "type": "object",
+        "description": "What the statistics database holds.",
+        "required": [
+          "enabled",
+          "size",
+          "torrents",
+          "oldest_minute",
+          "oldest_hour",
+          "oldest_day"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Recording is on (`stats_enabled`)."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Size of the database file, bytes.",
+            "minimum": 0
+          },
+          "torrents": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Torrents with history, removed ones included.",
+            "minimum": 0
+          },
+          "oldest_minute": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Oldest per-minute bucket kept, unix seconds; `null` = none.",
+            "minimum": 0
+          },
+          "oldest_hour": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Oldest per-hour bucket kept, unix seconds; `null` = none.",
+            "minimum": 0
+          },
+          "oldest_day": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Oldest day kept, unix seconds; `null` = none.",
+            "minimum": 0
+          }
+        }
+      },
+      "StatsPeriod": {
+        "type": "object",
+        "description": "A period in which statistics were recorded: the daemon ran with\n`stats_enabled` on. Outside every period nothing is known (the daemon was\ndown or recording was off); inside one, a missing bucket means nothing\nmoved.",
+        "required": [
+          "started",
+          "ended",
+          "clean"
+        ],
+        "properties": {
+          "started": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When recording started, unix seconds.",
+            "minimum": 0
+          },
+          "ended": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When it ended, unix seconds; `null` = still recording.",
+            "minimum": 0
+          },
+          "clean": {
+            "type": "boolean",
+            "description": "Ended by a shutdown or by turning recording off (`true` while still\nrecording). `false`: the daemon stopped abruptly and `ended` is its\nlast write (up to a minute early)."
+          }
+        }
+      },
+      "StatsStep": {
+        "type": "string",
+        "description": "The bucket size of a statistics series. Each bucket is named by its start\n(`t`, unix seconds, aligned to UTC minutes, hours or days).",
+        "enum": [
+          "minute",
+          "hour",
+          "day"
+        ]
       },
       "StopCondition": {
         "type": "string",
@@ -8680,6 +9696,72 @@
         ],
         "description": "A per-torrent time limit (seconds)."
       },
+      "TimelineEvent": {
+        "type": "object",
+        "description": "An event of a torrent's life.",
+        "required": [
+          "t",
+          "hash",
+          "name",
+          "kind",
+          "state",
+          "detail"
+        ],
+        "properties": {
+          "t": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When, unix seconds.",
+            "minimum": 0
+          },
+          "hash": {
+            "type": "string",
+            "description": "Info-hash."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The torrent's name as last recorded."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TimelineKind",
+            "description": "What happened."
+          },
+          "state": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TorrentState",
+                "description": "The new state (`kind` = `state`)."
+              }
+            ]
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The new directory (`moved`) or the error (`error`)."
+          }
+        }
+      },
+      "TimelineKind": {
+        "type": "string",
+        "description": "What happened to a torrent.",
+        "enum": [
+          "added",
+          "metadata",
+          "finished",
+          "moved",
+          "error",
+          "removed",
+          "state"
+        ]
+      },
       "ToggleRequest": {
         "type": "object",
         "description": "A bulk action with an on/off value.",
@@ -8695,6 +9777,261 @@
           "value": {
             "type": "boolean",
             "description": "On or off."
+          }
+        }
+      },
+      "TopMetric": {
+        "type": "string",
+        "description": "What torrents are ranked by.",
+        "enum": [
+          "uploaded",
+          "downloaded"
+        ]
+      },
+      "TopTorrent": {
+        "type": "object",
+        "description": "A torrent's traffic over a range.",
+        "required": [
+          "hash",
+          "name",
+          "removed",
+          "downloaded",
+          "uploaded"
+        ],
+        "properties": {
+          "hash": {
+            "type": "string",
+            "description": "Info-hash."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name as last recorded."
+          },
+          "removed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the torrent was removed, unix seconds; `null` = still in the\nsession (or removed while recording was off).",
+            "minimum": 0
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes downloaded in the range.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes uploaded in the range.",
+            "minimum": 0
+          }
+        }
+      },
+      "TopTorrents": {
+        "type": "object",
+        "description": "Torrents ranked by their traffic over a range (removed ones included).",
+        "required": [
+          "from",
+          "to",
+          "step",
+          "torrents"
+        ],
+        "properties": {
+          "from": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "step": {
+            "$ref": "#/components/schemas/StatsStep",
+            "description": "The buckets summed (the finest kept for the whole range); the range\nis widened to whole buckets."
+          },
+          "torrents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopTorrent"
+            },
+            "description": "Highest first; torrents that moved nothing are left out."
+          }
+        }
+      },
+      "TorrentDay": {
+        "type": "object",
+        "description": "One torrent's day (UTC): its seeding history. A day is recorded when the\ntorrent was running or moved data.",
+        "required": [
+          "t",
+          "downloaded",
+          "uploaded",
+          "peers_max",
+          "seeds_max",
+          "active_time",
+          "seeding_time",
+          "downloaded_total",
+          "uploaded_total",
+          "active_time_total",
+          "seeding_time_total",
+          "ratio",
+          "swarm_seeds_max",
+          "swarm_leechers_max"
+        ],
+        "properties": {
+          "t": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Day start, unix seconds (00:00 UTC).",
+            "minimum": 0
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes downloaded that day.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes uploaded that day.",
+            "minimum": 0
+          },
+          "peers_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most peers connected at one observation (every 2 s).",
+            "minimum": 0
+          },
+          "seeds_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most seeds connected at one observation (every 2 s).",
+            "minimum": 0
+          },
+          "active_time": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds the torrent was running that day.",
+            "minimum": 0
+          },
+          "seeding_time": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds it was seeding that day.",
+            "minimum": 0
+          },
+          "downloaded_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "All-time bytes downloaded at the day's last observation.",
+            "minimum": 0
+          },
+          "uploaded_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "All-time bytes uploaded at the day's last observation.",
+            "minimum": 0
+          },
+          "active_time_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "All-time seconds running at the day's last observation.",
+            "minimum": 0
+          },
+          "seeding_time_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "All-time seconds seeding at the day's last observation.",
+            "minimum": 0
+          },
+          "ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Share ratio at the day's last observation (as `ratio` in the torrent\nlist); `null` = nothing to divide by."
+          },
+          "swarm_seeds_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Most seeders the trackers reported for the swarm; `null` = no report.",
+            "minimum": 0
+          },
+          "swarm_leechers_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Most leechers the trackers reported for the swarm; `null` = no report.",
+            "minimum": 0
+          }
+        }
+      },
+      "TorrentDays": {
+        "type": "object",
+        "description": "One torrent's days.",
+        "required": [
+          "hash",
+          "name",
+          "removed",
+          "from",
+          "to",
+          "days"
+        ],
+        "properties": {
+          "hash": {
+            "type": "string",
+            "description": "Info-hash."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name as last recorded."
+          },
+          "removed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the torrent was removed, unix seconds; `null` = still in the\nsession (or removed while recording was off).",
+            "minimum": 0
+          },
+          "from": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TorrentDay"
+            },
+            "description": "Recorded days, oldest first."
           }
         }
       },
@@ -9369,6 +10706,72 @@
           }
         }
       },
+      "TorrentTraffic": {
+        "type": "object",
+        "description": "One torrent's traffic over time.",
+        "required": [
+          "hash",
+          "name",
+          "removed",
+          "from",
+          "to",
+          "step",
+          "points",
+          "periods"
+        ],
+        "properties": {
+          "hash": {
+            "type": "string",
+            "description": "Info-hash."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name as last recorded."
+          },
+          "removed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the torrent was removed, unix seconds; `null` = still in the\nsession (or removed while recording was off).",
+            "minimum": 0
+          },
+          "from": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "step": {
+            "$ref": "#/components/schemas/StatsStep",
+            "description": "The bucket size."
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrafficPoint"
+            },
+            "description": "Buckets in which data moved, oldest first."
+          },
+          "periods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatsPeriod"
+            },
+            "description": "Recording periods overlapping the range, oldest first."
+          }
+        }
+      },
       "TrackerEndpointInfo": {
         "type": "object",
         "description": "A tracker as announced through one listen socket.",
@@ -9570,6 +10973,49 @@
           }
         }
       },
+      "TrafficPoint": {
+        "type": "object",
+        "description": "One torrent's traffic in one bucket. Buckets in which nothing moved are\nleft out.",
+        "required": [
+          "t",
+          "downloaded",
+          "uploaded",
+          "peers_max",
+          "seeds_max"
+        ],
+        "properties": {
+          "t": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bucket start, unix seconds.",
+            "minimum": 0
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes downloaded in the bucket.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes uploaded in the bucket.",
+            "minimum": 0
+          },
+          "peers_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most peers connected at one observation (every 2 s).",
+            "minimum": 0
+          },
+          "seeds_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most seeds connected at one observation (every 2 s).",
+            "minimum": 0
+          }
+        }
+      },
       "TransferInfo": {
         "type": "object",
         "description": "Session-wide transfer state.",
@@ -9716,6 +11162,106 @@
           }
         }
       },
+      "TransferPoint": {
+        "type": "object",
+        "description": "Session-wide traffic in one bucket. Bytes are payload, as in\n`TransferInfo`.",
+        "required": [
+          "t",
+          "downloaded",
+          "uploaded",
+          "peers_max",
+          "connections_max",
+          "dht_nodes_max",
+          "torrents_max"
+        ],
+        "properties": {
+          "t": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bucket start, unix seconds.",
+            "minimum": 0
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes downloaded in the bucket.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes uploaded in the bucket.",
+            "minimum": 0
+          },
+          "peers_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most peers connected at one observation (every 2 s).",
+            "minimum": 0
+          },
+          "connections_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most connections (peers plus dials in progress) at one observation.",
+            "minimum": 0
+          },
+          "dht_nodes_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most DHT nodes known at one observation.",
+            "minimum": 0
+          },
+          "torrents_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Most torrents in the session at one observation.",
+            "minimum": 0
+          }
+        }
+      },
+      "TransferStats": {
+        "type": "object",
+        "description": "Session-wide traffic over time.",
+        "required": [
+          "from",
+          "to",
+          "step",
+          "points",
+          "periods"
+        ],
+        "properties": {
+          "from": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "step": {
+            "$ref": "#/components/schemas/StatsStep",
+            "description": "The bucket size."
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransferPoint"
+            },
+            "description": "Buckets in which the session was recorded, oldest first."
+          },
+          "periods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatsPeriod"
+            },
+            "description": "Recording periods overlapping the range, oldest first."
+          }
+        }
+      },
       "Transports": {
         "type": "string",
         "description": "Peer transports.",
@@ -9797,6 +11343,10 @@
     {
       "name": "log",
       "description": "The main log and the peer log."
+    },
+    {
+      "name": "stats",
+      "description": "Recorded history: traffic per torrent and for the session, seeding days, rankings, the timeline."
     }
   ]
 }

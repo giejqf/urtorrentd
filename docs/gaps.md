@@ -1,42 +1,22 @@
 # What the daemon needs from urtorrent
 
-Things the daemon wants from the library (the `urtorrent` facade, 0.13.1)
+Things the daemon wants from the library (the `urtorrent` facade, 0.13.2)
 that it does not offer or does not do right, with what the daemon does in
 the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 ## Open
 
-### `needs_resume_save` misses changes the resume data records (0.13.1)
-
-A caller that stores the resume data itself (`Session::resume_data`, what
-the daemon does since 0.2.0, ADR 0004) learns what changed only through
-`TorrentStatus::needs_resume_save`. These operations change what the resume
-data holds but leave the flag unset (probed against 0.13.1; `add_web_seed`,
-which sets it, as the reference):
-
-| Operation | Recorded in the resume data as |
-|---|---|
-| `add_tracker`, `remove_tracker` | the tracker list (format 6) |
-| `set_sequential`, `set_torrent_rate_limits`, `set_max_peers`, `set_max_uploads` | per-torrent settings (format 5) |
-| `pause`, `resume`, `force_resume`, `set_auto_managed` | `auto_managed` (format 4) |
-| `move_in_queue` | `queue_position` of the moved torrent **and of every torrent it shifts** (format 4) |
-
-In the engine's own file mode the gap hides behind the save every torrent
-gets when it stops. With caller-held data, a `kill -9` loses these changes,
-and for a torrent where nothing else ever marks the data (an idle seed) they
-never reach the database at all until a clean shutdown.
-
-Wanted: set `needs_resume_save` for each of them (for a queue move, on every
-torrent whose position changed), as libtorrent's `need_save_resume_data`
-does.
-
-Workaround here: at shutdown the daemon saves the resume data of every
-torrent, not only the marked ones (`ResumeSave::All`). Once fixed, shutdown
-saves only the marked ones (O(changed) instead of O(all)) and a crash loses
-at most the last minute of these edits.
+Nothing.
 
 ## Resolved upstream
 
+- 0.13.2: `needs_resume_save` is set by every change the resume data records
+  (trackers, per-torrent settings, the queue flag, queue moves on every
+  torrent they shift). The daemon's shutdown saves only the torrents that
+  changed instead of all of them. Transfer counters and activity times still
+  do not set the flag (by design, documented on the field), so the daemon
+  also saves a torrent whose counters moved, at most once a minute
+  (`ResumeSave::Due`): a seed's upload survives `kill -9` too.
 - 0.13.1: after a hold, `add_peer` waited out the 60 s reconnect backoff for
   the peer the metadata came from (it dials at once now, as after a pause);
   `tests/torrents.rs` (`magnets_are_held_for_stop_conditions_and_layouts`)

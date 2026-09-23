@@ -39,6 +39,9 @@ pub enum ErrorCode {
     DownloadFailed,
     /// The daemon is shutting down.
     ShuttingDown,
+    /// A part of the daemon is not available (the statistics database could
+    /// not be opened); see the message.
+    Unavailable,
     /// A disk or network operation failed.
     Io,
     /// Something unexpected; see the message.
@@ -116,6 +119,15 @@ impl ApiError {
             StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::Io,
             e.to_string(),
+        )
+    }
+
+    /// 503 `unavailable`.
+    pub fn unavailable(message: impl Into<String>) -> ApiError {
+        ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ErrorCode::Unavailable,
+            message,
         )
     }
 

@@ -2,7 +2,8 @@
 
 Status: accepted (2026-09-23, maintainer decision). Supersedes ADR 0002's
 file layout and its engine-managed resume files; its ordering and crash-safety
-rules still hold.
+rules still hold. Amended by ADR 0005: recorded history (statistics) lives in
+a second file, `stats.db`.
 
 ## Context
 

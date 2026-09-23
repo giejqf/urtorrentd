@@ -12,6 +12,7 @@ use urtorrent::{ErrorKind, Event, EventStream, InfoHash, TorrentId};
 
 use super::{Daemon, ResumeSave};
 use crate::log::LogLevel;
+use crate::model::TimelineKind;
 use crate::util::{blocking, hex};
 
 pub(crate) async fn run(daemon: Weak<Daemon>, mut events: EventStream) {
@@ -65,6 +66,7 @@ impl Daemon {
                 id, error, kind, ..
             } => {
                 if let Some(h) = self.hash_of(id) {
+                    self.stats_event(h, TimelineKind::Error, Some(error.clone()));
                     self.logs.log(
                         LogLevel::Error,
                         format!(
@@ -112,6 +114,7 @@ impl Daemon {
         let Some(hash) = self.hash_of(id) else {
             return;
         };
+        self.stats_event(hash, TimelineKind::Metadata, None);
         match self.session.torrent_file(id).await {
             Ok(Some(bytes)) => {
                 let store = self.store.clone();
@@ -172,6 +175,7 @@ impl Daemon {
         };
         self.logs
             .info(format!("finished downloading {}", self.name_of(&hash)));
+        self.stats_event(hash, TimelineKind::Finished, None);
         self.save_resume(ResumeSave::One(hash)).await;
         let target = {
             let st = self.state();

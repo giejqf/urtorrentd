@@ -40,6 +40,22 @@ it completes. `auto_management` is the default for new torrents; each add
 can say otherwise (`options.auto_management`), and
 `POST /torrents/auto-management` changes it per torrent.
 
+## Statistics
+
+History for `/stats` ([api.md](api.md#statistics-adr-0005)) is recorded in
+`<data dir>/stats.db` while `stats_enabled` is on (the default). Turning it
+off ends the recording period and keeps what was recorded. How long each
+kind of bucket is kept, in seconds (`null` = forever):
+
+| Setting | Default | Kept |
+|---|---|---|
+| `stats_minute_retention` | `172800` (48 h) | per-minute traffic, torrent and session |
+| `stats_hour_retention` | `7776000` (90 days) | per-hour traffic |
+| `stats_day_retention` | `null` | days (seeding history), the timeline, recording periods |
+
+Without a `step`, a query uses the finest step kept for its whole range, so
+shortening a retention changes which step long ranges get.
+
 ## Coverage of qBittorrent 5.2.3's preferences
 
 Every key of the reference (`docs/reference/qbittorrent-5.2.3-preferences.txt`)
