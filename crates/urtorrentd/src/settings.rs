@@ -134,6 +134,10 @@ settings! {
     download_path: Option<String> = None, nullable = true;
     /// Add new torrents stopped.
     add_stopped: bool = false, nullable = false;
+    /// Appended to the name of every file that is not complete yet (e.g.
+    /// `.!qB`), removed when the file completes; `null` = off. Changing it
+    /// renames the files of every torrent.
+    incomplete_file_suffix: Option<String> = None, nullable = true;
     /// Put new torrents at the front of the queue.
     add_to_top_of_queue: bool = false, nullable = false;
     /// Allocate content files at full size when they are created.
@@ -293,6 +297,11 @@ impl Settings {
             && !std::path::Path::new(p).is_absolute()
         {
             return Err("download_path must be an absolute path".into());
+        }
+        if let Some(sfx) = &self.incomplete_file_suffix
+            && (sfx.is_empty() || sfx.len() > 32 || sfx.contains(['/', '\\', '\0']))
+        {
+            return Err("incomplete_file_suffix must be 1 to 32 characters without slashes".into());
         }
         if self.max_ratio.is_some_and(|r| !r.is_finite() || r < 0.0) {
             return Err("max_ratio must be a non-negative number".into());

@@ -382,7 +382,9 @@ impl Daemon {
         let hold = if is_magnet {
             needs_hold(&record)
         } else {
-            !renames.is_empty()
+            // Held at once: layout renames and the incomplete-file suffix go
+            // on before any file exists or is checked.
+            !renames.is_empty() || settings.incomplete_file_suffix.is_some()
         };
         let dir = download_path.unwrap_or(save_path);
         let mut add = match p.source {
@@ -482,6 +484,9 @@ impl Daemon {
                 }
             }
         }
+        // Nothing is complete while held: every file with content gets the
+        // suffix; the check after the release takes it off the complete ones.
+        self.apply_suffix(hash, id).await;
         if record.first_last_piece_priority
             && let Err(e) = self.apply_first_last(id, true).await
         {

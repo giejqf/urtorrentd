@@ -16,6 +16,30 @@ The daemon's own start-up options are not settings: the data directory
 (`--data-dir`, `URTORRENTD_DATA_DIR`) and the API address (`--api-listen`,
 `URTORRENTD_API_LISTEN`, default `127.0.0.1:8080`).
 
+## Staging downloads and moving them by category
+
+Two settings and a category give qBittorrent's "keep incomplete torrents in"
+plus automatic torrent management:
+
+```json
+PATCH /api/v1/settings
+{"download_path": "/srv/incomplete", "auto_management": true, "incomplete_file_suffix": ".!qB"}
+
+POST /api/v1/categories
+{"name": "movies", "save_path": "/srv/library/movies", "download_path": null}
+```
+
+A torrent added with `"category": "movies"` downloads into `/srv/incomplete`
+(its files named `….!qB` until each one is complete) and moves to
+`/srv/library/movies` when the download finishes. A category's own
+`download_path` (absolute, or relative to the global one) overrides the
+global one; a category without a `save_path` uses `<save_path>/<name>`.
+Changing a torrent's category, or turning automatic management on, moves
+complete content to the category's directory; incomplete content moves when
+it completes. `auto_management` is the default for new torrents; each add
+can say otherwise (`options.auto_management`), and
+`POST /torrents/auto-management` changes it per torrent.
+
 ## Coverage of qBittorrent 5.2.3's preferences
 
 Every key of the reference (`docs/reference/qbittorrent-5.2.3-preferences.txt`)
@@ -114,7 +138,7 @@ an API daemon. **unsupported**: with the reason.
 | `i2p_port` | unsupported | as above |
 | `idn_support_enabled` | n/a | a display concern |
 | `ignore_ssl_errors` | unsupported | the library always validates certificates |
-| `incomplete_files_ext` | unsupported | the library writes final file names (docs/gaps.md) |
+| `incomplete_files_ext` | setting | `incomplete_file_suffix` (`".!qB"` for qBittorrent's; any suffix) |
 | `ip_filter_enabled` | unsupported | IP filter files are a library non-goal; addresses and ranges: `banned_ips`, `banned_ip_ranges` |
 | `ip_filter_path` | unsupported | as above |
 | `ip_filter_trackers` | unsupported | as above |

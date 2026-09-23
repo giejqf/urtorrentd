@@ -74,7 +74,6 @@ at most the last minute of these edits.
 
 | Item | Why |
 |---|---|
-| Suffix for incomplete files (`incomplete_files_ext`) | not in the library; ask when wanted |
 | SSRF guard for tracker and web seed URLs (`ssrf_mitigation`) | not in the library; ask when wanted |
 | IP filter files | file formats are a non-goal; ranges are supported (`banned_ip_ranges`) |
 

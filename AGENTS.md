@@ -307,6 +307,14 @@ includes removals (torrents, categories, tags) and the session's transfer state.
   renames, applies piece priorities, then `release`s (checked, stays stopped) or
   starts it. A `.torrent` with a stop condition is simply added paused: its initial
   check still runs.
+- **Incomplete-file suffix** (`incomplete_file_suffix`, qBittorrent's `.!qB`): files
+  that are not complete carry it. The daemon renames through `rename_file` (never the
+  files itself): before a held torrent is released (a `.torrent` is held at once while
+  the suffix is on), after every check, when a magnet's metadata arrives, on
+  `FileCompleted`, and for every torrent when the setting changes (`suffix.rs`).
+- **Staging and category directories**: incomplete content lives in the download path
+  (global or the category's) and moves to the save path on `TorrentFinished`; with
+  automatic management the save path is the category's (`docs/settings.md`).
 - **Add parameters with no library switch.** Add to top of queue: `move_in_queue(Top)`.
   Rename, category, tags and share limits: the daemon record. Skip-checking is
   unsupported (rule 1). Record each in `docs/api.md`.
@@ -427,7 +435,8 @@ D4 done except the alternative-limits scheduler, which moved to the later list. 
 moved persistence to SQLite and aligned with urtorrent 0.13 (error recovery, holding,
 piece priorities, address ranges, list-view fields). The "planned" rows of `docs/api.md`
 and `docs/settings.md` are the remaining work; `docs/gaps.md` has what is still open
-upstream.
+upstream. **0.3.0** added the incomplete-file suffix and verified staging downloads that
+move to their category's directory on completion.
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage

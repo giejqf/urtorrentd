@@ -894,3 +894,186 @@ async fn first_and_last_pieces_first() {
     assert_eq!(t.torrent(&hash).await["first_last_piece_priority"], false);
     t.stop().await;
 }
+
+/// Every path under `dir`, relative, sorted.
+fn tree(dir: &std::path::Path) -> Vec<String> {
+    fn walk(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<String>) {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk(root, &p, out);
+            } else {
+                out.push(p.strip_prefix(root).unwrap().to_string_lossy().into_owned());
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out.sort();
+    out
+}
+
+#[tokio::test]
+async fn incomplete_files_carry_a_suffix_then_move_to_their_category() {
+    // A slow seeder, so the download can be watched half way.
+    let seeder = TestDaemon::start(54, |s| s.upload_limit = Some(40_000)).await;
+    let leecher = TestDaemon::start(55, |_| {}).await;
+    let staging = leecher.dir.path().join("incomplete");
+    let library = leecher.dir.path().join("library");
+    let (s, v) = leecher
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({
+                "incomplete_file_suffix": ".!qB",
+                "auto_management": true,
+                "download_path": staging.to_string_lossy(),
+            })),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let (s, _) = leecher
+        .post(
+            "/api/v1/categories",
+            json!({"name": "movies", "save_path": library.join("movies").to_string_lossy()}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+
+    let f = fixture(
+        "Film",
+        &[("part1.mkv", 90_000), ("part2.mkv", 60_000)],
+        16_384,
+        None,
+        false,
+        91,
+    );
+    f.write_to(&seeder.save_path());
+    let hash = seeder.add(&f, json!({})).await;
+    seeder
+        .wait_for(&hash, "seeding", 30, |x| x["state"] == "seeding")
+        .await;
+    leecher.add(&f, json!({"category": "movies"})).await;
+    let (s, _) = leecher
+        .post(
+            "/api/v1/torrents/peers",
+            json!({"hashes": [hash.clone()], "peers": [seeder.peer_addr()]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+
+    // Half way: in the download path, incomplete files carry the suffix.
+    let t = leecher
+        .wait_for(&hash, "some data", 30, |x| {
+            x["downloaded"].as_u64().unwrap() > 0
+        })
+        .await;
+    assert_eq!(t["complete"], false, "the seeder is slow: {t}");
+    assert_eq!(t["download_path"], staging.to_string_lossy().as_ref());
+    let files = leecher.get(&format!("/api/v1/torrents/{hash}/files")).await;
+    for f in files.as_array().unwrap() {
+        let path = f["path"].as_str().unwrap();
+        assert_eq!(
+            path.ends_with(".!qB"),
+            f["progress"].as_f64().unwrap() < 1.0,
+            "{files}"
+        );
+    }
+    assert!(
+        tree(&staging).iter().any(|p| p.ends_with(".!qB")),
+        "{:?}",
+        tree(&staging)
+    );
+
+    // Complete: moved to the category's directory, the suffix gone.
+    let movies = library.join("movies");
+    let t = leecher
+        .wait_for(&hash, "complete and moved", 60, |x| {
+            x["complete"] == true && x["download_path"].is_null() && x["state"] == "seeding"
+        })
+        .await;
+    assert_eq!(t["save_path"], movies.to_string_lossy().as_ref());
+    assert_eq!(t["auto_management"], true);
+    assert_eq!(tree(&movies), vec!["Film/part1.mkv", "Film/part2.mkv"]);
+    assert!(tree(&staging).is_empty(), "{:?}", tree(&staging));
+    for (path, bytes) in &f.files {
+        assert_eq!(&std::fs::read(movies.join(path)).unwrap(), bytes, "{path}");
+    }
+    seeder.stop().await;
+    leecher.stop().await;
+}
+
+#[tokio::test]
+async fn the_suffix_follows_completeness_and_the_setting() {
+    let t = TestDaemon::start(56, |s| s.incomplete_file_suffix = Some(".!qB".into())).await;
+    let save = t.save_path();
+
+    // Complete data already on disk keeps its names once checked.
+    let done = fixture("done.iso", &[("done.iso", 50_000)], 16_384, None, false, 92);
+    done.write_to(&save);
+    let h1 = t.add(&done, json!({})).await;
+    t.wait_for(&h1, "seeding", 30, |x| x["state"] == "seeding")
+        .await;
+    let files = t.get(&format!("/api/v1/torrents/{h1}/files")).await;
+    assert_eq!(files[0]["path"], "done.iso");
+    assert_eq!(
+        std::fs::read(save.join("done.iso")).unwrap(),
+        done.files[0].1
+    );
+
+    // Nothing on disk yet: the file is named with the suffix.
+    let empty = fixture("new.iso", &[("new.iso", 50_000)], 16_384, None, false, 93);
+    let h2 = t.add(&empty, json!({"stopped": true})).await;
+    t.wait_for(&h2, "stopped", 30, |x| x["state"] == "stopped")
+        .await;
+    let path = |v: &Value| v[0]["path"].as_str().unwrap().to_string();
+    assert_eq!(
+        path(&t.get(&format!("/api/v1/torrents/{h2}/files")).await),
+        "new.iso.!qB"
+    );
+
+    // Changing the setting renames the files of every torrent.
+    let (s, _) = t
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({"incomplete_file_suffix": ".part"})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while path(&t.get(&format!("/api/v1/torrents/{h2}/files")).await) != "new.iso.part" {
+        assert!(std::time::Instant::now() < deadline, "not renamed to .part");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let (s, _) = t
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({"incomplete_file_suffix": null})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while path(&t.get(&format!("/api/v1/torrents/{h2}/files")).await) != "new.iso" {
+        assert!(std::time::Instant::now() < deadline, "suffix not removed");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        path(&t.get(&format!("/api/v1/torrents/{h1}/files")).await),
+        "done.iso",
+        "complete files never carried it"
+    );
+    let (s, v) = t
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({"incomplete_file_suffix": "a/b"})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    t.stop().await;
+}

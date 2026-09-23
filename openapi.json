@@ -10,7 +10,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "paths": {
     "/api/v1/app": {
@@ -7564,6 +7564,7 @@
           "save_path",
           "download_path",
           "add_stopped",
+          "incomplete_file_suffix",
           "add_to_top_of_queue",
           "preallocate",
           "auto_management",
@@ -7818,6 +7819,14 @@
             "type": "boolean",
             "description": "Add new torrents stopped.",
             "default": false
+          },
+          "incomplete_file_suffix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Appended to the name of every file that is not complete yet (e.g.\n`.!qB`), removed when the file completes; `null` = off. Changing it\nrenames the files of every torrent.",
+            "default": null
           },
           "add_to_top_of_queue": {
             "type": "boolean",
@@ -8166,6 +8175,13 @@
           "add_stopped": {
             "type": "boolean",
             "description": "Add new torrents stopped."
+          },
+          "incomplete_file_suffix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Appended to the name of every file that is not complete yet (e.g.\n`.!qB`), removed when the file completes; `null` = off. Changing it\nrenames the files of every torrent."
           },
           "add_to_top_of_queue": {
             "type": "boolean",

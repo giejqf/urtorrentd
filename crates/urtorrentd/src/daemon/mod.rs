@@ -9,6 +9,7 @@ mod add;
 mod events;
 mod ops;
 mod organize;
+mod suffix;
 mod tick;
 mod view;
 
@@ -386,6 +387,12 @@ impl Daemon {
             blocking(move || s.save(store::SETTINGS, &v)).await?;
         }
         let save_path_changed = old.save_path != new.save_path;
+        if old.incomplete_file_suffix != new.incomplete_file_suffix {
+            self.spawn_suffix_change(
+                old.incomplete_file_suffix.clone(),
+                new.incomplete_file_suffix.clone(),
+            );
+        }
         self.state().settings = new.clone();
         for ip in new
             .banned_ips

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-23
+
+### Added
+
+- **A suffix for incomplete files**: the `incomplete_file_suffix` setting
+  (`".!qB"` gives qBittorrent's behaviour; off by default). Files that are
+  not complete carry it and lose it as each one completes; a check takes it
+  off the files it finds complete and puts it back on any a recheck finds
+  incomplete; changing the setting renames the files of every torrent. Done
+  with the library's `rename_file` and `FileCompleted` (no library change);
+  a `.torrent` is held at once while the suffix is on, so no file is created
+  under its final name first.
+- `docs/settings.md` shows how to stage downloads in a download path and have
+  them move to their category's directory on completion (automatic
+  management), now covered end to end by a test together with the suffix.
+
 ## [0.2.0] - 2026-09-23
 
 Persistence moves to SQLite, and the daemon follows urtorrent 0.13.1, which

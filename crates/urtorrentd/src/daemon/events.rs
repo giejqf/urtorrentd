@@ -46,10 +46,18 @@ impl Daemon {
         match ev {
             Event::MetadataReceived { id } => self.on_metadata(id).await,
             Event::Checked { id, .. } => {
-                // A fresh check result is worth keeping at once: a restart
-                // then skips the check.
                 if let Some(h) = self.hash_of(id) {
+                    // Complete files lose the incomplete-file suffix (a check
+                    // sends no `FileCompleted`), incomplete ones gain it.
+                    self.apply_suffix(h, id).await;
+                    // A fresh check result is worth keeping at once: a
+                    // restart then skips the check.
                     self.save_resume(ResumeSave::One(h)).await;
+                }
+            }
+            Event::FileCompleted { id, index, .. } => {
+                if let Some(h) = self.hash_of(id) {
+                    self.file_completed(h, id, index).await;
                 }
             }
             Event::TorrentFinished { id } => self.on_finished(id).await,
@@ -142,6 +150,7 @@ impl Daemon {
                 self.finish_hold(hash, id).await;
             }
             _ => {
+                self.apply_suffix(hash, id).await;
                 let first_last = self
                     .state()
                     .torrents
