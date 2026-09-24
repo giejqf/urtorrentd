@@ -469,6 +469,18 @@ impl Daemon {
         })
     }
 
+    /// Add one torrent from a magnet link, info-hash or `.torrent` URL (RSS
+    /// rules).
+    pub(crate) async fn add_from_source(
+        self: &Arc<Self>,
+        source: &str,
+        o: &AddOptions,
+    ) -> ApiResult<AddedTorrent> {
+        check_options(o)?;
+        let p = self.resolve_url(source, o.cookie.as_deref()).await?;
+        self.add_one(p, o).await
+    }
+
     /// A held torrent (metadata known, no files yet): apply what waited for
     /// the metadata (a magnet's layout, first and last piece priority), then
     /// let it go on: checked and left stopped when a stop condition or the

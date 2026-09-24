@@ -120,7 +120,7 @@ our endpoints are named in `docs/api.md`, which keeps the full, current table.
 | `app` | `defaultSavePath`, `getDirectoryContent`, `networkInterfaceList`, `networkInterfaceAddressList`, `cookies`, `setCookies`, `rotateAPIKey`, `deleteAPIKey` | D |
 | `app` | `shutdown` | L `shutdown` (after persisting, 4.8) |
 | `app` | `preferences`, `setPreferences` | P: key by key in `docs/settings.md` (4.9) |
-| `app` | `sendTestEmail` | U until notifications exist (D later) |
+| `app` | `sendTestEmail` | U: no e-mail (maintainer decision 2026-09-24); webhooks notify (`POST /webhooks/{id}/test`) |
 | `log` | `main`, `peers` | D (the daemon's own ring buffers) |
 | `sync` | `maindata` | D over L snapshots (4.6) |
 | `sync` | `torrentPeers` | L `peers`, plus country and ASN from a user-supplied GeoIP database (D) |
@@ -143,10 +143,10 @@ our endpoints are named in `docs/api.md`, which keeps the full, current table.
 | `torrents` | `fetchMetadata`, `saveMetadata` | D: a preview (`/previews`) held with `hold_after_metadata` outside the registry; its `.torrent` is kept and used by the add |
 | `torrents` | `toggleFirstLastPiecePrio` | L `set_piece_priorities` (urtorrent 0.13), the pieces chosen by the daemon |
 | `torrents` | `setSuperSeeding`, `SSLParameters`, `setSSLParameters` | U: library non-goals |
-| `rss` | all | D, later milestone (`docs/config.md` lists RSS as frontend work). U until then |
+| `rss` | all | D: `/rss` (feeds in folders, articles, download rules; 4.14) |
 | `search` | all | U: non-goal |
 | `torrentcreator` | all | U: library non-goal (open question in section 8) |
-| `clientdata` | `load`, `store` | D, later: a small key-value store for client UIs |
+| `clientdata` | `load`, `store` | D: `/client-data` |
 
 ## 4. Architecture
 
@@ -166,6 +166,8 @@ crates/urtorrentd/src/
     view.rs             list rows, detail, transfer info, caches
     preview.rs          metadata previews (fetchMetadata / saveMetadata)
     watched.rs          watch folders (scan_dirs)
+  rss/                  RSS: feeds, articles, rules (mod.rs), SQL (db.rs), documents (parse.rs),
+                        rule matching (rules.rs)
     events.rs           the single event pump (4.4)
     tick.rs             activity tracking, share limits, periodic flushes
   api/                  axum handlers, one module per feature group; guard.rs = auth
@@ -465,6 +467,24 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
   files are the daemon's input, not torrent content: rule 5 does not apply to them. A
   file whose rename fails is not taken again until it changes.
 
+### 4.14 RSS and client data
+
+- **RSS** (`src/rss/`, `/rss`): folders, feeds and articles live in `urtorrentd.db`
+  (schema version 2); the newest `rss_max_articles` articles per feed are kept. The tick
+  starts due refreshes (4 at once, `rss_fetch_delay` between requests to one host,
+  conditional requests with ETag / Last-Modified); a refresh asked for runs with
+  `rss_enabled` off too. Documents are parsed with `quick-xml` (RSS 2.0, Atom, enclosures,
+  torznab / newznab attributes, `torrent:magnetURI`). Errors are logged without the URL
+  (feed URLs carry passkeys).
+- **Rules** (`rss/rules.rs`): qBittorrent's semantics from its documentation (wildcards or
+  regular expressions, episode filters, the smart filter with repacks, ignore days), our
+  own implementation (rule 7). New articles run through the rules when
+  `rss_auto_download` is on, and a rule's feeds when it is saved; one rule per article;
+  what a rule takes is added through the add pipeline with its `add_options`. Runs,
+  saves and renames of rules are serialized (`rss_rules_lock`).
+- **Client data** (`/client-data`): JSON values by key for client UIs, in `urtorrentd.db`;
+  never read by the daemon; 4096 keys, 64 KiB a value.
+
 ## 5. Testing
 
 1. **Unit.** Unit and state-flag derivation, the sync diff engine, request parsing, auth
@@ -479,7 +499,9 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
    is validated against the OpenAPI schema** (`tests/common`), and calling an
    undocumented endpoint fails the test. Previews fetch from a real peer
    (`tests/previews.rs`); webhooks are delivered to a local receiver that checks the
-   signatures (`tests/webhooks.rs`).
+   signatures (`tests/webhooks.rs`); RSS reads a local feed server whose feed changes
+   under it (`tests/rss.rs`); the scheduler and watch folders run on a real daemon
+   (`tests/automation.rs`).
 4. **Schema** (`tests/openapi.rs`, `cargo xtask sdk`). The committed `openapi.json` is
    current, every `$ref` resolves, operation ids are unique, errors are typed; a
    TypeScript client generated from it type-checks, and wrong calls do not.
@@ -522,7 +544,8 @@ peer client, source, transport, encryption, IP version and direction, and by cat
 tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed report.
 **0.8.0** adds metadata previews and webhooks (run-on-completion as HTTP calls, ADR 0006).
 **0.9.0** adds the alternative-limits scheduler and watch folders, tested with urtorrent
-0.13.3.
+0.13.3. **0.10.0** adds RSS and the client data store. What is left of the checklist is the
+"planned" rows of `docs/api.md` and `docs/settings.md`: small preferences and endpoints.
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -543,10 +566,10 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
   0.6.0 geolocation (country and ASN on live peers and in history; done); 0.7.0 breakdowns,
   tracker reliability, idle-seed report, opt-in scrape for completed-download counts (done).
   Later: data-usage caps (needs wire-level counters upstream), Prometheus `/metrics`.
-- **Later, each on request:** RSS, notifications (e-mail), HTTPS for the API, the client
-  key-value store. Anything that
-  needs a library change lands in
-  urtorrent first.
+- **Not planned** (maintainer decision, 2026-09-24): e-mail notifications (webhooks
+  notify) and HTTPS in the daemon (TLS belongs to a reverse proxy). What else the
+  checklist marks unsupported stays so for the reasons given there.
+- Anything that needs a library change lands in urtorrent first.
 
 ## 7. Working conventions
 
@@ -566,7 +589,8 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
   event stream; already in the tree through axum and tower), `maxminddb` (reading the
   user's GeoIP files; ISC), `hmac` (webhook signatures; RustCrypto, like `sha2`), `jiff`
   (local time and daylight saving for the alternative-limits schedule; the system's time
-  zone database, with a bundled copy for containers without one).
+  zone database, with a bundled copy for containers without one), `quick-xml` (RSS and
+  Atom documents), `regex` (RSS rules; already in the tree).
   `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with the library's licence
   allow-list. It does **not** ban `mio` here (4.2).
 - Commands (keep them working forever):
@@ -615,6 +639,8 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
   never stored.
 - **Run-on-completion is a webhook** (2026-09-24, ADR 0006): the daemon calls URLs on
   torrent events and never runs a program.
+- **No e-mail, no HTTPS in the daemon** (2026-09-24): webhooks notify; a reverse proxy
+  terminates TLS.
 
 ### Settled in ADRs (defaults taken while building; revisit with the maintainer if needed)
 

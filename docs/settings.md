@@ -98,6 +98,18 @@ session counts as added. Folders are looked at every 2 seconds; with
 `recursive`, subfolders up to 8 levels deep (hidden entries and symbolic
 links to folders are skipped).
 
+## RSS
+
+- `rss_enabled` (`false`): refresh the feeds by themselves.
+- `rss_refresh_interval` (`1800`): seconds between refreshes of a feed
+  without its own `refresh_interval` (at least 60).
+- `rss_fetch_delay` (`2`): seconds between two requests to one host.
+- `rss_max_articles` (`50`): articles kept per feed.
+- `rss_auto_download` (`false`): run the download rules
+  ([api.md](api.md#rss)).
+- `rss_download_repacks` (`true`): a smart filter takes a REPACK or PROPER
+  of an episode once more.
+
 ## Geolocation
 
 Peers are placed by MaxMind DB (`.mmdb`) files you provide; the daemon never
@@ -225,14 +237,14 @@ an API daemon. **unsupported**: with the reason.
 | `listen_port` | setting | `listen_port` |
 | `locale` | n/a | a client UI concern |
 | `lsd` | setting | `lsd` |
-| `mail_notification_auth_enabled` | planned | e-mail notifications |
-| `mail_notification_email` | planned | as above |
-| `mail_notification_enabled` | planned | as above |
-| `mail_notification_password` | planned | as above |
-| `mail_notification_sender` | planned | as above |
-| `mail_notification_smtp` | planned | as above |
-| `mail_notification_ssl_enabled` | planned | as above |
-| `mail_notification_username` | planned | as above |
+| `mail_notification_auth_enabled` | unsupported | no e-mail (maintainer decision 2026-09-24): webhooks notify |
+| `mail_notification_email` | unsupported | no e-mail (maintainer decision 2026-09-24): webhooks notify |
+| `mail_notification_enabled` | unsupported | no e-mail (maintainer decision 2026-09-24): webhooks notify |
+| `mail_notification_password` | unsupported | no e-mail (maintainer decision 2026-09-24): webhooks notify |
+| `mail_notification_sender` | unsupported | no e-mail (maintainer decision 2026-09-24): webhooks notify |
+| `mail_notification_smtp` | unsupported | no e-mail (maintainer decision 2026-09-24): webhooks notify |
+| `mail_notification_ssl_enabled` | unsupported | no e-mail (maintainer decision 2026-09-24): webhooks notify |
+| `mail_notification_username` | unsupported | no e-mail (maintainer decision 2026-09-24): webhooks notify |
 | `mark_of_the_web` | n/a | a Windows / macOS concern |
 | `max_active_checking_torrents` | setting | `max_checking` (after a restart) |
 | `max_active_downloads` | setting | `max_active_downloads` |
@@ -282,13 +294,13 @@ an API daemon. **unsupported**: with the reason.
 | `resolve_peer_countries` | setting | `geoip_database` (a database file you provide; countries on peers and in `/stats/geo`), `geoip_asn_database` |
 | `resolve_peer_host_names` | unsupported | no reverse DNS for peers |
 | `resume_data_storage_type` | fixed | SQLite: resume data lives in the daemon's database (ADR 0004) |
-| `rss_auto_downloading_enabled` | planned | RSS |
-| `rss_download_repack_proper_episodes` | planned | RSS |
-| `rss_fetch_delay` | planned | RSS |
-| `rss_max_articles_per_feed` | planned | RSS |
-| `rss_processing_enabled` | planned | RSS |
-| `rss_refresh_interval` | planned | RSS |
-| `rss_smart_episode_filters` | planned | RSS |
+| `rss_auto_downloading_enabled` | setting | `rss_auto_download` |
+| `rss_download_repack_proper_episodes` | setting | `rss_download_repacks` |
+| `rss_fetch_delay` | setting | `rss_fetch_delay` (seconds) |
+| `rss_max_articles_per_feed` | setting | `rss_max_articles` |
+| `rss_processing_enabled` | setting | `rss_enabled` |
+| `rss_refresh_interval` | setting | `rss_refresh_interval` (seconds; qBittorrent's are minutes); per feed: `refresh_interval` |
+| `rss_smart_episode_filters` | fixed | built-in episode patterns: `S01E02`, `S01E02-E03`, `1x02`, dates `2026-09-24` / `2026.09.24` |
 | `save_path` | setting | `save_path` |
 | `save_path_changed_tmm_enabled` | fixed | managed torrents follow the default save path |
 | `save_resume_data_interval` | fixed | the engine saves while torrents change and at shutdown |
@@ -327,7 +339,7 @@ an API daemon. **unsupported**: with the reason.
 | `upnp` | unsupported | port mapping is on the library roadmap |
 | `upnp_lease_duration` | unsupported | as above |
 | `use_category_paths_in_manual_mode` | planned | category subfolders for manually managed torrents |
-| `use_https` | planned | HTTPS for the API (use a TLS reverse proxy until then) |
+| `use_https` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
 | `use_unwanted_folder` | unsupported | skipped files' shared pieces go to the library's parts file |
 | `utp_tcp_mixed_mode` | fixed | the `transports` policy decides |
 | `validate_https_tracker_certificate` | fixed | always validated |
@@ -339,13 +351,13 @@ an API daemon. **unsupported**: with the reason.
 | `web_ui_custom_http_headers` | unsupported | no web UI is served |
 | `web_ui_domain_list` | setting | `api_allowed_hosts` |
 | `web_ui_host_header_validation_enabled` | setting | `api_allowed_hosts` (`["*"]` turns it off) |
-| `web_ui_https_cert_path` | planned | with `use_https` |
-| `web_ui_https_key_path` | planned | with `use_https` |
+| `web_ui_https_cert_path` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
+| `web_ui_https_key_path` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
 | `web_ui_max_auth_fail_count` | setting | `api_max_auth_failures` |
 | `web_ui_port` | setting | `--api-listen` |
 | `web_ui_reverse_proxies_list` | planned | trusted proxies for client addresses |
 | `web_ui_reverse_proxy_enabled` | planned | as above |
-| `web_ui_secure_cookie_enabled` | planned | with `use_https` |
+| `web_ui_secure_cookie_enabled` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
 | `web_ui_session_timeout` | setting | `api_session_timeout` |
 | `web_ui_upnp` | unsupported | no port mapping |
 | `web_ui_use_custom_http_headers_enabled` | unsupported | no web UI is served |

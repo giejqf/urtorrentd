@@ -88,6 +88,49 @@ info-hash (magnet or hash) uses that `.torrent`, so the files are known at
 once. A preview nobody reads for 15 minutes is dropped; 32 at most at once.
 The `add_trackers` setting is not applied to previews.
 
+## RSS
+
+Feeds live in folders (`tv/anime`); each keeps its newest `rss_max_articles`
+articles. With `rss_enabled` the daemon refreshes every feed at its interval
+(`refresh_interval`, else `rss_refresh_interval`); `POST
+/rss/feeds/{id}/refresh` refreshes one now either way.
+
+```sh
+POST /api/v1/rss/feeds {"url": "https://indexer.example/rss?passkey=...", "folder": "tv", "name": "Indexer"}
+GET  /api/v1/rss/feeds/1          # the feed and its articles: title, date, torrent_url, size, read, downloaded
+PUT  /api/v1/rss/rules/Show%201080p {"must_contain": "show 1080p", "must_not_contain": "cam",
+     "episode_filter": "2x1-;", "smart_filter": true, "feeds": [1], "add_options": {"category": "tv"}}
+GET  /api/v1/rss/rules/Show%201080p/matches    # what it would take now
+```
+
+A rule takes an article when its title passes:
+
+- `must_contain`: words that must all appear, any order, case ignored; `*`
+  is any text, `?` any character, `|` separates alternatives (`show 1080p |
+  show 2160p`). With `use_regex` it is a regular expression. Empty takes all.
+- `must_not_contain`: the same, and no match allowed.
+- `episode_filter`: `1x2;1x8-15;2x1-;` is season 1 episode 2, episodes 8 to
+  15, and season 2 on from episode 1 (every later season too); an item
+  without a season keeps the previous one's. Titles are read as `S01E02`,
+  `S01E02-E03` or `1x02`.
+- `smart_filter`: each episode once (`S01E02`, `1x02`, or a date for daily
+  shows); with `rss_download_repacks` a REPACK or PROPER once more. The
+  episodes taken are in `matched_episodes`.
+- `ignore_days`: after taking something, nothing for that many days.
+
+With `rss_auto_download`, new articles of a rule's `feeds` go through the
+rules (one rule per article), and saving a rule runs it over its feeds'
+articles. What a rule takes is added with its `add_options`, marked
+`downloaded` and read. Errors of a feed are in its `error` and the log,
+without the URL (a feed URL can carry a passkey).
+
+## Client data
+
+`/client-data` keeps JSON values by key for client UIs (their preferences,
+column layouts): `PATCH {"ui.theme": "dark", "old.key": null}` stores and
+removes, `GET ?keys=ui.theme,ui.columns` reads (all keys without `keys`).
+The daemon never reads them. 4096 keys, 256 a request, 64 KiB a value.
+
 ## Webhooks ([ADR 0006](adr/0006-webhooks.md))
 
 qBittorrent runs a program when a torrent is added or finishes; urtorrentd
@@ -254,6 +297,17 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET | `/sync` | Incremental updates: everything, then changes since `rev` |
 | GET | `/events` | The same updates pushed as server-sent events |
 | GET | `/log`, `/log/peers` | Main log; peer (ban) log |
+| GET, POST | `/rss/feeds` | RSS feeds; add one |
+| GET, PATCH, DELETE | `/rss/feeds/{id}` | A feed with its articles; change it; remove it |
+| POST | `/rss/feeds/{id}/refresh`, `/rss/feeds/{id}/read` | Refresh now; mark articles read |
+| GET | `/rss/articles` | Articles across feeds (unread only, one feed) |
+| GET, POST | `/rss/folders` | Folders; add one |
+| POST | `/rss/folders/remove`, `/rss/folders/move` | Remove a folder with its feeds; move one |
+| GET | `/rss/rules` | Download rules |
+| PUT, DELETE | `/rss/rules/{name}` | Create or replace a rule; remove it |
+| POST | `/rss/rules/{name}/rename` | Rename a rule |
+| GET | `/rss/rules/{name}/matches` | What a rule's filters take from its feeds |
+| GET, PATCH | `/client-data` | The client data store (JSON by key) |
 | GET, POST | `/webhooks` | Webhooks with their last deliveries; add one |
 | GET, PATCH, DELETE | `/webhooks/{id}` | One webhook; change it; remove it |
 | POST | `/webhooks/{id}/test` | Deliver a `test` event now |
@@ -315,7 +369,7 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `app/setPreferences` | done | `PATCH /settings` |
 | `app/defaultSavePath` | done | `GET /app` (`default_save_path`) |
 | `app/getDirectoryContent` | done | `GET /fs/directory` |
-| `app/sendTestEmail` | planned | with e-mail notifications |
+| `app/sendTestEmail` | unsupported | no e-mail (maintainer decision); webhooks notify: `POST /webhooks/{id}/test` |
 | `app/cookies` | planned | a stored cookie jar for URL downloads (per request today: `options.cookie`) |
 | `app/setCookies` | planned | as above |
 | `app/rotateAPIKey` | done | `POST /auth/api-key` |
@@ -396,20 +450,20 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `torrents/fetchMetadata` | done | `POST /previews`, `GET /previews/{hash}` |
 | `torrents/parseMetadata` | done | `POST /torrents/parse` |
 | `torrents/saveMetadata` | done | `GET /previews/{hash}/torrent-file` |
-| `rss/addFolder` | planned | RSS (after 0.1.0) |
-| `rss/addFeed` | planned | RSS |
-| `rss/setFeedURL` | planned | RSS |
-| `rss/setFeedRefreshInterval` | planned | RSS |
-| `rss/removeItem` | planned | RSS |
-| `rss/moveItem` | planned | RSS |
-| `rss/items` | planned | RSS |
-| `rss/markAsRead` | planned | RSS |
-| `rss/refreshItem` | planned | RSS |
-| `rss/setRule` | planned | RSS |
-| `rss/renameRule` | planned | RSS |
-| `rss/removeRule` | planned | RSS |
-| `rss/rules` | planned | RSS |
-| `rss/matchingArticles` | planned | RSS |
+| `rss/addFolder` | done | `POST /rss/folders` |
+| `rss/addFeed` | done | `POST /rss/feeds` (`folder`, `refresh_interval`) |
+| `rss/setFeedURL` | done | `PATCH /rss/feeds/{id}` (`url`) |
+| `rss/setFeedRefreshInterval` | done | `PATCH /rss/feeds/{id}` (`refresh_interval`) |
+| `rss/removeItem` | done | `DELETE /rss/feeds/{id}`, `POST /rss/folders/remove` |
+| `rss/moveItem` | done | `PATCH /rss/feeds/{id}` (`folder`), `POST /rss/folders/move` |
+| `rss/items` | done | `GET /rss/feeds`, `GET /rss/feeds/{id}`, `GET /rss/articles`, `GET /rss/folders` |
+| `rss/markAsRead` | done | `POST /rss/feeds/{id}/read` |
+| `rss/refreshItem` | done | `POST /rss/feeds/{id}/refresh` |
+| `rss/setRule` | done | `PUT /rss/rules/{name}` |
+| `rss/renameRule` | done | `POST /rss/rules/{name}/rename` |
+| `rss/removeRule` | done | `DELETE /rss/rules/{name}` |
+| `rss/rules` | done | `GET /rss/rules` |
+| `rss/matchingArticles` | done | `GET /rss/rules/{name}/matches` |
 | `search/start` | unsupported | search plugins are out of scope (urtorrent non-goal) |
 | `search/stop` | unsupported | as above |
 | `search/status` | unsupported | as above |
@@ -425,5 +479,5 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `torrentcreator/status` | unsupported | as above |
 | `torrentcreator/torrentFile` | unsupported | as above |
 | `torrentcreator/deleteTask` | unsupported | as above |
-| `clientdata/load` | planned | a key-value store for client UIs |
-| `clientdata/store` | planned | as above |
+| `clientdata/load` | done | `GET /client-data?keys=` |
+| `clientdata/store` | done | `PATCH /client-data` (`null` removes a key) |

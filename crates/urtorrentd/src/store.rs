@@ -33,7 +33,7 @@ use crate::settings::ShareLimitAction;
 /// Current record format (inside the `record` JSON).
 pub const RECORD_FORMAT: u32 = 2;
 /// Current schema version (`PRAGMA user_version`).
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 /// The database file inside the data directory.
 pub const DB_FILE: &str = "urtorrentd.db";
 
@@ -202,7 +202,7 @@ pub const TOTALS: &str = "totals";
 pub const WEBHOOKS: &str = "webhooks";
 const DHT: &str = "dht";
 
-fn db_err(e: rusqlite::Error) -> io::Error {
+pub(crate) fn db_err(e: rusqlite::Error) -> io::Error {
     io::Error::other(format!("database: {e}"))
 }
 
@@ -458,8 +458,90 @@ impl Store {
         Ok(())
     }
 
-    /// Run `f` in one transaction (the legacy import).
-    fn transaction<T>(
+    /// Client data: the given keys (those present), or every key.
+    pub fn client_data(
+        &self,
+        keys: Option<&[String]>,
+    ) -> io::Result<BTreeMap<String, serde_json::Value>> {
+        let conn = self.conn();
+        let mut out = BTreeMap::new();
+        let mut put = |k: String, v: String| {
+            if let Ok(v) = serde_json::from_str(&v) {
+                out.insert(k, v);
+            }
+        };
+        match keys {
+            Some(keys) => {
+                let mut stmt = conn
+                    .prepare_cached("SELECT value FROM client_data WHERE key = ?1")
+                    .map_err(db_err)?;
+                for k in keys {
+                    if let Some(v) = stmt
+                        .query_row([k], |r| r.get::<_, String>(0))
+                        .optional()
+                        .map_err(db_err)?
+                    {
+                        put(k.clone(), v);
+                    }
+                }
+            }
+            None => {
+                let mut stmt = conn
+                    .prepare_cached("SELECT key, value FROM client_data ORDER BY key")
+                    .map_err(db_err)?;
+                let rows = stmt
+                    .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+                    .map_err(db_err)?;
+                for row in rows {
+                    let (k, v) = row.map_err(db_err)?;
+                    put(k, v);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Store client data (`null` removes a key), in one transaction that
+    /// is undone (`InvalidInput`) if more than `max_keys` keys would remain.
+    pub fn store_client_data(
+        &self,
+        changes: &BTreeMap<String, serde_json::Value>,
+        max_keys: u64,
+    ) -> io::Result<()> {
+        self.transaction(|tx| {
+            for (k, v) in changes {
+                if v.is_null() {
+                    tx.execute("DELETE FROM client_data WHERE key = ?1", [k])
+                        .map_err(db_err)?;
+                } else {
+                    tx.execute(
+                        "INSERT INTO client_data (key, value) VALUES (?1, ?2)
+                         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                        params![k, v.to_string()],
+                    )
+                    .map_err(db_err)?;
+                }
+            }
+            let n: u64 = tx
+                .query_row("SELECT count(*) FROM client_data", [], |r| r.get(0))
+                .map_err(db_err)?;
+            if n > max_keys {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("{max_keys} keys at most"),
+                ));
+            }
+            Ok(())
+        })
+    }
+
+    /// Read with the connection.
+    pub(crate) fn read<T>(&self, f: impl FnOnce(&Connection) -> io::Result<T>) -> io::Result<T> {
+        f(&self.conn())
+    }
+
+    /// Run `f` in one transaction.
+    pub(crate) fn transaction<T>(
         &self,
         f: impl FnOnce(&rusqlite::Transaction<'_>) -> io::Result<T>,
     ) -> io::Result<T> {
@@ -494,6 +576,43 @@ fn migrate(conn: &mut Connection) -> io::Result<()> {
                  resume BLOB,
                  added INTEGER NOT NULL
              );",
+        )
+        .map_err(db_err)?;
+    }
+    if version < 2 {
+        // 0.10.0: RSS and the client data store.
+        tx.execute_batch(
+            "CREATE TABLE rss_folders (path TEXT PRIMARY KEY);
+             CREATE TABLE rss_feeds (
+                 id INTEGER PRIMARY KEY,
+                 url TEXT NOT NULL UNIQUE,
+                 name TEXT,
+                 folder TEXT,
+                 refresh_interval INTEGER,
+                 title TEXT,
+                 last_refresh INTEGER,
+                 error TEXT,
+                 etag TEXT,
+                 last_modified TEXT
+             );
+             CREATE TABLE rss_articles (
+                 feed INTEGER NOT NULL,
+                 id TEXT NOT NULL,
+                 seq INTEGER NOT NULL,
+                 date INTEGER,
+                 title TEXT NOT NULL,
+                 link TEXT,
+                 torrent_url TEXT,
+                 description TEXT,
+                 author TEXT,
+                 size INTEGER,
+                 read INTEGER NOT NULL DEFAULT 0,
+                 downloaded INTEGER NOT NULL DEFAULT 0,
+                 PRIMARY KEY (feed, id)
+             );
+             CREATE INDEX rss_articles_by_seq ON rss_articles (feed, seq);
+             CREATE TABLE rss_rules (name TEXT PRIMARY KEY, rule TEXT NOT NULL);
+             CREATE TABLE client_data (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )
         .map_err(db_err)?;
     }

@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-09-24
+
+### Added
+
+- **RSS** (qBittorrent's `rss/*`): feeds in folders (`/rss/feeds`,
+  `/rss/folders`), refreshed at their interval (`rss_enabled`,
+  `rss_refresh_interval`, per-feed `refresh_interval`) with a delay
+  between requests to one host and conditional requests; RSS 2.0 and
+  Atom with enclosures and torznab / newznab attributes; articles with
+  read marks (`/rss/articles`, `/rss/feeds/{id}/read`). Download rules
+  (`/rss/rules`): wildcards or regular expressions, episode filters, a
+  smart filter taking each episode once (repacks once more), ignore days,
+  add options per rule, and a dry run (`/rss/rules/{name}/matches`).
+  Errors are logged without the feed URL (passkeys).
+- **Client data store** (qBittorrent's `clientdata/*`): `/client-data`
+  keeps JSON values by key for client UIs.
+- `urtorrentd.db` schema version 2 (migrated on open).
+
+### Removed from the plan
+
+- E-mail notifications (webhooks notify) and HTTPS in the daemon (a
+  reverse proxy terminates TLS): their preferences are unsupported, with
+  the reason.
+
 ## [0.9.0] - 2026-09-24
 
 ### Added

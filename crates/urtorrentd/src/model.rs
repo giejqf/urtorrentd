@@ -2146,3 +2146,268 @@ pub struct WebhookPayload {
     #[schema(required = true)]
     pub detail: Option<String>,
 }
+
+// ---- RSS (`/rss`) ----
+
+/// An RSS or Atom feed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct RssFeed {
+    /// Its id.
+    pub id: u32,
+    /// The feed's URL.
+    pub url: String,
+    /// A label given to it; `null` = its own title.
+    #[schema(required = true)]
+    pub name: Option<String>,
+    /// The title the feed gives itself.
+    #[schema(required = true)]
+    pub title: Option<String>,
+    /// The folder it is in (`tv/anime`); `null` = the top.
+    #[schema(required = true)]
+    pub folder: Option<String>,
+    /// Seconds between refreshes; `null` = the `rss_refresh_interval`
+    /// setting.
+    #[schema(required = true)]
+    pub refresh_interval: Option<u64>,
+    /// When it was last refreshed, unix seconds; `null` = never.
+    #[schema(required = true)]
+    pub last_refresh: Option<u64>,
+    /// Why the last refresh failed; `null` = it did not.
+    #[schema(required = true)]
+    pub error: Option<String>,
+    /// A refresh is running.
+    pub loading: bool,
+    /// Articles kept.
+    pub articles: u32,
+    /// Articles not read.
+    pub unread: u32,
+}
+
+/// A feed and its articles.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RssFeedDetail {
+    /// The feed.
+    pub feed: RssFeed,
+    /// Its articles, newest first.
+    pub articles: Vec<RssArticle>,
+}
+
+/// A new feed.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RssFeedRequest {
+    /// The feed's URL (http or https).
+    pub url: String,
+    /// A label.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The folder to put it in (created if missing).
+    #[serde(default)]
+    pub folder: Option<String>,
+    /// Seconds between refreshes (at least 60); absent = the setting.
+    #[serde(default)]
+    pub refresh_interval: Option<u64>,
+}
+
+/// A change to a feed: only the fields present change.
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RssFeedPatch {
+    /// The feed's URL.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// A label; `null` removes it.
+    #[serde(default, deserialize_with = "crate::util::patch_field")]
+    #[schema(nullable = true)]
+    pub name: Option<Option<String>>,
+    /// The folder; `null` = the top.
+    #[serde(default, deserialize_with = "crate::util::patch_field")]
+    #[schema(nullable = true)]
+    pub folder: Option<Option<String>>,
+    /// Seconds between refreshes; `null` = the setting.
+    #[serde(default, deserialize_with = "crate::util::patch_field")]
+    #[schema(nullable = true)]
+    pub refresh_interval: Option<Option<u64>>,
+}
+
+/// An article of a feed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct RssArticle {
+    /// Its id within the feed (the `guid`, else the link).
+    pub id: String,
+    /// The feed.
+    pub feed: u32,
+    /// Title.
+    pub title: String,
+    /// Published, unix seconds.
+    #[schema(required = true)]
+    pub date: Option<u64>,
+    /// Link to the article.
+    #[schema(required = true)]
+    pub link: Option<String>,
+    /// What would be added: a `.torrent` URL or a magnet link.
+    #[schema(required = true)]
+    pub torrent_url: Option<String>,
+    /// Description (HTML as the feed gives it, at most 16 KiB).
+    #[schema(required = true)]
+    pub description: Option<String>,
+    /// Author.
+    #[schema(required = true)]
+    pub author: Option<String>,
+    /// Content size, bytes, when the feed says.
+    #[schema(required = true)]
+    pub size: Option<u64>,
+    /// Marked read.
+    pub read: bool,
+    /// Added by a download rule.
+    pub downloaded: bool,
+}
+
+/// Query of articles across feeds.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct RssArticlesQuery {
+    /// One feed; default: all.
+    pub feed: Option<u32>,
+    /// Only articles not read.
+    pub unread: Option<bool>,
+    /// At most this many, the newest (1 to 5000); default 500.
+    pub limit: Option<u32>,
+}
+
+/// Which articles of a feed: a list of ids or `"all"`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, ToSchema)]
+#[serde(untagged)]
+pub enum RssArticleIds {
+    /// Every article.
+    All(AllTorrents),
+    /// These ids.
+    List(Vec<String>),
+}
+
+/// Articles to mark read.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RssReadRequest {
+    /// The articles.
+    pub articles: RssArticleIds,
+}
+
+/// A folder path (`tv/anime`).
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RssFolderRequest {
+    /// The folder.
+    pub path: String,
+}
+
+/// Move (rename) a folder, with what is in it.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RssFolderMove {
+    /// The folder.
+    pub from: String,
+    /// Its new path.
+    pub to: String,
+}
+
+/// An automatic download rule. See `docs/api.md` for how titles match.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct RssRule {
+    /// Its name.
+    pub name: String,
+    /// On.
+    pub enabled: bool,
+    /// What a title must contain (wildcards, or a regular expression).
+    pub must_contain: String,
+    /// What it must not contain.
+    pub must_not_contain: String,
+    /// `must_contain` and `must_not_contain` are regular expressions.
+    pub use_regex: bool,
+    /// Seasons and episodes to take (`1x2;1x8-15;2x1-;`); empty = any.
+    pub episode_filter: String,
+    /// Take each episode once (repacks and propers once more with
+    /// `rss_download_repacks`).
+    pub smart_filter: bool,
+    /// The feeds it applies to (ids).
+    pub feeds: Vec<u32>,
+    /// After a match, take nothing for this many days; 0 = off.
+    pub ignore_days: u32,
+    /// How what it takes is added (as in `POST /torrents`).
+    pub add_options: AddOptions,
+    /// When it last took something, unix seconds.
+    #[schema(required = true)]
+    pub last_match: Option<u64>,
+    /// Episodes it took (smart filter).
+    pub matched_episodes: Vec<String>,
+}
+
+/// A rule's definition (`PUT /rss/rules/{name}`); its history is kept.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RssRuleRequest {
+    /// On (the default).
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// What a title must contain; empty = anything.
+    #[serde(default)]
+    pub must_contain: String,
+    /// What it must not contain.
+    #[serde(default)]
+    pub must_not_contain: String,
+    /// Regular expressions instead of wildcards.
+    #[serde(default)]
+    pub use_regex: bool,
+    /// Seasons and episodes to take; empty = any.
+    #[serde(default)]
+    pub episode_filter: String,
+    /// Take each episode once.
+    #[serde(default)]
+    pub smart_filter: bool,
+    /// The feeds it applies to (ids).
+    #[serde(default)]
+    pub feeds: Vec<u32>,
+    /// After a match, take nothing for this many days.
+    #[serde(default)]
+    pub ignore_days: u32,
+    /// How what it takes is added.
+    #[serde(default)]
+    pub add_options: AddOptions,
+    /// Forget the episodes it took and when it last matched.
+    #[serde(default)]
+    pub reset_history: bool,
+}
+
+/// A rule's new name.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RssRuleRename {
+    /// The new name.
+    pub name: String,
+}
+
+/// The `{name}` path parameter of a rule.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct RssRulePath {
+    /// Rule name.
+    pub name: String,
+}
+
+/// The `{id}` path parameter of a feed.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct RssFeedPath {
+    /// Feed id.
+    pub id: u32,
+}
+
+// ---- Client data (`/client-data`) ----
+
+/// Query of the client data store.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ClientDataQuery {
+    /// Comma-separated keys; absent = every key.
+    pub keys: Option<String>,
+}

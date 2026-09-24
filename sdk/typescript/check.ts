@@ -114,6 +114,24 @@ export async function demo(): Promise<void> {
   const badDay: Schemas["Weekday"] = "funday";
   void badDay;
 
+  // RSS: a feed, its articles, a rule and its dry run.
+  const feed = await api.POST("/api/v1/rss/feeds", { body: { url: "https://indexer.example/rss", folder: "tv" } });
+  if (feed.data) {
+    const detail = await api.GET("/api/v1/rss/feeds/{id}", { params: { path: { id: feed.data.id } } });
+    const unread = detail.data?.articles.filter((a: Schemas["RssArticle"]) => !a.read).map((a) => a.torrent_url);
+    await api.POST("/api/v1/rss/feeds/{id}/read", { params: { path: { id: feed.data.id } }, body: { articles: "all" } });
+    await api.PUT("/api/v1/rss/rules/{name}", {
+      params: { path: { name: "Show 1080p" } },
+      body: { must_contain: "show 1080p", smart_filter: true, feeds: [feed.data.id], add_options: { category: "tv" } },
+    });
+    const would = await api.GET("/api/v1/rss/rules/{name}/matches", { params: { path: { name: "Show 1080p" } } });
+    console.log(unread, would.data?.map((a) => a.title));
+  }
+  // Client data: any JSON by key.
+  await api.PATCH("/api/v1/client-data", { body: { "ui.theme": "dark", "ui.old": null } });
+  const prefs = await api.GET("/api/v1/client-data", { params: { query: { keys: "ui.theme" } } });
+  console.log(prefs.data?.["ui.theme"]);
+
   // Webhooks.
   const hook = await api.POST("/api/v1/webhooks", {
     body: { url: "https://media.lan/hook", events: ["finished", "moved"], secret: "s3cret" },

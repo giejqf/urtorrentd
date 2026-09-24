@@ -47,6 +47,7 @@ pub(crate) async fn run(daemon: Weak<Daemon>) {
         d.expire_previews().await;
         d.apply_schedule().await;
         d.scan_watch_folders().await;
+        d.rss_tick().await;
         d.tick_once().await;
         d.save_resume(ResumeSave::Due).await;
         if let Err(e) = d.flush_records().await {

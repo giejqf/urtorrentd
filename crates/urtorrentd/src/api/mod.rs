@@ -9,10 +9,12 @@
 mod app;
 mod auth;
 mod categories;
+mod clientdata;
 mod events;
 mod guard;
 mod logs;
 mod previews;
+mod rss;
 mod stats;
 mod sync;
 mod torrent;
@@ -209,6 +211,7 @@ Errors always have the `ErrorBody` shape with a stable `code`."
         (name = "transfer", description = "Session-wide transfer state, speed limits and bans."),
         (name = "sync", description = "Incremental updates: polled (`/sync`) or pushed as server-sent events (`/events`)."),
         (name = "log", description = "The main log and the peer log."),
+        (name = "rss", description = "RSS feeds, their articles, and automatic download rules."),
         (name = "webhooks", description = "HTTP calls on torrent events (added, finished, moved, removed, ...); the body is `WebhookPayload`."),
         (name = "stats", description = "Recorded history: traffic per torrent and for the session, seeding days, rankings, the timeline."),
     )
@@ -295,6 +298,26 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
             webhooks::delete_webhook
         ))
         .routes(routes!(webhooks::test_webhook))
+        .routes(routes!(rss::list_rss_feeds, rss::add_rss_feed))
+        .routes(routes!(
+            rss::get_rss_feed,
+            rss::patch_rss_feed,
+            rss::delete_rss_feed
+        ))
+        .routes(routes!(rss::refresh_rss_feed))
+        .routes(routes!(rss::mark_rss_read))
+        .routes(routes!(rss::list_rss_articles))
+        .routes(routes!(rss::list_rss_folders, rss::add_rss_folder))
+        .routes(routes!(rss::remove_rss_folder))
+        .routes(routes!(rss::move_rss_folder))
+        .routes(routes!(rss::list_rss_rules))
+        .routes(routes!(rss::put_rss_rule, rss::delete_rss_rule))
+        .routes(routes!(rss::rename_rss_rule))
+        .routes(routes!(rss::rss_rule_matches))
+        .routes(routes!(
+            clientdata::load_client_data,
+            clientdata::store_client_data
+        ))
         .routes(routes!(logs::get_main_log))
         .routes(routes!(logs::get_peer_log));
     (public, protected)

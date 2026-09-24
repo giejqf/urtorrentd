@@ -180,6 +180,10 @@ pub struct Daemon {
     pub(crate) webhooks: Arc<Webhooks>,
     /// What the watch-folder scans remember.
     pub(crate) watch: Mutex<watched::WatchState>,
+    /// RSS refreshes in flight.
+    pub(crate) rss: Mutex<crate::rss::RssState>,
+    /// Serializes the RSS rules' read-modify-write (runs, saves, renames).
+    pub(crate) rss_rules_lock: tokio::sync::Mutex<()>,
     shutdown_requested: watch::Sender<bool>,
     closed: watch::Sender<bool>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
@@ -295,6 +299,8 @@ impl Daemon {
             geo: GeoIp::default(),
             webhooks: Arc::new(webhooks),
             watch: Mutex::new(watched::WatchState::default()),
+            rss: Mutex::new(crate::rss::RssState::default()),
+            rss_rules_lock: tokio::sync::Mutex::new(()),
             shutdown_requested: watch::channel(false).0,
             closed: watch::channel(false).0,
             tasks: Mutex::new(Vec::new()),

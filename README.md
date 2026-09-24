@@ -35,7 +35,9 @@ profile that allows it).
 - Live updates: `GET /api/v1/events` pushes what changed as server-sent
   events (`EventSource` in a browser); `GET /api/v1/sync` is the polled form.
 - Automation: an alternative-limits schedule and watch folders are
-  settings ([docs/settings.md](docs/settings.md)).
+  settings ([docs/settings.md](docs/settings.md)); RSS feeds with download
+  rules are under `/api/v1/rss`; client UIs keep their preferences in
+  `/api/v1/client-data`.
 - Metadata preview: `POST /api/v1/previews` fetches a magnet's file list
   without adding it; webhooks (`/api/v1/webhooks`) call your URLs when
   torrents are added, finish, move or go away (no program is ever run).

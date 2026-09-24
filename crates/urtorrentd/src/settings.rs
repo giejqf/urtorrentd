@@ -139,6 +139,21 @@ settings! {
     add_to_top_of_queue: bool = false, nullable = false;
     /// Folders whose `.torrent` and `.magnet` files are added (at most 32).
     watch_folders: Vec<WatchFolder> = Vec::new(), nullable = false;
+    /// Refresh the RSS feeds by themselves (a refresh asked for runs
+    /// either way).
+    rss_enabled: bool = false, nullable = false;
+    /// Seconds between refreshes of a feed without its own interval (at
+    /// least 60).
+    rss_refresh_interval: u64 = 1800, nullable = false;
+    /// Seconds between two requests to the same host (at most 3600).
+    rss_fetch_delay: u64 = 2, nullable = false;
+    /// Articles kept per feed, the newest (1 to 5000).
+    rss_max_articles: u32 = 50, nullable = false;
+    /// Run the RSS download rules on new articles.
+    rss_auto_download: bool = false, nullable = false;
+    /// A rule's smart filter takes a REPACK or PROPER of an episode it
+    /// took once more.
+    rss_download_repacks: bool = true, nullable = false;
     /// Allocate content files at full size when they are created.
     preallocate: bool = false, nullable = false;
     /// New torrents use automatic management (save path from their category).
@@ -459,6 +474,15 @@ impl Settings {
         if let Some(s) = &self.alt_speed_schedule {
             s.bounds()?;
             s.zone()?;
+        }
+        if self.rss_refresh_interval < 60 {
+            return Err("rss_refresh_interval must be at least 60 seconds".into());
+        }
+        if self.rss_fetch_delay > 3600 {
+            return Err("rss_fetch_delay must be at most 3600 seconds".into());
+        }
+        if !(1..=5000).contains(&self.rss_max_articles) {
+            return Err("rss_max_articles must be 1 to 5000".into());
         }
         if self.watch_folders.len() > 32 {
             return Err("watch_folders: 32 at most".into());

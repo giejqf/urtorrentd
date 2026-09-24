@@ -15,6 +15,7 @@ pub mod error;
 pub mod geo;
 pub mod log;
 pub mod model;
+pub(crate) mod rss;
 pub mod settings;
 pub(crate) mod stats;
 pub mod store;
