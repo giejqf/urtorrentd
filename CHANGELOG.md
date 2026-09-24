@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `--initial-settings <file>` (`URTORRENTD_INITIAL_SETTINGS`): the settings
+  of a new data directory's first start, as a JSON object of setting fields
+  over the defaults, so a daemon can start offline from its first second
+  (no DHT bootstrap). Ignored once settings are stored; unknown fields are
+  errors.
+
 ## [0.13.0] - 2026-09-24
 
 First-run setup ([ADR 0007](docs/adr/0007-first-run-setup.md)).

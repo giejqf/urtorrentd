@@ -211,6 +211,15 @@ fn random_port() -> u16 {
     20_000 + r % 45_000
 }
 
+/// The settings of a first start without `initial_settings`: the defaults
+/// with a random listen port. `--initial-settings` patches these.
+pub fn first_start_settings() -> Settings {
+    Settings {
+        listen_port: random_port(),
+        ..Settings::default()
+    }
+}
+
 impl Daemon {
     /// Open the data directory, start the engine, restore every torrent and
     /// start the background tasks.
@@ -225,10 +234,7 @@ impl Daemon {
         let mut settings = match (loaded, cfg.initial_settings) {
             (Some(s), _) => s,
             (None, Some(s)) => s,
-            (None, None) => Settings {
-                listen_port: random_port(),
-                ..Settings::default()
-            },
+            (None, None) => first_start_settings(),
         };
         if settings.save_path.is_empty() {
             settings.save_path = default_save_path(&cfg.data_dir);

@@ -257,11 +257,16 @@ fn free_port() -> u16 {
 }
 
 fn spawn(data: &std::path::Path, port: u16) -> Child {
+    spawn_with(data, port, &[])
+}
+
+fn spawn_with(data: &std::path::Path, port: u16, args: &[&std::ffi::OsStr]) -> Child {
     Command::new(env!("CARGO_BIN_EXE_urtorrentd"))
         .arg("--data-dir")
         .arg(data)
         .arg("--api-listen")
         .arg(format!("127.0.0.1:{port}"))
+        .args(args)
         .env("RUST_LOG", "warn")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -393,4 +398,95 @@ async fn binary_survives_kill_and_stops_gracefully() {
         .unwrap();
     assert_eq!(r.status().as_u16(), 202);
     assert!(wait_exit(&mut child, 30).await.success());
+}
+
+#[tokio::test]
+async fn binary_takes_initial_settings_on_the_first_start_only() {
+    common::init_log();
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let file = dir.path().join("initial.json");
+    let flag = [std::ffi::OsStr::new("--initial-settings"), file.as_os_str()];
+    let offline = |name: &str| {
+        json!({
+            "listen_port": 0,
+            "listen_v4": "127.0.0.46",
+            "listen_v6": null,
+            "dht": false,
+            "lsd": false,
+            "dht_bootstrap_nodes": [],
+            "save_path": dir.path().join("downloads"),
+            "api_bypass_local_auth": true,
+            "instance_name": name,
+        })
+    };
+    let client = reqwest::Client::new();
+    let settings = |base: String| {
+        let client = client.clone();
+        async move {
+            client
+                .get(format!("{base}/settings"))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+    let stop = |base: String, mut child: Child| {
+        let client = client.clone();
+        async move {
+            let r = client
+                .post(format!("{base}/app/shutdown"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(r.status().as_u16(), 202);
+            assert!(wait_exit(&mut child, 30).await.success());
+        }
+    };
+
+    // A new data directory starts with the file's settings over the defaults.
+    std::fs::write(&file, offline("first").to_string()).unwrap();
+    let port = free_port();
+    let base = format!("http://127.0.0.1:{port}/api/v1");
+    let child = spawn_with(&data, port, &flag);
+    wait_api(&client, &base).await;
+    let s = settings(base.clone()).await;
+    assert_eq!(s["dht"], false, "{s}");
+    assert_eq!(s["lsd"], false);
+    assert_eq!(s["dht_bootstrap_nodes"], json!([]));
+    assert_eq!(s["listen_v4"], "127.0.0.46");
+    assert_eq!(s["listen_v6"], Value::Null);
+    assert_eq!(s["instance_name"], "first");
+    assert_eq!(
+        s["pex"], true,
+        "a field the file does not name keeps its default"
+    );
+    stop(base, child).await;
+
+    // Once the directory has settings, the file is ignored.
+    std::fs::write(&file, offline("second").to_string()).unwrap();
+    let port = free_port();
+    let base = format!("http://127.0.0.1:{port}/api/v1");
+    let child = spawn_with(&data, port, &flag);
+    wait_api(&client, &base).await;
+    assert_eq!(settings(base.clone()).await["instance_name"], "first");
+    stop(base, child).await;
+
+    // A file that does not parse (a misspelt field) stops the start.
+    std::fs::write(&file, r#"{"dth": false}"#).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_urtorrentd"))
+        .arg("--data-dir")
+        .arg(dir.path().join("fresh"))
+        .arg("--api-listen")
+        .arg(format!("127.0.0.1:{}", free_port()))
+        .args(flag)
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("unknown field"), "{err}");
+    assert!(!dir.path().join("fresh/urtorrentd.db").exists());
 }

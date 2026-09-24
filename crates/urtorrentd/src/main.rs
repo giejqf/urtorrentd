@@ -5,11 +5,13 @@
 
 use std::io::BufRead;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use urtorrentd::auth::{Credentials, hash_password};
+use urtorrentd::daemon::first_start_settings;
+use urtorrentd::settings::{Settings, SettingsPatch};
 use urtorrentd::store::{self, Store};
 use urtorrentd::{Daemon, DaemonConfig, api};
 
@@ -23,6 +25,12 @@ struct Cli {
     /// Address the HTTP API listens on.
     #[arg(long, env = "URTORRENTD_API_LISTEN", default_value = "127.0.0.1:8080")]
     api_listen: SocketAddr,
+    /// Settings for the first start of a new data directory: a JSON object
+    /// of setting fields (as `GET /api/v1/settings` names them) applied over
+    /// the defaults. Ignored once the data directory has settings; a file
+    /// that does not parse stops the start either way.
+    #[arg(long, env = "URTORRENTD_INITIAL_SETTINGS", value_name = "FILE")]
+    initial_settings: Option<PathBuf>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -72,10 +80,24 @@ async fn shutdown_signal(daemon: std::sync::Arc<Daemon>) {
     daemon.request_shutdown();
 }
 
-async fn run(data_dir: PathBuf, api_listen: SocketAddr) -> Result<(), String> {
+/// The `--initial-settings` file: a settings patch over a first start's
+/// defaults. Unknown fields are errors, so a typo cannot pass unnoticed.
+fn initial_settings(path: &Path) -> Result<Settings, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("--initial-settings {}: {e}", path.display()))?;
+    let patch: SettingsPatch = serde_json::from_str(&text)
+        .map_err(|e| format!("--initial-settings {}: {e}", path.display()))?;
+    Ok(first_start_settings().patched(patch))
+}
+
+async fn run(
+    data_dir: PathBuf,
+    api_listen: SocketAddr,
+    initial_settings: Option<Settings>,
+) -> Result<(), String> {
     let daemon = Daemon::start(DaemonConfig {
         data_dir,
-        initial_settings: None,
+        initial_settings,
     })
     .await
     .map_err(|e| format!("cannot start: {e}"))?;
@@ -137,13 +159,20 @@ fn main() -> ExitCode {
             Ok(())
         }
         Command::Passwd { username } => passwd(data_dir, username),
-        Command::Run => match tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(rt) => rt.block_on(run(data_dir, cli.api_listen)),
-            Err(e) => Err(format!("cannot start the async runtime: {e}")),
-        },
+        Command::Run => cli
+            .initial_settings
+            .as_deref()
+            .map(initial_settings)
+            .transpose()
+            .and_then(|initial| {
+                match tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt.block_on(run(data_dir, cli.api_listen, initial)),
+                    Err(e) => Err(format!("cannot start the async runtime: {e}")),
+                }
+            }),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

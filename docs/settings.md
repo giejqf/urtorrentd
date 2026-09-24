@@ -16,6 +16,17 @@ The daemon's own start-up options are not settings: the data directory
 (`--data-dir`, `URTORRENTD_DATA_DIR`) and the API address (`--api-listen`,
 `URTORRENTD_API_LISTEN`, default `127.0.0.1:8080`).
 
+`--initial-settings <file>` (`URTORRENTD_INITIAL_SETTINGS`) gives a new data
+directory its first settings: a JSON object of the fields above, applied over
+the defaults, so the daemon never starts once with the defaults (the DHT
+with public bootstrap nodes, for example). Unknown fields are errors. Once
+the data directory has settings the file is ignored (it is still read, and a
+file that does not parse stops the start). For an offline test daemon:
+
+```json
+{"listen_v4": "127.0.0.2", "listen_v6": null, "dht": false, "lsd": false, "dht_bootstrap_nodes": []}
+```
+
 ## Staging downloads and moving them by category
 
 Two settings and a category give qBittorrent's "keep incomplete torrents in"
