@@ -13,6 +13,7 @@ pub mod auth;
 pub mod daemon;
 pub mod error;
 pub mod geo;
+pub mod interfaces;
 pub mod log;
 pub mod model;
 pub(crate) mod rss;

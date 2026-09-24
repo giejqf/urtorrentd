@@ -10,7 +10,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.10.0"
+    "version": "0.11.0"
   },
   "paths": {
     "/api/v1/app": {
@@ -27,6 +27,289 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/cookies": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "The cookie jar: cookies sent with the daemon's own HTTP requests\n(`.torrent` downloads, RSS feeds, the tracker list) to their domain.",
+        "operationId": "get_cookies",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Cookie"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Replace the cookie jar (at most 1000 cookies).",
+        "operationId": "set_cookies",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Cookie"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Stored."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/interfaces": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "The network interfaces with their addresses (for `listen_interface`).",
+        "operationId": "list_interfaces",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NetworkInterface"
+                  }
                 }
               }
             }
@@ -6752,6 +7035,107 @@
         }
       }
     },
+    "/api/v1/torrents/download-path": {
+      "post": {
+        "tags": [
+          "torrents"
+        ],
+        "summary": "Move incomplete torrents' content to a download path, or back to the\nsave path with `null` (in the background; the state shows `moving`).\nComplete torrents keep their content in the save path. Turns automatic\nmanagement off.",
+        "operationId": "set_download_path",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadPathRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/torrents/first-last-piece-priority": {
       "post": {
         "tags": [
@@ -11017,12 +11401,26 @@
             "description": "Put at the front of the queue. Absent: the `add_to_top_of_queue` setting."
           },
           "stop_condition": {
-            "$ref": "#/components/schemas/StopCondition",
-            "description": "Stop automatically at this point."
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StopCondition",
+                "description": "Stop automatically at this point. Absent: the `stop_condition`\nsetting."
+              }
+            ]
           },
           "content_layout": {
-            "$ref": "#/components/schemas/ContentLayout",
-            "description": "Top-level folder layout (`.torrent` files only)."
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ContentLayout",
+                "description": "Top-level folder layout. Absent: the `content_layout` setting."
+              }
+            ]
           },
           "rename": {
             "type": [
@@ -11322,7 +11720,10 @@
           "default_save_path",
           "listen_port",
           "restart_required",
-          "geoip"
+          "geoip",
+          "instance_name",
+          "listen_addresses",
+          "fetched_trackers"
         ],
         "properties": {
           "version": {
@@ -11373,6 +11774,31 @@
           "geoip": {
             "$ref": "#/components/schemas/GeoIpInfo",
             "description": "The GeoIP databases in use."
+          },
+          "instance_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `instance_name` setting."
+          },
+          "listen_addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The addresses listened on (and peers dialled from)."
+          },
+          "fetched_trackers": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FetchedTrackers",
+                "description": "The trackers fetched from `add_trackers_url`; `null` = none set."
+              }
+            ]
           }
         }
       },
@@ -11547,6 +11973,43 @@
           "no_subfolder"
         ]
       },
+      "Cookie": {
+        "type": "object",
+        "description": "A cookie sent with the daemon's own HTTP requests (`.torrent`\ndownloads, RSS feeds) to its domain (qBittorrent's `app/cookies`).",
+        "required": [
+          "name",
+          "value",
+          "domain"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name."
+          },
+          "value": {
+            "type": "string",
+            "description": "Value."
+          },
+          "domain": {
+            "type": "string",
+            "description": "The domain (`tracker.example`: that host and its subdomains)."
+          },
+          "path": {
+            "type": "string",
+            "description": "Only for paths under this one (default `/`)."
+          },
+          "expires": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When it expires, unix seconds; absent or `null` = never.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "CountResponse": {
         "type": "object",
         "description": "How many torrents there are.",
@@ -11628,6 +12091,27 @@
           "files"
         ]
       },
+      "DownloadPathRequest": {
+        "type": "object",
+        "description": "Move incomplete torrents' content to a download path (or back).",
+        "required": [
+          "hashes"
+        ],
+        "properties": {
+          "hashes": {
+            "$ref": "#/components/schemas/Hashes",
+            "description": "The torrents."
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The download path (absolute); `null` = none (the content goes to\nthe save path)."
+          }
+        },
+        "additionalProperties": false
+      },
       "EditUrlRequest": {
         "type": "object",
         "description": "Replace one URL with another.",
@@ -11705,6 +12189,45 @@
           "message": {
             "type": "string",
             "description": "Human-readable explanation."
+          }
+        }
+      },
+      "FetchedTrackers": {
+        "type": "object",
+        "description": "The trackers fetched from `add_trackers_url`.",
+        "required": [
+          "url",
+          "trackers",
+          "fetched",
+          "error"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The URL they come from."
+          },
+          "trackers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The trackers (added to new public torrents)."
+          },
+          "fetched": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When they were fetched, unix seconds; `null` = not yet.",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last fetch failed; `null` = it did not."
           }
         }
       },
@@ -12497,6 +13020,32 @@
               "type": "string"
             },
             "description": "Names."
+          }
+        }
+      },
+      "NetworkInterface": {
+        "type": "object",
+        "description": "A network interface.",
+        "required": [
+          "name",
+          "addresses",
+          "up"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name (for `listen_interface`)."
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its addresses."
+          },
+          "up": {
+            "type": "boolean",
+            "description": "It is up."
           }
         }
       },
@@ -13659,6 +14208,8 @@
           "alt_download_limit",
           "alt_upload_limit",
           "alt_speed_enabled",
+          "instance_name",
+          "listen_interface",
           "alt_speed_schedule",
           "queueing_enabled",
           "max_active_downloads",
@@ -13670,6 +14221,15 @@
           "add_stopped",
           "incomplete_file_suffix",
           "add_to_top_of_queue",
+          "content_layout",
+          "stop_condition",
+          "category_paths_in_manual_mode",
+          "excluded_file_names",
+          "merge_trackers",
+          "recheck_on_completion",
+          "export_dir",
+          "export_dir_finished",
+          "add_trackers_url",
           "watch_folders",
           "rss_enabled",
           "rss_refresh_interval",
@@ -13703,6 +14263,7 @@
           "stats_scrape_interval",
           "api_bypass_local_auth",
           "api_auth_whitelist",
+          "api_trusted_proxies",
           "api_allowed_hosts",
           "api_csrf_protection"
         ],
@@ -13880,6 +14441,22 @@
             "description": "Use the alternative limits.",
             "default": false
           },
+          "instance_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A name for this daemon that clients show (`GET /app`); `null` =\nnone.",
+            "default": null
+          },
+          "listen_interface": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Listen on (and dial peers from) this network interface's addresses\n(`GET /app/interfaces`), in the families `listen_v4` / `listen_v6`\nenable; followed as they change. With no address (a VPN down) only\nloopback is used, so nothing leaves through another interface.\n`null` = the `listen_v4` / `listen_v6` addresses.",
+            "default": null
+          },
           "alt_speed_schedule": {
             "oneOf": [
               {
@@ -13962,6 +14539,71 @@
             "type": "boolean",
             "description": "Put new torrents at the front of the queue.",
             "default": false
+          },
+          "content_layout": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ContentLayout",
+                "description": "The content layout of new torrents whose add does not say."
+              }
+            ],
+            "default": "original"
+          },
+          "stop_condition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StopCondition",
+                "description": "The stop condition of new torrents whose add does not say."
+              }
+            ],
+            "default": "none"
+          },
+          "category_paths_in_manual_mode": {
+            "type": "boolean",
+            "description": "A manually managed torrent added with a category and no save path\nof its own goes to the category's save path.",
+            "default": false
+          },
+          "excluded_file_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "File names skipped when a torrent is added (wildcards `*` and `?`,\ncase ignored): a file whose name, or a folder on its path, matches\ngets priority 0.",
+            "default": []
+          },
+          "merge_trackers": {
+            "type": "boolean",
+            "description": "Adding a torrent that is there already merges the new trackers and\nweb seeds into it (never for private torrents, AGENTS.md rule 2).",
+            "default": false
+          },
+          "recheck_on_completion": {
+            "type": "boolean",
+            "description": "Recheck a torrent when its download finishes (after the move to its\nsave path, if any).",
+            "default": false
+          },
+          "export_dir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Write the `.torrent` of every torrent added into this directory\n(absolute); `null` = no.",
+            "default": null
+          },
+          "export_dir_finished": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Write the `.torrent` of every finished torrent into this directory\n(absolute); `null` = no.",
+            "default": null
+          },
+          "add_trackers_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A list of trackers (one URL per line) fetched at the start and every\n24 hours, added to new public torrents like `add_trackers`; `null` =\nnone. What was fetched is in `GET /app`.",
+            "default": null
           },
           "watch_folders": {
             "type": "array",
@@ -14201,6 +14843,14 @@
             "description": "Address blocks (`10.0.0.0/8`, `fd00::/8`) whose clients need no authentication.",
             "default": []
           },
+          "api_trusted_proxies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Reverse proxies (addresses or blocks, `10.0.0.0/8`) trusted to tell\nthe client's address (`X-Forwarded-For`) and host\n(`X-Forwarded-Host`); empty = none.",
+            "default": []
+          },
           "api_allowed_hosts": {
             "type": "array",
             "items": {
@@ -14361,6 +15011,20 @@
             "type": "boolean",
             "description": "Use the alternative limits."
           },
+          "instance_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A name for this daemon that clients show (`GET /app`); `null` =\nnone."
+          },
+          "listen_interface": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Listen on (and dial peers from) this network interface's addresses\n(`GET /app/interfaces`), in the families `listen_v4` / `listen_v6`\nenable; followed as they change. With no address (a VPN down) only\nloopback is used, so nothing leaves through another interface.\n`null` = the `listen_v4` / `listen_v6` addresses."
+          },
           "alt_speed_schedule": {
             "oneOf": [
               {
@@ -14432,6 +15096,54 @@
           "add_to_top_of_queue": {
             "type": "boolean",
             "description": "Put new torrents at the front of the queue."
+          },
+          "content_layout": {
+            "$ref": "#/components/schemas/ContentLayout",
+            "description": "The content layout of new torrents whose add does not say."
+          },
+          "stop_condition": {
+            "$ref": "#/components/schemas/StopCondition",
+            "description": "The stop condition of new torrents whose add does not say."
+          },
+          "category_paths_in_manual_mode": {
+            "type": "boolean",
+            "description": "A manually managed torrent added with a category and no save path\nof its own goes to the category's save path."
+          },
+          "excluded_file_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "File names skipped when a torrent is added (wildcards `*` and `?`,\ncase ignored): a file whose name, or a folder on its path, matches\ngets priority 0."
+          },
+          "merge_trackers": {
+            "type": "boolean",
+            "description": "Adding a torrent that is there already merges the new trackers and\nweb seeds into it (never for private torrents, AGENTS.md rule 2)."
+          },
+          "recheck_on_completion": {
+            "type": "boolean",
+            "description": "Recheck a torrent when its download finishes (after the move to its\nsave path, if any)."
+          },
+          "export_dir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Write the `.torrent` of every torrent added into this directory\n(absolute); `null` = no."
+          },
+          "export_dir_finished": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Write the `.torrent` of every finished torrent into this directory\n(absolute); `null` = no."
+          },
+          "add_trackers_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A list of trackers (one URL per line) fetched at the start and every\n24 hours, added to new public torrents like `add_trackers`; `null` =\nnone. What was fetched is in `GET /app`."
           },
           "watch_folders": {
             "type": "array",
@@ -14633,6 +15345,13 @@
               "type": "string"
             },
             "description": "Address blocks (`10.0.0.0/8`, `fd00::/8`) whose clients need no authentication."
+          },
+          "api_trusted_proxies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Reverse proxies (addresses or blocks, `10.0.0.0/8`) trusted to tell\nthe client's address (`X-Forwarded-For`) and host\n(`X-Forwarded-Host`); empty = none."
           },
           "api_allowed_hosts": {
             "type": "array",

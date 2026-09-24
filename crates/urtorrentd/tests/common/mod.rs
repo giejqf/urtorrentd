@@ -400,6 +400,14 @@ impl TestDaemon {
         (status, v)
     }
 
+    pub async fn get_bytes(&self, path: &str) -> Vec<u8> {
+        let (s, _, b) = self
+            .request(Request::get(path).body(Body::empty()).unwrap())
+            .await;
+        assert_eq!(s, StatusCode::OK, "GET {path}");
+        b
+    }
+
     pub async fn get(&self, path: &str) -> Value {
         let (s, v) = self.call(Method::GET, path, None).await;
         assert_eq!(s, StatusCode::OK, "GET {path}: {v}");

@@ -24,7 +24,27 @@ use crate::util::{blocking, hex, parse_hash};
 /// Whether a stored magnet needs holding once its metadata arrives.
 pub(crate) fn needs_hold(r: &TorrentRecord) -> bool {
     r.magnet.is_some()
-        && (r.stop_condition != StopCondition::None || r.content_layout != ContentLayout::Original)
+        && (r.stop_condition != StopCondition::None
+            || r.content_layout != ContentLayout::Original
+            || r.exclude_files)
+}
+
+/// The files `excluded_file_names` skips: a file whose name, or a folder on
+/// its path, matches a pattern.
+pub(crate) fn excluded_files(files: &[String], patterns: &[String]) -> Vec<usize> {
+    let res: Vec<regex::Regex> = patterns
+        .iter()
+        .filter_map(|p| crate::util::wildcard(p).ok())
+        .collect();
+    if res.is_empty() {
+        return Vec::new();
+    }
+    files
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| f.split('/').any(|seg| res.iter().any(|r| r.is_match(seg))))
+        .map(|(i, _)| i)
+        .collect()
 }
 
 /// Largest `.torrent` accepted from a URL.
@@ -249,6 +269,11 @@ impl Daemon {
             .http
             .get(url)
             .header(reqwest::header::USER_AGENT, agent);
+        // The jar's cookies for the URL, then the request's own.
+        let cookie = match (self.cookie_header(url), cookie) {
+            (Some(jar), Some(own)) => Some(format!("{jar}; {own}")),
+            (jar, own) => jar.or(own.map(str::to_string)),
+        };
         if let Some(c) = cookie {
             req = req.header(reqwest::header::COOKIE, c);
         }
@@ -304,14 +329,24 @@ impl Daemon {
         {
             p = parse_metainfo(bytes, p.source_url.take())?;
         }
-        if self.state().torrents.contains_key(&p.hash) {
+        let settings = self.settings();
+        let existing = self.state().torrents.get(&p.hash).map(|e| e.id);
+        if let Some(id) = existing {
+            let merged = if settings.merge_trackers {
+                self.merge_trackers(id, &p).await
+            } else {
+                0
+            };
+            let mut message = format!("torrent {hash_hex} is already added");
+            if merged > 0 {
+                message.push_str(&format!("; {merged} trackers or web seeds merged into it"));
+            }
             return Err(ApiError::new(
                 StatusCode::CONFLICT,
                 ErrorCode::Duplicate,
-                format!("torrent {hash_hex} is already added"),
+                message,
             ));
         }
-        let settings = self.settings();
         let category = o.category.clone().filter(|c| !c.is_empty());
         if let Some(c) = &category {
             self.ensure_category(c).await?;
@@ -321,9 +356,13 @@ impl Daemon {
         let save_path = if auto {
             self.category_save_path(category.as_deref())
         } else {
-            o.save_path
-                .clone()
-                .unwrap_or_else(|| settings.save_path.clone())
+            match (&o.save_path, &category) {
+                (Some(p), _) => p.clone(),
+                (None, Some(c)) if settings.category_paths_in_manual_mode => {
+                    self.category_save_path(Some(c))
+                }
+                _ => settings.save_path.clone(),
+            }
         };
         let download_path = match (&o.download_path, o.use_download_path) {
             (Some(p), _) => Some(p.clone()),
@@ -334,7 +373,8 @@ impl Daemon {
         .filter(|d| *d != save_path);
         let is_magnet = matches!(p.source, Source::Magnet { .. });
         let mut stopped = o.stopped.unwrap_or(settings.add_stopped);
-        let mut stop_condition = o.stop_condition;
+        let mut stop_condition = o.stop_condition.unwrap_or(settings.stop_condition);
+        let content_layout = o.content_layout.unwrap_or(settings.content_layout);
         if stop_condition != StopCondition::None && !is_magnet {
             // A `.torrent` has its metadata, and a torrent added paused still
             // runs its initial check and stays stopped: both conditions hold
@@ -344,7 +384,8 @@ impl Daemon {
         if stopped {
             stop_condition = StopCondition::None;
         }
-        let renames = content_renames(&p.files, o.content_layout);
+        let renames = content_renames(&p.files, content_layout);
+        let excluded = excluded_files(&p.files, &settings.excluded_file_names);
         let record = TorrentRecord {
             format: RECORD_FORMAT,
             info_hash: hash_hex.clone(),
@@ -367,10 +408,11 @@ impl Daemon {
             // A magnet's layout waits for its metadata; a `.torrent`'s is
             // applied below.
             content_layout: if is_magnet {
-                o.content_layout
+                content_layout
             } else {
                 ContentLayout::Original
             },
+            exclude_files: is_magnet && !settings.excluded_file_names.is_empty(),
         };
         // Stored first: a crash right after the engine add still finds the
         // torrent on the next start. Any old row of the same info-hash (and
@@ -406,8 +448,21 @@ impl Daemon {
         .sequential(o.sequential)
         .preallocate(o.preallocate.unwrap_or(settings.preallocate))
         .auto_managed(!o.forced);
-        if let Some(prios) = &o.file_priorities {
-            add = add.file_priorities(prios.clone());
+        let mut prios = o.file_priorities.clone();
+        if !excluded.is_empty() {
+            let n = p.files.len();
+            let list = prios.get_or_insert_with(|| vec![4; n]);
+            if list.len() < n {
+                list.resize(n, 4);
+            }
+            for i in &excluded {
+                if let Some(x) = list.get_mut(*i) {
+                    *x = 0;
+                }
+            }
+        }
+        if let Some(prios) = prios {
+            add = add.file_priorities(prios);
         }
         if let Some(l) = o.upload_limit {
             add = add.upload_limit(l);
@@ -443,6 +498,11 @@ impl Daemon {
         }
         if !is_magnet && !p.private {
             self.add_auto_trackers(id, &settings.add_trackers).await;
+            let fetched = self.fetched_trackers();
+            self.add_auto_trackers(id, &fetched).await;
+        }
+        if !is_magnet && let Some(dir) = &settings.export_dir {
+            self.export_torrent(p.hash, id, dir).await;
         }
         if !is_magnet {
             if hold {
@@ -507,6 +567,9 @@ impl Daemon {
                 }
             }
         }
+        if record.exclude_files {
+            self.exclude_files(hash, id).await;
+        }
         // Nothing is complete while held: every file with content gets the
         // suffix; the check after the release takes it off the complete ones.
         self.apply_suffix(hash, id).await;
@@ -538,6 +601,7 @@ impl Daemon {
         let _ = self
             .update_record(hash, |r| {
                 r.content_layout = ContentLayout::Original;
+                r.exclude_files = false;
                 if stop {
                     r.stopped = true;
                     r.stop_condition = StopCondition::None;
@@ -548,6 +612,74 @@ impl Daemon {
             self.logs
                 .info(format!("stopped {} (stop condition)", self.name_of(&hash)));
         }
+    }
+
+    /// A held magnet's metadata is here: skip its files that
+    /// `excluded_file_names` names (before any file exists).
+    async fn exclude_files(&self, hash: InfoHash, id: urtorrent::TorrentId) {
+        let patterns = self.settings().excluded_file_names;
+        let Ok(files) = self.session.files(id).await else {
+            return;
+        };
+        let paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
+        let excluded = excluded_files(&paths, &patterns);
+        if excluded.is_empty() {
+            return;
+        }
+        let prios: Vec<u8> = files
+            .iter()
+            .enumerate()
+            .map(|(i, f)| if excluded.contains(&i) { 0 } else { f.priority })
+            .collect();
+        if let Err(e) = self.session.set_file_priorities(id, prios).await {
+            self.logs
+                .warn(format!("{}: excluded files: {e}", self.name_of(&hash)));
+        }
+    }
+
+    /// `merge_trackers`: add the trackers and web seeds of a torrent added
+    /// again to the one there, unless either is private (AGENTS.md rule 2)
+    /// or the one there has no metadata yet (its privacy is unknown).
+    /// Returns how many were added.
+    async fn merge_trackers(&self, id: urtorrent::TorrentId, p: &Parsed) -> usize {
+        if p.private {
+            return 0;
+        }
+        let Ok(s) = self.session.status(id).await else {
+            return 0;
+        };
+        if s.private || !s.has_metadata {
+            return 0;
+        }
+        let (trackers, seeds): (Vec<String>, Vec<String>) = match &p.source {
+            Source::Metainfo { bytes } => match Torrent::parse(bytes) {
+                Ok(t) => (
+                    t.tiers().into_iter().flatten().collect(),
+                    t.url_list.clone(),
+                ),
+                Err(_) => return 0,
+            },
+            Source::Magnet { uri } => match MagnetLink::parse(uri) {
+                Ok(m) => (m.trackers, m.web_seeds),
+                Err(_) => return 0,
+            },
+        };
+        let known = self.session.trackers(id).await.unwrap_or_default().len();
+        self.add_auto_trackers(id, &trackers).await;
+        let added = self
+            .session
+            .trackers(id)
+            .await
+            .unwrap_or_default()
+            .len()
+            .saturating_sub(known);
+        let mut seeded = 0;
+        for url in seeds {
+            if !s.web_seed_urls.contains(&url) && self.session.add_web_seed(id, url).await.is_ok() {
+                seeded += 1;
+            }
+        }
+        added + seeded
     }
 
     /// Append the automatic tracker list, each URL in a tier of its own after
@@ -573,6 +705,23 @@ impl Daemon {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exclusions_match_names_and_folders() {
+        let files: Vec<String> = [
+            "Show/e1.mkv",
+            "Show/Sample/s.mkv",
+            "Show/info.NFO",
+            "Show/e2.mkv",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let pats = |p: &[&str]| p.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(excluded_files(&files, &pats(&["*.nfo", "sample"])), [1, 2]);
+        assert_eq!(excluded_files(&files, &pats(&["e?.mkv"])), [0, 3]);
+        assert!(excluded_files(&files, &[]).is_empty());
+    }
 
     #[test]
     fn layouts() {

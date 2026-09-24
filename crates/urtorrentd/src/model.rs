@@ -228,12 +228,11 @@ pub struct AddOptions {
     pub forced: bool,
     /// Put at the front of the queue. Absent: the `add_to_top_of_queue` setting.
     pub add_to_top_of_queue: Option<bool>,
-    /// Stop automatically at this point.
-    #[serde(default)]
-    pub stop_condition: StopCondition,
-    /// Top-level folder layout (`.torrent` files only).
-    #[serde(default)]
-    pub content_layout: ContentLayout,
+    /// Stop automatically at this point. Absent: the `stop_condition`
+    /// setting.
+    pub stop_condition: Option<StopCondition>,
+    /// Top-level folder layout. Absent: the `content_layout` setting.
+    pub content_layout: Option<ContentLayout>,
     /// Display name.
     pub rename: Option<String>,
     /// Upload limit in bytes per second.
@@ -1086,6 +1085,14 @@ pub struct AppInfo {
     pub restart_required: Vec<String>,
     /// The GeoIP databases in use.
     pub geoip: GeoIpInfo,
+    /// The `instance_name` setting.
+    #[schema(required = true)]
+    pub instance_name: Option<String>,
+    /// The addresses listened on (and peers dialled from).
+    pub listen_addresses: Vec<String>,
+    /// The trackers fetched from `add_trackers_url`; `null` = none set.
+    #[schema(required = true)]
+    pub fetched_trackers: Option<FetchedTrackers>,
 }
 
 /// What a directory listing includes.
@@ -2410,4 +2417,67 @@ pub struct RssFeedPath {
 pub struct ClientDataQuery {
     /// Comma-separated keys; absent = every key.
     pub keys: Option<String>,
+}
+
+// ---- Cookies, fetched trackers, interfaces ----
+
+/// A cookie sent with the daemon's own HTTP requests (`.torrent`
+/// downloads, RSS feeds) to its domain (qBittorrent's `app/cookies`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Cookie {
+    /// Name.
+    pub name: String,
+    /// Value.
+    pub value: String,
+    /// The domain (`tracker.example`: that host and its subdomains).
+    pub domain: String,
+    /// Only for paths under this one (default `/`).
+    #[serde(default = "default_cookie_path")]
+    pub path: String,
+    /// When it expires, unix seconds; absent or `null` = never.
+    #[serde(default)]
+    pub expires: Option<u64>,
+}
+
+fn default_cookie_path() -> String {
+    "/".to_string()
+}
+
+/// The trackers fetched from `add_trackers_url`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct FetchedTrackers {
+    /// The URL they come from.
+    pub url: String,
+    /// The trackers (added to new public torrents).
+    pub trackers: Vec<String>,
+    /// When they were fetched, unix seconds; `null` = not yet.
+    #[schema(required = true)]
+    pub fetched: Option<u64>,
+    /// Why the last fetch failed; `null` = it did not.
+    #[schema(required = true)]
+    pub error: Option<String>,
+}
+
+/// A network interface.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct NetworkInterface {
+    /// Its name (for `listen_interface`).
+    pub name: String,
+    /// Its addresses.
+    pub addresses: Vec<String>,
+    /// It is up.
+    pub up: bool,
+}
+
+/// Move incomplete torrents' content to a download path (or back).
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DownloadPathRequest {
+    /// The torrents.
+    pub hashes: Hashes,
+    /// The download path (absolute); `null` = none (the content goes to
+    /// the save path).
+    #[serde(default)]
+    pub path: Option<String>,
 }

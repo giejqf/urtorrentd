@@ -41,8 +41,62 @@ fn peer_ip(ext: &axum::http::Extensions) -> Option<IpAddr> {
         .map(|a| normalize_ip(a.ip()))
 }
 
+/// The client as the gate established it: behind a trusted reverse proxy,
+/// the address and host the proxy forwards.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Client {
+    pub ip: Option<IpAddr>,
+    pub host: Option<String>,
+}
+
+/// The client of a request coming from `peer`: when `peer` is a trusted
+/// proxy, `X-Forwarded-For` names the client (the last address that is not
+/// a trusted proxy, reading from the right) and `X-Forwarded-Host` the
+/// host; otherwise the connection and `Host` do.
+pub(crate) fn forwarded(headers: &HeaderMap, peer: Option<IpAddr>, trusted: &[Cidr]) -> Client {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let is_trusted = |ip: IpAddr| trusted.iter().any(|c| c.contains(ip));
+    if !peer.is_some_and(is_trusted) {
+        return Client { ip: peer, host };
+    }
+    // Read from the right: those entries were added by the trusted proxies;
+    // anything left of the first address that is not theirs (or of an entry
+    // that does not parse) the client may have made up.
+    let entries: Vec<&str> = headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(','))
+        .collect();
+    let mut ip = peer;
+    for e in entries.iter().rev() {
+        let Ok(hop) = e.trim().parse::<IpAddr>() else {
+            break;
+        };
+        let hop = normalize_ip(hop);
+        ip = Some(hop);
+        if !is_trusted(hop) {
+            break;
+        }
+    }
+    let host = headers
+        .get("x-forwarded-host")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|h| h.trim().to_string())
+        .filter(|h| !h.is_empty())
+        .or(host);
+    Client { ip, host }
+}
+
 pub(crate) fn client_ip(req: &Request) -> Option<IpAddr> {
-    peer_ip(req.extensions())
+    match req.extensions().get::<Client>() {
+        Some(c) => c.ip,
+        None => peer_ip(req.extensions()),
+    }
 }
 
 /// Extractor for the client's address.
@@ -53,7 +107,10 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
     type Rejection = std::convert::Infallible;
 
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<ClientIp, Self::Rejection> {
-        Ok(ClientIp(peer_ip(&parts.extensions)))
+        Ok(ClientIp(match parts.extensions.get::<Client>() {
+            Some(c) => c.ip,
+            None => peer_ip(&parts.extensions),
+        }))
     }
 }
 
@@ -91,8 +148,7 @@ fn authority_of(url: &str) -> Option<&str> {
 
 /// Whether a browser request comes from another origin than the one it is
 /// sent to (only judged when the browser says where it comes from).
-fn cross_origin(headers: &HeaderMap) -> bool {
-    let host = headers.get(header::HOST).and_then(|v| v.to_str().ok());
+fn cross_origin(headers: &HeaderMap, host: Option<&str>) -> bool {
     let origin = headers
         .get(header::ORIGIN)
         .or_else(|| headers.get(header::REFERER))
@@ -127,10 +183,22 @@ fn refuse(status: StatusCode, code: ErrorCode, message: &str) -> Response {
     ApiError::new(status, code, message).into_response()
 }
 
-/// For every request: refuse banned addresses and unexpected `Host` names.
-pub(crate) async fn gate(State(d): State<Arc<Daemon>>, req: Request, next: Next) -> Response {
-    let allowed = d.state().settings.api_allowed_hosts.clone();
-    if let Some(ip) = client_ip(&req)
+/// For every request: work out the client (through trusted proxies), then
+/// refuse banned addresses and unexpected `Host` names.
+pub(crate) async fn gate(State(d): State<Arc<Daemon>>, mut req: Request, next: Next) -> Response {
+    let (allowed, trusted) = {
+        let st = d.state();
+        let trusted: Vec<Cidr> = st
+            .settings
+            .api_trusted_proxies
+            .iter()
+            .filter_map(|c| Cidr::parse(c))
+            .collect();
+        (st.settings.api_allowed_hosts.clone(), trusted)
+    };
+    let client = forwarded(req.headers(), peer_ip(req.extensions()), &trusted);
+    req.extensions_mut().insert(client.clone());
+    if let Some(ip) = client.ip
         && d.auth.is_banned(ip)
     {
         return refuse(
@@ -139,10 +207,7 @@ pub(crate) async fn gate(State(d): State<Arc<Daemon>>, req: Request, next: Next)
             "this address is banned after too many failed logins",
         );
     }
-    if let Some(host) = req
-        .headers()
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
+    if let Some(host) = &client.host
         && !host_allowed(host, &allowed)
     {
         return refuse(
@@ -198,7 +263,11 @@ pub(crate) async fn authenticate(
             );
         }
         let unsafe_method = !matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS);
-        if csrf && unsafe_method && cross_origin(req.headers()) {
+        let host = req
+            .extensions()
+            .get::<Client>()
+            .and_then(|c| c.host.clone());
+        if csrf && unsafe_method && cross_origin(req.headers(), host.as_deref()) {
             return refuse(
                 StatusCode::FORBIDDEN,
                 ErrorCode::CrossOrigin,
@@ -238,14 +307,50 @@ mod tests {
     #[test]
     fn origins() {
         let mut h = HeaderMap::new();
-        h.insert(header::HOST, HeaderValue::from_static("localhost:8080"));
-        assert!(!cross_origin(&h));
+        let host = Some("localhost:8080");
+        assert!(!cross_origin(&h, host));
         h.insert(
             header::ORIGIN,
             HeaderValue::from_static("http://localhost:8080"),
         );
-        assert!(!cross_origin(&h));
+        assert!(!cross_origin(&h, host));
         h.insert(header::ORIGIN, HeaderValue::from_static("http://evil.test"));
-        assert!(cross_origin(&h));
+        assert!(cross_origin(&h, host));
+        assert!(cross_origin(&h, None));
+    }
+
+    #[test]
+    fn trusted_proxies_forward_the_client() {
+        let ip = |s: &str| s.parse::<IpAddr>().ok();
+        let proxy = Cidr::parse("10.0.0.0/8").into_iter().collect::<Vec<_>>();
+        let mut h = HeaderMap::new();
+        h.insert(header::HOST, HeaderValue::from_static("internal:8080"));
+        h.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("203.0.113.9, 198.51.100.7, 10.0.0.2"),
+        );
+        h.insert(
+            "x-forwarded-host",
+            HeaderValue::from_static("torrents.example"),
+        );
+        // From the proxy: the last hop that is not a trusted proxy.
+        let c = forwarded(&h, ip("10.0.0.1"), &proxy);
+        assert_eq!(c.ip, ip("198.51.100.7"));
+        assert_eq!(c.host.as_deref(), Some("torrents.example"));
+        // From anyone else: the headers are not believed.
+        let c = forwarded(&h, ip("192.0.2.1"), &proxy);
+        assert_eq!(c.ip, ip("192.0.2.1"));
+        assert_eq!(c.host.as_deref(), Some("internal:8080"));
+        // No proxies configured: likewise.
+        assert_eq!(forwarded(&h, ip("10.0.0.1"), &[]).ip, ip("10.0.0.1"));
+        // Garbage stops the reading: what the client wrote left of it is
+        // never believed over what the proxy appended.
+        h.insert("x-forwarded-for", HeaderValue::from_static("nonsense"));
+        assert_eq!(forwarded(&h, ip("10.0.0.1"), &proxy).ip, ip("10.0.0.1"));
+        h.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("127.0.0.1, garbage, 198.51.100.7"),
+        );
+        assert_eq!(forwarded(&h, ip("10.0.0.1"), &proxy).ip, ip("198.51.100.7"));
     }
 }

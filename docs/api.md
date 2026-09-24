@@ -268,6 +268,8 @@ be opened, the daemon runs without statistics and `/stats` answers
 | POST | `/app/shutdown` | Graceful shutdown |
 | GET, PATCH | `/settings` | All settings; change some ([settings.md](settings.md)) |
 | GET | `/fs/directory` | List a directory (for choosing paths) |
+| GET, PUT | `/app/cookies` | The cookie jar for the daemon's own HTTP requests |
+| GET | `/app/interfaces` | Network interfaces and their addresses |
 | GET, POST | `/torrents` | The list (filter, category, tag, hashes, private, sort, paging); add torrents |
 | GET | `/torrents/count` | How many torrents |
 | POST | `/torrents/parse` | Describe a `.torrent` without adding it |
@@ -276,6 +278,7 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET | `/previews/{hash}/torrent-file` | A ready preview as a `.torrent` |
 | POST | `/torrents/start`, `/stop`, `/force-start`, `/recheck`, `/reannounce`, `/delete` | Bulk lifecycle |
 | POST | `/torrents/queue` | Move in the queue (top, up, down, bottom) |
+| POST | `/torrents/download-path` | Move incomplete torrents to a download path, or back |
 | POST | `/torrents/sequential`, `/first-last-piece-priority`, `/limits`, `/share-limits`, `/location`, `/category`, `/tags`, `/auto-management`, `/peers` | Bulk settings and peers |
 | GET, PATCH | `/torrents/{hash}` | Everything about one torrent; change its name or comment |
 | GET | `/torrents/{hash}/files` | Files with progress, priority, piece range, availability |
@@ -370,12 +373,12 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `app/defaultSavePath` | done | `GET /app` (`default_save_path`) |
 | `app/getDirectoryContent` | done | `GET /fs/directory` |
 | `app/sendTestEmail` | unsupported | no e-mail (maintainer decision); webhooks notify: `POST /webhooks/{id}/test` |
-| `app/cookies` | planned | a stored cookie jar for URL downloads (per request today: `options.cookie`) |
-| `app/setCookies` | planned | as above |
+| `app/cookies` | done | `GET /app/cookies`: the jar sent with `.torrent` downloads, RSS feeds and the tracker list |
+| `app/setCookies` | done | `PUT /app/cookies` |
 | `app/rotateAPIKey` | done | `POST /auth/api-key` |
 | `app/deleteAPIKey` | done | `DELETE /auth/api-key` |
-| `app/networkInterfaceList` | planned | interface names for the listen settings |
-| `app/networkInterfaceAddressList` | planned | as above |
+| `app/networkInterfaceList` | done | `GET /app/interfaces` |
+| `app/networkInterfaceAddressList` | done | `GET /app/interfaces` (each interface with its addresses) |
 | `log/main` | done | `GET /log` |
 | `log/peers` | done | `GET /log/peers` |
 | `sync/maindata` | done | `GET /sync`; pushed: `GET /events` (server-sent events) |
@@ -425,7 +428,7 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `torrents/bottomPrio` | done | `POST /torrents/queue` (`bottom`) |
 | `torrents/setLocation` | done | `POST /torrents/location` |
 | `torrents/setSavePath` | done | `POST /torrents/location` |
-| `torrents/setDownloadPath` | planned | per torrent after adding (at add time: `options.download_path`) |
+| `torrents/setDownloadPath` | done | `POST /torrents/download-path` (incomplete torrents move; `null` moves back to the save path) |
 | `torrents/rename` | done | `PATCH /torrents/{hash}` (`name`) |
 | `torrents/setComment` | done | `PATCH /torrents/{hash}` (`comment`) |
 | `torrents/setAutoManagement` | done | `POST /torrents/auto-management` |

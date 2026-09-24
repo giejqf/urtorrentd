@@ -180,6 +180,11 @@ impl Daemon {
         {
             let urls = self.settings().add_trackers;
             self.add_auto_trackers(id, &urls).await;
+            let fetched = self.fetched_trackers();
+            self.add_auto_trackers(id, &fetched).await;
+        }
+        if let Some(dir) = self.settings().export_dir {
+            self.export_torrent(hash, id, &dir).await;
         }
         self.logs
             .info(format!("received metadata for {}", self.name_of(&hash)));
@@ -219,8 +224,19 @@ impl Daemon {
                 .filter(|e| e.record.download_path.is_some())
                 .map(|e| (e.record.save_path.clone(), e.record.auto_management))
         };
-        if let Some((save_path, managed)) = target {
-            self.spawn_move(hash, id, save_path, managed);
+        let s = self.settings();
+        if let Some(dir) = s.export_dir_finished {
+            self.export_torrent(hash, id, &dir).await;
+        }
+        match target {
+            Some((path, managed)) => self.spawn_move(
+                hash,
+                id,
+                super::ops::MoveTo::Save { path, managed },
+                s.recheck_on_completion,
+            ),
+            None if s.recheck_on_completion => self.recheck_finished(hash, id).await,
+            None => {}
         }
     }
 }

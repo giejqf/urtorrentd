@@ -12,7 +12,9 @@ use axum::http::StatusCode;
 use super::{Json, Query};
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult};
-use crate::model::{AppInfo, DirectoryEntry, DirectoryMode, DirectoryQuery};
+use crate::model::{
+    AppInfo, Cookie, DirectoryEntry, DirectoryMode, DirectoryQuery, NetworkInterface,
+};
 use crate::settings::{Settings, SettingsPatch};
 use crate::util::blocking;
 
@@ -31,6 +33,15 @@ pub(crate) async fn get_app_info(State(d): State<Arc<Daemon>>) -> Json<AppInfo> 
         listen_port: d.session.listen_port(),
         restart_required: settings.pending_restart(&d.running),
         geoip: d.geo.info(),
+        instance_name: settings.instance_name.clone(),
+        listen_addresses: {
+            let (v4, v6) = d.listening();
+            [v4.map(|a| a.to_string()), v6.map(|a| a.to_string())]
+                .into_iter()
+                .flatten()
+                .collect()
+        },
+        fetched_trackers: d.fetched_trackers_info(),
     })
 }
 
@@ -98,4 +109,27 @@ pub(crate) async fn list_directory(
         _ => ApiError::io(e),
     })?;
     Ok(Json(entries))
+}
+
+/// The cookie jar: cookies sent with the daemon's own HTTP requests
+/// (`.torrent` downloads, RSS feeds, the tracker list) to their domain.
+#[utoipa::path(get, path = "/app/cookies", tag = "app", responses((status = 200, body = Vec<Cookie>)))]
+pub(crate) async fn get_cookies(State(d): State<Arc<Daemon>>) -> Json<Vec<Cookie>> {
+    Json(d.cookies())
+}
+
+/// Replace the cookie jar (at most 1000 cookies).
+#[utoipa::path(put, path = "/app/cookies", tag = "app", request_body = Vec<Cookie>, responses((status = 204, description = "Stored.")))]
+pub(crate) async fn set_cookies(
+    State(d): State<Arc<Daemon>>,
+    Json(cookies): Json<Vec<Cookie>>,
+) -> ApiResult<StatusCode> {
+    d.set_cookies(cookies).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The network interfaces with their addresses (for `listen_interface`).
+#[utoipa::path(get, path = "/app/interfaces", tag = "app", responses((status = 200, body = Vec<NetworkInterface>)))]
+pub(crate) async fn list_interfaces() -> ApiResult<Json<Vec<NetworkInterface>>> {
+    Ok(Json(blocking(crate::interfaces::list).await?))
 }

@@ -110,6 +110,15 @@ settings! {
     alt_upload_limit: Option<u64> = Some(10 * MIB), nullable = true;
     /// Use the alternative limits.
     alt_speed_enabled: bool = false, nullable = false;
+    /// A name for this daemon that clients show (`GET /app`); `null` =
+    /// none.
+    instance_name: Option<String> = None, nullable = true;
+    /// Listen on (and dial peers from) this network interface's addresses
+    /// (`GET /app/interfaces`), in the families `listen_v4` / `listen_v6`
+    /// enable; followed as they change. With no address (a VPN down) only
+    /// loopback is used, so nothing leaves through another interface.
+    /// `null` = the `listen_v4` / `listen_v6` addresses.
+    listen_interface: Option<String> = None, nullable = true;
     /// Turn the alternative limits on and off by the clock; `null` = only
     /// by hand. At the window's start they go on, at its end off; a switch
     /// by hand in between holds until the next boundary.
@@ -137,6 +146,33 @@ settings! {
     incomplete_file_suffix: Option<String> = None, nullable = true;
     /// Put new torrents at the front of the queue.
     add_to_top_of_queue: bool = false, nullable = false;
+    /// The content layout of new torrents whose add does not say.
+    content_layout: crate::model::ContentLayout = crate::model::ContentLayout::Original, nullable = false;
+    /// The stop condition of new torrents whose add does not say.
+    stop_condition: crate::store::StopCondition = crate::store::StopCondition::None, nullable = false;
+    /// A manually managed torrent added with a category and no save path
+    /// of its own goes to the category's save path.
+    category_paths_in_manual_mode: bool = false, nullable = false;
+    /// File names skipped when a torrent is added (wildcards `*` and `?`,
+    /// case ignored): a file whose name, or a folder on its path, matches
+    /// gets priority 0.
+    excluded_file_names: Vec<String> = Vec::new(), nullable = false;
+    /// Adding a torrent that is there already merges the new trackers and
+    /// web seeds into it (never for private torrents, AGENTS.md rule 2).
+    merge_trackers: bool = false, nullable = false;
+    /// Recheck a torrent when its download finishes (after the move to its
+    /// save path, if any).
+    recheck_on_completion: bool = false, nullable = false;
+    /// Write the `.torrent` of every torrent added into this directory
+    /// (absolute); `null` = no.
+    export_dir: Option<String> = None, nullable = true;
+    /// Write the `.torrent` of every finished torrent into this directory
+    /// (absolute); `null` = no.
+    export_dir_finished: Option<String> = None, nullable = true;
+    /// A list of trackers (one URL per line) fetched at the start and every
+    /// 24 hours, added to new public torrents like `add_trackers`; `null` =
+    /// none. What was fetched is in `GET /app`.
+    add_trackers_url: Option<String> = None, nullable = true;
     /// Folders whose `.torrent` and `.magnet` files are added (at most 32).
     watch_folders: Vec<WatchFolder> = Vec::new(), nullable = false;
     /// Refresh the RSS feeds by themselves (a refresh asked for runs
@@ -218,6 +254,10 @@ settings! {
     api_bypass_local_auth: bool = false, nullable = false;
     /// Address blocks (`10.0.0.0/8`, `fd00::/8`) whose clients need no authentication.
     api_auth_whitelist: Vec<String> = Vec::new(), nullable = false;
+    /// Reverse proxies (addresses or blocks, `10.0.0.0/8`) trusted to tell
+    /// the client's address (`X-Forwarded-For`) and host
+    /// (`X-Forwarded-Host`); empty = none.
+    api_trusted_proxies: Vec<String> = Vec::new(), nullable = false;
     /// Host names accepted in the `Host` header (`*` = any, `*.example.com` =
     /// subdomains). IP addresses are always accepted.
     api_allowed_hosts: Vec<String> = vec!["localhost".to_string()], nullable = false;
@@ -471,6 +511,44 @@ impl Settings {
         {
             return Err("download_path must be an absolute path".into());
         }
+        for (name, p) in [
+            ("export_dir", &self.export_dir),
+            ("export_dir_finished", &self.export_dir_finished),
+        ] {
+            if let Some(p) = p
+                && !std::path::Path::new(p).is_absolute()
+            {
+                return Err(format!("{name} must be an absolute path"));
+            }
+        }
+        if let Some(u) = &self.add_trackers_url
+            && !(u.starts_with("http://") || u.starts_with("https://"))
+        {
+            return Err("add_trackers_url must be an http or https URL".into());
+        }
+        if let Some(n) = &self.instance_name
+            && (n.chars().count() > 64 || n.chars().any(char::is_control))
+        {
+            return Err("instance_name is at most 64 characters".into());
+        }
+        if let Some(i) = &self.listen_interface
+            && (i.is_empty() || i.len() > 64 || i.contains(['/', '\0']))
+        {
+            return Err("listen_interface is not an interface name".into());
+        }
+        if self.excluded_file_names.len() > 256 {
+            return Err("excluded_file_names: 256 at most".into());
+        }
+        for p in &self.excluded_file_names {
+            crate::util::wildcard(p).map_err(|e| format!("excluded_file_names: {e}"))?;
+        }
+        for r in &self.api_trusted_proxies {
+            if Cidr::parse(r).is_none() {
+                return Err(format!(
+                    "api_trusted_proxies: {r:?} is not an address or block"
+                ));
+            }
+        }
         if let Some(s) = &self.alt_speed_schedule {
             s.bounds()?;
             s.zone()?;
@@ -585,10 +663,11 @@ impl Settings {
     /// A session builder configured from these settings.
     pub fn builder(&self, dht_state: Option<Vec<u8>>) -> SessionBuilder {
         let (up, down) = self.effective_rate_limits();
+        let (v4, v6) = crate::interfaces::listen_addresses(self);
         let mut b = urtorrent::Session::builder()
             .listen_port(self.listen_port)
-            .listen_v4(self.listen_v4)
-            .listen_v6(self.listen_v6)
+            .listen_v4(v4)
+            .listen_v6(v6)
             .profile(self.identity.profile())
             .encryption(self.encryption.mode())
             .transports(self.transports.policy())
@@ -640,10 +719,10 @@ pub async fn apply_live(
     if old.listen_port != new.listen_port
         || old.listen_v4 != new.listen_v4
         || old.listen_v6 != new.listen_v6
+        || old.listen_interface != new.listen_interface
     {
-        session
-            .set_listen(new.listen_port, new.listen_v4, new.listen_v6)
-            .await?;
+        let (v4, v6) = crate::interfaces::listen_addresses(new);
+        session.set_listen(new.listen_port, v4, v6).await?;
     }
     if old.identity != new.identity {
         session.set_profile(new.identity.profile()).await?;

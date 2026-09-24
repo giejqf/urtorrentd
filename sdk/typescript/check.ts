@@ -132,6 +132,23 @@ export async function demo(): Promise<void> {
   const prefs = await api.GET("/api/v1/client-data", { params: { query: { keys: "ui.theme" } } });
   console.log(prefs.data?.["ui.theme"]);
 
+  // The rest of the preferences, and the endpoints that came with them.
+  await api.PATCH("/api/v1/settings", {
+    body: {
+      content_layout: "subfolder",
+      stop_condition: "files_checked",
+      excluded_file_names: ["*.nfo", "sample"],
+      export_dir: "/srv/torrents",
+      api_trusted_proxies: ["10.0.0.0/8"],
+      listen_interface: "wg0",
+    },
+  });
+  await api.PUT("/api/v1/app/cookies", { body: [{ name: "uid", value: "42", domain: "tracker.example" }] });
+  const ifaces = await api.GET("/api/v1/app/interfaces");
+  const app = await api.GET("/api/v1/app");
+  console.log(ifaces.data?.map((i: Schemas["NetworkInterface"]) => i.name), app.data?.listen_addresses, app.data?.fetched_trackers?.trackers);
+  await api.POST("/api/v1/torrents/download-path", { body: { hashes: "all", path: null } });
+
   // Webhooks.
   const hook = await api.POST("/api/v1/webhooks", {
     body: { url: "https://media.lan/hook", events: ["finished", "moved"], secret: "s3cret" },

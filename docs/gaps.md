@@ -6,7 +6,22 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 ## Open
 
-Nothing.
+### HTTP connections are not bound to the listen address (0.13.3)
+
+Peers are dialled from the listen address (`transport::connect_tcp` with
+the local address), UDP trackers and the DHT use the listen sockets, but
+HTTP(S) trackers and web seeds connect without a source address
+(`engine/http.rs`, `TcpStream::connect`). With `listen_interface` bound to a
+VPN interface, announces to HTTP trackers and web-seed downloads leave by
+the default route instead: the tracker sees the address the user meant to
+hide, and they keep flowing while the VPN is down.
+
+Wanted: HTTP(S) tracker and web-seed connections bind to the listen address
+of their family (as libtorrent does with `outgoing_interfaces` /
+`listen_interfaces`), and fail rather than fall back when it is gone.
+
+Workaround here: none (documented at `listen_interface`); peer traffic is
+bound, and with no address the daemon listens on loopback only.
 
 ## Resolved upstream
 

@@ -38,6 +38,39 @@ pub(crate) fn parse_peer_ip(s: &str) -> Option<IpAddr> {
         .map(normalize_ip)
 }
 
+/// A torrent's name as a file name: no `/`, no control characters, no
+/// leading dot, at most 200 bytes (`fallback` when nothing is left).
+pub(crate) fn export_name(name: &str, fallback: &str) -> String {
+    let mut out: String = name
+        .chars()
+        .map(|c| if c == '/' || c.is_control() { '_' } else { c })
+        .collect();
+    out = out.trim().trim_start_matches('.').to_string();
+    if out.len() > 200 {
+        let mut end = 200;
+        while !out.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.truncate(end);
+    }
+    if out.is_empty() {
+        fallback.to_string()
+    } else {
+        out
+    }
+}
+
+/// Where a move takes a torrent's content.
+#[derive(Debug, Clone)]
+pub(crate) enum MoveTo {
+    /// Its save path: the download path goes; `managed` keeps automatic
+    /// management on.
+    Save { path: String, managed: bool },
+    /// A download path of an incomplete torrent (the content moves on to the
+    /// save path when it completes).
+    Download { path: String },
+}
+
 impl Daemon {
     /// Start (resume under the queue). An errored torrent is recovered
     /// (urtorrent 0.12): missing files are looked for again, an I/O error
@@ -235,9 +268,12 @@ impl Daemon {
         self: &Arc<Self>,
         hash: InfoHash,
         id: TorrentId,
-        path: String,
-        managed: bool,
+        to: MoveTo,
+        recheck: bool,
     ) {
+        let path = match &to {
+            MoveTo::Save { path, .. } | MoveTo::Download { path } => path.clone(),
+        };
         {
             let mut st = self.state();
             match st.torrents.get_mut(&hash) {
@@ -255,10 +291,16 @@ impl Daemon {
             match r {
                 Ok(()) => {
                     let _ = d
-                        .update_record(hash, |rec| {
-                            rec.save_path = path.clone();
-                            rec.download_path = None;
-                            if !managed {
+                        .update_record(hash, |rec| match &to {
+                            MoveTo::Save { path, managed } => {
+                                rec.save_path = path.clone();
+                                rec.download_path = None;
+                                if !managed {
+                                    rec.auto_management = false;
+                                }
+                            }
+                            MoveTo::Download { path } => {
+                                rec.download_path = Some(path.clone());
                                 rec.auto_management = false;
                             }
                         })
@@ -266,12 +308,119 @@ impl Daemon {
                     d.logs.info(format!("moved {} to {path}", hex(&hash)));
                     d.lifecycle(hash, TimelineKind::Moved, Some(path.clone()))
                         .await;
+                    if recheck {
+                        d.recheck_finished(hash, id).await;
+                    }
                 }
                 Err(e) => d
                     .logs
                     .warn(format!("moving {} to {path} failed: {e}", hex(&hash))),
             }
         });
+    }
+
+    /// `recheck_on_completion`: recheck a finished torrent.
+    pub(crate) async fn recheck_finished(self: &Arc<Self>, hash: InfoHash, id: TorrentId) {
+        self.logs.info(format!(
+            "rechecking {} (recheck_on_completion)",
+            self.name_of(&hash)
+        ));
+        if let Err(e) = self.recheck(id).await {
+            self.logs
+                .warn(format!("recheck of {}: {e}", self.name_of(&hash)));
+        }
+    }
+
+    /// A torrent's download path after it was added (qBittorrent's
+    /// `setDownloadPath`): an incomplete torrent's content moves there (or,
+    /// with `None`, to its save path); a complete one's stays in its save
+    /// path. Either way automatic management goes off.
+    pub(crate) async fn set_download_path(
+        self: &Arc<Self>,
+        hash: InfoHash,
+        id: TorrentId,
+        path: Option<String>,
+    ) -> ApiResult<()> {
+        let s = self.session.status(id).await?;
+        let (save_path, moving) = {
+            let st = self.state();
+            let e = st
+                .torrents
+                .get(&hash)
+                .ok_or_else(|| ApiError::torrent_not_found(&hex(&hash)))?;
+            (e.record.save_path.clone(), e.moving)
+        };
+        if moving {
+            return Err(ApiError::new(
+                axum::http::StatusCode::CONFLICT,
+                crate::error::ErrorCode::Busy,
+                "the torrent is moving",
+            ));
+        }
+        let here = s.save_path.to_string_lossy().into_owned();
+        let target = match (&path, s.complete) {
+            (_, true) => None,
+            (Some(p), false) => Some(MoveTo::Download { path: p.clone() }),
+            (None, false) if here != save_path => Some(MoveTo::Save {
+                path: save_path,
+                managed: false,
+            }),
+            (None, false) => None,
+        };
+        match target {
+            Some(to) if Some(&here) != path.as_ref() => self.spawn_move(hash, id, to, false),
+            _ => {
+                self.update_record(hash, |r| {
+                    r.download_path = path.filter(|_| !s.complete);
+                    r.auto_management = false;
+                })
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Write a torrent's `.torrent` into `dir` (`export_dir`,
+    /// `export_dir_finished`) as `<name>.torrent`, or `<name> <hash>.torrent`
+    /// when a different file has that name. Failures are logged.
+    pub(crate) async fn export_torrent(&self, hash: InfoHash, id: TorrentId, dir: &str) {
+        let bytes = match self.session.torrent_file(id).await {
+            Ok(Some(b)) => b,
+            Ok(None) => return,
+            Err(e) => {
+                self.logs
+                    .warn(format!("exporting {}: {e}", self.name_of(&hash)));
+                return;
+            }
+        };
+        // The torrent's own name (a rename wins): the tick may not have seen
+        // it yet.
+        let renamed = self
+            .state()
+            .torrents
+            .get(&hash)
+            .and_then(|e| e.record.name.clone());
+        let own = Torrent::parse(&bytes).ok().map(|t| t.info.name.clone());
+        let name = export_name(&renamed.or(own).unwrap_or_else(|| hex(&hash)), &hex(&hash));
+        let short = hex(&hash)[..8].to_string();
+        let target = PathBuf::from(dir);
+        let r = crate::util::blocking(move || {
+            std::fs::create_dir_all(&target)?;
+            let first = target.join(format!("{name}.torrent"));
+            let path = match std::fs::read(&first) {
+                Ok(old) if old == bytes => return Ok(()),
+                Ok(_) => target.join(format!("{name} {short}.torrent")),
+                Err(_) => first,
+            };
+            let tmp = path.with_extension("torrent.tmp");
+            std::fs::write(&tmp, &bytes)?;
+            std::fs::rename(&tmp, &path)
+        })
+        .await;
+        if let Err(e) = r {
+            self.logs
+                .warn(format!("exporting {} to {dir}: {e}", self.name_of(&hash)));
+        }
     }
 
     /// Change the display name or comment.

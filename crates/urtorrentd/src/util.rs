@@ -171,6 +171,28 @@ pub fn normalize_ip(ip: IpAddr) -> IpAddr {
     }
 }
 
+/// A wildcard pattern (`*` any text, `?` any character, case ignored) as a
+/// regular expression matching a whole name.
+pub fn wildcard(pattern: &str) -> Result<regex::Regex, String> {
+    if pattern.is_empty() || pattern.len() > 256 {
+        return Err(format!("{pattern:?}: a pattern is 1 to 256 bytes"));
+    }
+    let mut re = String::from("^");
+    for c in pattern.chars() {
+        match c {
+            '*' => re.push_str(".*"),
+            '?' => re.push('.'),
+            c => re.push_str(&regex::escape(&c.to_string())),
+        }
+    }
+    re.push('$');
+    regex::RegexBuilder::new(&re)
+        .case_insensitive(true)
+        .size_limit(1 << 20)
+        .build()
+        .map_err(|e| format!("{pattern:?}: {e}"))
+}
+
 /// A present patch field (even `null`) is `Some`, an absent one `None`
 /// (with `#[serde(default)]` on the field).
 pub fn patch_field<'de, D: serde::Deserializer<'de>, T: serde::Deserialize<'de>>(

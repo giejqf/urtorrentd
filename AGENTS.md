@@ -166,6 +166,7 @@ crates/urtorrentd/src/
     view.rs             list rows, detail, transfer info, caches
     preview.rs          metadata previews (fetchMetadata / saveMetadata)
     watched.rs          watch folders (scan_dirs)
+    net.rs              cookie jar, tracker list from a URL, following listen_interface
   rss/                  RSS: feeds, articles, rules (mod.rs), SQL (db.rs), documents (parse.rs),
                         rule matching (rules.rs)
     events.rs           the single event pump (4.4)
@@ -178,6 +179,7 @@ crates/urtorrentd/src/
                         stats.db (db.rs), /stats (query.rs)
   geo.rs                GeoIP: user-supplied .mmdb files, country and ASN lookups
   webhooks.rs           webhooks: signed HTTP deliveries of torrent events (ADR 0006)
+  interfaces.rs         network interfaces; listen addresses with listen_interface resolved
   auth.rs log.rs sync.rs error.rs util.rs
 crates/urtorrentd/tests/  API tests on real engines, restart / kill -9, statistics, schema, coverage
 sdk/typescript/         generates TypeScript types from openapi.json and type-checks a client
@@ -544,8 +546,8 @@ peer client, source, transport, encryption, IP version and direction, and by cat
 tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed report.
 **0.8.0** adds metadata previews and webhooks (run-on-completion as HTTP calls, ADR 0006).
 **0.9.0** adds the alternative-limits scheduler and watch folders, tested with urtorrent
-0.13.3. **0.10.0** adds RSS and the client data store. What is left of the checklist is the
-"planned" rows of `docs/api.md` and `docs/settings.md`: small preferences and endpoints.
+0.13.3. **0.10.0** adds RSS and the client data store. **0.11.0** does the remaining "planned"
+rows: every item of the checklist is now done or unsupported with its reason.
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -590,7 +592,8 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
   user's GeoIP files; ISC), `hmac` (webhook signatures; RustCrypto, like `sha2`), `jiff`
   (local time and daylight saving for the alternative-limits schedule; the system's time
   zone database, with a bundled copy for containers without one), `quick-xml` (RSS and
-  Atom documents), `regex` (RSS rules; already in the tree).
+  Atom documents), `regex` (RSS rules; already in the tree), `if-addrs` (network
+  interfaces for `listen_interface`: `getifaddrs` without `unsafe` here).
   `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with the library's licence
   allow-list. It does **not** ban `mio` here (4.2).
 - Commands (keep them working forever):

@@ -581,6 +581,9 @@ impl Daemon {
             .http
             .get(&f.url)
             .header(reqwest::header::USER_AGENT, agent);
+        if let Some(c) = self.cookie_header(&f.url) {
+            req = req.header(reqwest::header::COOKIE, c);
+        }
         if let Some(e) = &f.etag {
             req = req.header(reqwest::header::IF_NONE_MATCH, e);
         }

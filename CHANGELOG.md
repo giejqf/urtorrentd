@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-09-24
+
+The checklist's remaining "planned" rows: every qBittorrent WebAPI endpoint
+and preference is now mapped or unsupported with its reason.
+
+### Added
+
+- Settings `content_layout` and `stop_condition`: defaults for adds that
+  do not say (`options.content_layout` / `options.stop_condition` are now
+  optional).
+- `category_paths_in_manual_mode`: a manually managed torrent added with a
+  category and no save path goes to the category's.
+- `excluded_file_names`: files (or folders on their path) matching a
+  wildcard get priority 0 when added; a magnet is held until its metadata
+  so nothing is created first.
+- `merge_trackers`: adding a torrent again merges its trackers and web
+  seeds into the one there (never private ones; the 409 says how many).
+- `export_dir`, `export_dir_finished`: the `.torrent` of every torrent
+  added / finished is written there.
+- `recheck_on_completion`: a finished torrent is rechecked (after its move
+  to the save path).
+- `POST /torrents/download-path`: move incomplete torrents to a download
+  path, or back to the save path.
+- The cookie jar (`GET` / `PUT /app/cookies`), sent with `.torrent`
+  downloads, RSS feeds and the tracker list.
+- `add_trackers_url`: a tracker list fetched at the start and every 24
+  hours, added to new public torrents; `GET /app` → `fetched_trackers`.
+- `api_trusted_proxies`: behind these reverse proxies the client's address
+  (`X-Forwarded-For`, read from the right) and host (`X-Forwarded-Host`)
+  are the forwarded ones, for bans, the local bypass, the whitelist and the
+  host and origin checks.
+- `listen_interface` and `GET /app/interfaces`: listen on and dial peers
+  from an interface's addresses, followed as they change, loopback only
+  while it has none; `GET /app` → `listen_addresses`. HTTP trackers and web
+  seeds are not bound yet (`docs/gaps.md`).
+- `instance_name`, shown in `GET /app`.
+
 ## [0.10.0] - 2026-09-24
 
 ### Added

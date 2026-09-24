@@ -9,13 +9,13 @@ use std::sync::Arc;
 use axum::extract::State;
 
 use super::{Json, Query};
-use crate::daemon::Daemon;
+use crate::daemon::{Daemon, MoveTo};
 use crate::error::{ApiError, ApiResult};
 use crate::model::{
     AddPeersRequest, AddTorrentsRequest, AddTorrentsResponse, BulkResult, CategoryRequest,
-    CountResponse, DeleteRequest, HashesRequest, LimitsRequest, LocationRequest,
-    ParseTorrentRequest, QueueRequest, ShareLimitsRequest, TagsRequest, ToggleRequest,
-    TorrentListQuery, TorrentMetadata, TorrentSummary,
+    CountResponse, DeleteRequest, DownloadPathRequest, HashesRequest, LimitsRequest,
+    LocationRequest, ParseTorrentRequest, QueueRequest, ShareLimitsRequest, TagsRequest,
+    ToggleRequest, TorrentListQuery, TorrentMetadata, TorrentSummary,
 };
 
 /// The torrent list, filtered, sorted and paged.
@@ -209,7 +209,15 @@ pub(crate) async fn set_location(
     let path = req.path.clone();
     Ok(Json(
         d.bulk(&req.hashes, |h, id| {
-            d.spawn_move(h, id, path.clone(), false);
+            d.spawn_move(
+                h,
+                id,
+                MoveTo::Save {
+                    path: path.clone(),
+                    managed: false,
+                },
+                false,
+            );
             std::future::ready(Ok(()))
         })
         .await?,
@@ -271,5 +279,28 @@ pub(crate) async fn add_peers(
         .collect::<ApiResult<_>>()?;
     Ok(Json(
         d.bulk(&req.hashes, |_, id| d.add_peers(id, &peers)).await?,
+    ))
+}
+
+/// Move incomplete torrents' content to a download path, or back to the
+/// save path with `null` (in the background; the state shows `moving`).
+/// Complete torrents keep their content in the save path. Turns automatic
+/// management off.
+#[utoipa::path(post, path = "/torrents/download-path", tag = "torrents", request_body = DownloadPathRequest, responses((status = 200, body = BulkResult)))]
+pub(crate) async fn set_download_path(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<DownloadPathRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    if let Some(p) = &req.path
+        && !std::path::Path::new(p).is_absolute()
+    {
+        return Err(ApiError::bad_request("path must be absolute"));
+    }
+    let path = req.path.clone();
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| {
+            d.set_download_path(h, id, path.clone())
+        })
+        .await?,
     ))
 }

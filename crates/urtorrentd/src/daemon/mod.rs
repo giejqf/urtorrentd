@@ -7,6 +7,7 @@
 
 mod add;
 mod events;
+mod net;
 mod ops;
 mod organize;
 mod preview;
@@ -38,7 +39,7 @@ use crate::webhooks::{StoredWebhook, Webhooks};
 
 pub(crate) use add::check_options as check_add_options;
 pub use add::{content_renames, decode_base64, parse_metadata};
-pub(crate) use ops::parse_peer_ip;
+pub(crate) use ops::{MoveTo, parse_peer_ip};
 
 /// A torrent's resume data is saved at most this often while it changes
 /// (the engine's own cadence in file mode), and at once when it finishes, is
@@ -182,6 +183,8 @@ pub struct Daemon {
     pub(crate) watch: Mutex<watched::WatchState>,
     /// RSS refreshes in flight.
     pub(crate) rss: Mutex<crate::rss::RssState>,
+    /// The cookie jar, the fetched tracker list, the listen addresses.
+    pub(crate) net: Mutex<net::NetState>,
     /// Serializes the RSS rules' read-modify-write (runs, saves, renames).
     pub(crate) rss_rules_lock: tokio::sync::Mutex<()>,
     shutdown_requested: watch::Sender<bool>,
@@ -235,7 +238,7 @@ impl Daemon {
             let (s, v) = (store.clone(), settings.clone());
             blocking(move || s.save(store::SETTINGS, &v)).await?;
         }
-        let (creds, categories, tags, totals, dht_state, hooks) = {
+        let (creds, categories, tags, totals, dht_state, hooks, cookies) = {
             let s = store.clone();
             blocking(move || {
                 Ok((
@@ -245,6 +248,8 @@ impl Daemon {
                     s.load::<Totals>(store::TOTALS)?.unwrap_or_default(),
                     s.load_dht()?,
                     s.load::<Vec<StoredWebhook>>(store::WEBHOOKS)?
+                        .unwrap_or_default(),
+                    s.load::<Vec<crate::model::Cookie>>(store::COOKIES)?
                         .unwrap_or_default(),
                 ))
             })
@@ -262,6 +267,7 @@ impl Daemon {
                 .map_err(|e| e.to_string())
         };
 
+        let listening = crate::interfaces::listen_addresses(&settings);
         let session = settings.builder(dht_state).build().await?;
         settings::apply_bans(&session, &settings).await?;
         let events = session.events();
@@ -300,6 +306,7 @@ impl Daemon {
             webhooks: Arc::new(webhooks),
             watch: Mutex::new(watched::WatchState::default()),
             rss: Mutex::new(crate::rss::RssState::default()),
+            net: Mutex::new(net::NetState::new(cookies, listening)),
             rss_rules_lock: tokio::sync::Mutex::new(()),
             shutdown_requested: watch::channel(false).0,
             closed: watch::channel(false).0,
@@ -470,6 +477,19 @@ impl Daemon {
             // Undo whatever part went through before the failure.
             let _ = settings::apply_live(&self.session, &new, &old).await;
             return Err(e.into());
+        }
+        if (
+            old.listen_port,
+            old.listen_v4,
+            old.listen_v6,
+            &old.listen_interface,
+        ) != (
+            new.listen_port,
+            new.listen_v4,
+            new.listen_v6,
+            &new.listen_interface,
+        ) {
+            self.set_listening(crate::interfaces::listen_addresses(&new));
         }
         {
             let (s, v) = (self.store.clone(), new.clone());

@@ -332,7 +332,15 @@ impl Daemon {
             // The content moves to the save path when it completes.
             let _ = self.update_record(hash, |r| r.save_path = target).await;
         } else {
-            self.spawn_move(hash, id, target, true);
+            self.spawn_move(
+                hash,
+                id,
+                super::ops::MoveTo::Save {
+                    path: target,
+                    managed: true,
+                },
+                false,
+            );
         }
     }
 }

@@ -150,6 +150,10 @@ pub struct TorrentRecord {
     /// The top-level layout still to apply once a magnet's metadata arrives.
     #[serde(default)]
     pub content_layout: crate::model::ContentLayout,
+    /// A magnet whose files are matched against `excluded_file_names` when
+    /// its metadata arrives (the setting was on when it was added).
+    #[serde(default)]
+    pub exclude_files: bool,
 }
 
 /// A category.
@@ -200,6 +204,8 @@ pub const AUTH: &str = "auth";
 pub const TOTALS: &str = "totals";
 /// Key of the webhooks in `state`.
 pub const WEBHOOKS: &str = "webhooks";
+/// Key of the cookie jar in `state`.
+pub const COOKIES: &str = "cookies";
 const DHT: &str = "dht";
 
 pub(crate) fn db_err(e: rusqlite::Error) -> io::Error {
@@ -768,6 +774,7 @@ mod tests {
             source_url: None,
             stop_condition: StopCondition::None,
             content_layout: crate::model::ContentLayout::Original,
+            exclude_files: false,
         }
     }
 

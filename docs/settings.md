@@ -110,6 +110,16 @@ links to folders are skipped).
 - `rss_download_repacks` (`true`): a smart filter takes a REPACK or PROPER
   of an episode once more.
 
+## Network interface
+
+`listen_interface` (a name from `GET /app/interfaces`, like `wg0`) listens
+on, and dials peers from, that interface's addresses in the families
+`listen_v4` / `listen_v6` enable. The daemon follows the addresses as they
+change (every 10 seconds); while the interface has none (a VPN down) it
+listens on loopback only, so peers are not reached through another route.
+HTTP(S) trackers and web seeds are not bound yet ([gaps.md](gaps.md)): they
+use the default route.
+
 ## Geolocation
 
 Peers are placed by MaxMind DB (`.mmdb`) files you provide; the daemon never
@@ -143,9 +153,9 @@ an API daemon. **unsupported**: with the reason.
 | `add_to_top_of_queue` | setting | `add_to_top_of_queue` |
 | `add_trackers` | setting | `add_trackers` (never added to private torrents) |
 | `add_trackers_enabled` | setting | `add_trackers` non-empty |
-| `add_trackers_from_url_enabled` | planned | fetch the automatic tracker list from a URL |
-| `add_trackers_url` | planned | as above |
-| `add_trackers_url_list` | planned | as above |
+| `add_trackers_from_url_enabled` | setting | `add_trackers_url` not `null` |
+| `add_trackers_url` | setting | `add_trackers_url` (fetched at the start and every 24 hours; for new public torrents only) |
+| `add_trackers_url_list` | done | `GET /app` → `fetched_trackers` (what was fetched, when, the last error) |
 | `alt_dl_limit` | setting | `alt_download_limit` |
 | `alt_up_limit` | setting | `alt_upload_limit` |
 | `alternative_webui_enabled` | n/a | no web UI is served |
@@ -155,7 +165,7 @@ an API daemon. **unsupported**: with the reason.
 | `announce_to_all_tiers` | fixed | all tiers, first working tracker per tier (urtorrent Q9) |
 | `announce_to_all_trackers` | fixed | as above |
 | `anonymous_mode` | unsupported | identity belongs to the profile: `identity` |
-| `app_instance_name` | planned | a display name for clients |
+| `app_instance_name` | setting | `instance_name` (shown in `GET /app`) |
 | `async_io_threads` | fixed | io_uring: one disk ring (`disk_thread`) |
 | `auto_delete_mode` | n/a | `.torrent` files arrive through the API; there is nothing to delete |
 | `auto_tmm_enabled` | setting | `auto_management` |
@@ -177,8 +187,8 @@ an API daemon. **unsupported**: with the reason.
 | `confirm_torrent_recheck` | n/a | a client UI concern |
 | `connection_speed` | fixed | library constant (10 dials at once) |
 | `current_interface_address` | setting | `listen_v4`, `listen_v6` |
-| `current_interface_name` | planned | resolve an interface name to listen addresses |
-| `current_network_interface` | planned | as above |
+| `current_interface_name` | setting | `listen_interface` |
+| `current_network_interface` | setting | `listen_interface` (by name, `GET /app/interfaces`; followed as its addresses change, loopback only while it has none) |
 | `delete_torrent_content_files` | n/a | clients pass `delete_files` |
 | `dht` | setting | `dht` |
 | `dht_bootstrap_nodes` | setting | `dht_bootstrap_nodes` (after a restart) |
@@ -203,10 +213,10 @@ an API daemon. **unsupported**: with the reason.
 | `enable_piece_extent_affinity` | setting | `piece_extent_affinity` (after a restart) |
 | `enable_upload_suggestions` | fixed | library |
 | `encryption` | setting | `encryption` |
-| `excluded_file_names` | planned | skip files by name pattern when adding |
-| `excluded_file_names_enabled` | planned | as above |
-| `export_dir` | planned | copy `.torrent` files to a directory when added |
-| `export_dir_fin` | planned | ... or when finished |
+| `excluded_file_names` | setting | `excluded_file_names` (wildcards, case ignored; a file or a folder on its path) |
+| `excluded_file_names_enabled` | setting | `excluded_file_names` not empty |
+| `export_dir` | setting | `export_dir` |
+| `export_dir_fin` | setting | `export_dir_finished` |
 | `file_log_age` | unsupported | logs go to stderr (journald) and `GET /log` |
 | `file_log_age_type` | unsupported | as above |
 | `file_log_backup_enabled` | unsupported | as above |
@@ -263,7 +273,7 @@ an API daemon. **unsupported**: with the reason.
 | `max_uploads` | setting | `max_uploads` |
 | `max_uploads_per_torrent` | setting | `max_uploads_per_torrent` |
 | `memory_working_set_limit` | n/a | a Windows concern |
-| `merge_trackers` | planned | merge trackers when a duplicate is added (never for private torrents) |
+| `merge_trackers` | setting | `merge_trackers` (never for private torrents, nor before a magnet's metadata) |
 | `outgoing_ports_max` | unsupported | not offered by the library |
 | `outgoing_ports_min` | unsupported | as above |
 | `peer_tos` | unsupported | not offered by the library |
@@ -288,7 +298,7 @@ an API daemon. **unsupported**: with the reason.
 | `queueing_enabled` | setting | `queueing_enabled` |
 | `random_port` | setting | `random_port` |
 | `reannounce_when_address_changed` | fixed | library |
-| `recheck_completed_torrents` | planned | recheck when a download completes |
+| `recheck_completed_torrents` | setting | `recheck_on_completion` (after the move to the save path) |
 | `refresh_interval` | n/a | clients choose their polling interval |
 | `request_queue_size` | fixed | library |
 | `resolve_peer_countries` | setting | `geoip_database` (a database file you provide; countries on peers and in `/stats/geo`), `geoip_asn_database` |
@@ -329,16 +339,16 @@ an API daemon. **unsupported**: with the reason.
 | `temp_path` | setting | `download_path` |
 | `temp_path_enabled` | setting | `download_path` non-null |
 | `torrent_changed_tmm_enabled` | fixed | managed torrents move when their category changes |
-| `torrent_content_layout` | planned | a default for `options.content_layout` |
+| `torrent_content_layout` | setting | `content_layout` (default of `options.content_layout`) |
 | `torrent_content_remove_option` | unsupported | removed content is deleted, not moved to a trash |
 | `torrent_file_size_limit` | fixed | 64 MiB for URL downloads |
-| `torrent_stop_condition` | planned | a default for `options.stop_condition` |
+| `torrent_stop_condition` | setting | `stop_condition` (default of `options.stop_condition`) |
 | `up_limit` | setting | `upload_limit` |
 | `upload_choking_algorithm` | fixed | one algorithm (library) |
 | `upload_slots_behavior` | fixed | as above |
 | `upnp` | unsupported | port mapping is on the library roadmap |
 | `upnp_lease_duration` | unsupported | as above |
-| `use_category_paths_in_manual_mode` | planned | category subfolders for manually managed torrents |
+| `use_category_paths_in_manual_mode` | setting | `category_paths_in_manual_mode` |
 | `use_https` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
 | `use_unwanted_folder` | unsupported | skipped files' shared pieces go to the library's parts file |
 | `utp_tcp_mixed_mode` | fixed | the `transports` policy decides |
@@ -355,8 +365,8 @@ an API daemon. **unsupported**: with the reason.
 | `web_ui_https_key_path` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
 | `web_ui_max_auth_fail_count` | setting | `api_max_auth_failures` |
 | `web_ui_port` | setting | `--api-listen` |
-| `web_ui_reverse_proxies_list` | planned | trusted proxies for client addresses |
-| `web_ui_reverse_proxy_enabled` | planned | as above |
+| `web_ui_reverse_proxies_list` | setting | `api_trusted_proxies` (addresses or blocks) |
+| `web_ui_reverse_proxy_enabled` | setting | `api_trusted_proxies` not empty (`X-Forwarded-For`, `X-Forwarded-Host`) |
 | `web_ui_secure_cookie_enabled` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
 | `web_ui_session_timeout` | setting | `api_session_timeout` |
 | `web_ui_upnp` | unsupported | no port mapping |
