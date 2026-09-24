@@ -43,7 +43,9 @@ settings) added what a daemon needs.
   checklist, with the reason.
 - **Compatibility with qBittorrent clients**: its WebUI, VueTorrent, the *arr apps,
   `qbittorrent-api`. Do not bend our API design to fit them.
-- **A web UI.** The daemon is API-only. A UI is a separate client of the API.
+- **UI logic in the daemon.** The daemon serves the web UI's built files (`frontend/`,
+  section 8), but nothing in the API exists for the UI alone: it is a client of
+  `openapi.json` like any other, with its own guide in `frontend/AGENTS.md`.
 - **Other operating systems.** urtorrent is Linux-only on io_uring, and so is this daemon.
 
 ### Non-negotiable rules
@@ -184,6 +186,7 @@ crates/urtorrentd/src/
   auth.rs log.rs sync.rs error.rs util.rs
 crates/urtorrentd/tests/  API tests on real engines, restart / kill -9, statistics, schema, coverage
 sdk/typescript/         generates TypeScript types from openapi.json and type-checks a client
+frontend/               the web UI (SolidJS, Vite), a client of the API; its own AGENTS.md
 xtask/                  check, openapi, sdk
 docs/api.md             our API: every endpoint, plus the checklist mapping (section 3)
 docs/settings.md        every qBittorrent preference key: our setting / fixed / unsupported
@@ -579,6 +582,9 @@ setup: the first client chooses the credentials (ADR 0007).
   0.6.0 geolocation (country and ASN on live peers and in history; done); 0.7.0 breakdowns,
   tracker reliability, idle-seed report, opt-in scrape for completed-download counts (done).
   Later: data-usage caps (needs wire-level counters upstream), Prometheus `/metrics`.
+- **Web UI** (the plan of 2026-09-24): milestones W0 to W7 in `frontend/AGENTS.md`. W0
+  changes the daemon too: `--initial-settings` (for offline end-to-end tests), serving the
+  UI, and a CORS allowlist.
 - **Not planned** (maintainer decision, 2026-09-24): e-mail notifications (webhooks
   notify) and HTTPS in the daemon (TLS belongs to a reverse proxy). What else the
   checklist marks unsupported stays so for the reasons given there.
@@ -657,6 +663,13 @@ setup: the first client chooses the credentials (ADR 0007).
   terminates TLS.
 - **First-run setup without a code** (2026-09-24, ADR 0007): while no password is stored,
   the first client of `POST /auth/setup` chooses the credentials.
+- **A web UI in this repository, served by the daemon** (2026-09-24): `frontend/`, built
+  with SolidJS, shadcn components (solid-ui), Tailwind, Lucide and Vite, and using nothing
+  but the API. axum serves its files at `/` (embedded in release builds, or from
+  `--web-ui <dir>`), and the API stays at `/api/v1`. A reverse proxy such as Caddy
+  terminates TLS, and browser clients on other origins get an explicit CORS allowlist. End-to-end tests against
+  real daemons are required. The plan and rules are in `frontend/AGENTS.md`; ADR 0008
+  comes with the first code.
 
 ### Settled in ADRs (defaults taken while building; revisit with the maintainer if needed)
 

@@ -1,3 +1,6 @@
 /target
 /sdk/typescript/node_modules
 /sdk/typescript/schema.d.ts
+
+# Design references (local only; frontend/AGENTS.md section 6.1)
+/.design/
