@@ -33,6 +33,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "h
 # Passwords (argon2) and API keys (SHA-256) are stored hashed.
 argon2 = { version = "0.5", features = ["std"] }
 sha2 = "0.10"
+hmac = "0.12"
 getrandom = "0.3"
 # .torrent files travel as base64 in JSON bodies.
 base64 = "0.22"

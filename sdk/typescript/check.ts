@@ -94,6 +94,27 @@ export async function demo(): Promise<void> {
   const reclaim: number = (idle.data?.torrents ?? []).filter((t) => t.value < 0.1).reduce((n, t) => n + t.size, 0);
   console.log(clientShare, byTag.data?.points.length, failing, reclaim);
 
+  // A metadata preview, then the add that uses it.
+  const hash = "0123456789abcdef0123456789abcdef01234567";
+  const preview = await api.POST("/api/v1/previews", { body: { source: `magnet:?xt=urn:btih:${hash}` } });
+  if (preview.data?.state === "ready") {
+    const files = preview.data.metadata?.files.map((f: Schemas["MetadataFile"]) => [f.path, f.size]);
+    console.log(files);
+    await api.POST("/api/v1/torrents", { body: { urls: [hash], options: { category: "music" } } });
+  }
+
+  // Webhooks.
+  const hook = await api.POST("/api/v1/webhooks", {
+    body: { url: "https://media.lan/hook", events: ["finished", "moved"], secret: "s3cret" },
+  });
+  if (hook.data) {
+    const tried = await api.POST("/api/v1/webhooks/{id}/test", { params: { path: { id: hook.data.id } } });
+    console.log(tried.data?.status, tried.data?.error);
+    await api.PATCH("/api/v1/webhooks/{id}", { params: { path: { id: hook.data.id } }, body: { secret: null } });
+  }
+  // @ts-expect-error: not an event.
+  await api.POST("/api/v1/webhooks", { body: { url: "https://x", events: ["exploded"] } });
+
   // @ts-expect-error: `dim` is required.
   await api.GET("/api/v1/stats/peers", { params: { query: {} } });
   // @ts-expect-error: not a dimension.
@@ -126,4 +147,16 @@ export function watch(onUpdate: (update: Schemas["SyncResponse"]) => void): Even
     onUpdate(update);
   });
   return events;
+}
+
+// A webhook receiver typed from the same schema.
+export function onWebhook(body: string): string | null {
+  const payload: Schemas["WebhookPayload"] = JSON.parse(body);
+  switch (payload.event) {
+    case "finished":
+    case "moved":
+      return payload.torrent?.content_path ?? null;
+    default:
+      return null;
+  }
 }

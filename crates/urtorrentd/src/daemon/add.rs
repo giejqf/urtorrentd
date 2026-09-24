@@ -45,17 +45,17 @@ pub(crate) fn redirect_policy() -> reqwest::redirect::Policy {
 }
 
 /// Where a torrent comes from, once resolved.
-enum Source {
+pub(super) enum Source {
     Metainfo { bytes: Vec<u8> },
     Magnet { uri: String },
 }
 
 /// A resolved and parsed torrent, ready to add.
-struct Parsed {
-    hash: InfoHash,
-    name: String,
+pub(super) struct Parsed {
+    pub hash: InfoHash,
+    pub name: String,
     private: bool,
-    source: Source,
+    pub source: Source,
     source_url: Option<String>,
     /// Content file paths in file order (empty for magnets).
     files: Vec<String>,
@@ -230,7 +230,7 @@ impl Daemon {
         Ok(out)
     }
 
-    async fn resolve_url(&self, url: &str, cookie: Option<&str>) -> ApiResult<Parsed> {
+    pub(super) async fn resolve_url(&self, url: &str, cookie: Option<&str>) -> ApiResult<Parsed> {
         let url = url.trim();
         let lower = url.to_ascii_lowercase();
         if lower.starts_with("magnet:") {
@@ -291,9 +291,15 @@ impl Daemon {
         parse_metainfo(body, Some(url.to_string()))
     }
 
-    async fn add_one(self: &Arc<Self>, p: Parsed, o: &AddOptions) -> ApiResult<AddedTorrent> {
+    async fn add_one(self: &Arc<Self>, mut p: Parsed, o: &AddOptions) -> ApiResult<AddedTorrent> {
         let _ops = self.ops.lock().await;
         let hash_hex = hex(&p.hash);
+        // A preview of this torrent: its metadata saves a second fetch.
+        if let Some(bytes) = self.take_preview(&p.hash).await
+            && matches!(p.source, Source::Magnet { .. })
+        {
+            p = parse_metainfo(bytes, p.source_url.take())?;
+        }
         if self.state().torrents.contains_key(&p.hash) {
             return Err(ApiError::new(
                 StatusCode::CONFLICT,
@@ -421,7 +427,6 @@ impl Daemon {
             }
         };
         self.insert(p.hash, id, record);
-        self.stats_event(p.hash, TimelineKind::Added, None);
 
         // Daemon-side options around the engine add. Failures here leave the
         // torrent added and are logged.
@@ -453,6 +458,7 @@ impl Daemon {
         }
         let name = o.rename.clone().filter(|n| !n.is_empty()).unwrap_or(p.name);
         self.logs.info(format!("added torrent {name} ({hash_hex})"));
+        self.lifecycle(p.hash, TimelineKind::Added, None).await;
         Ok(AddedTorrent {
             hash: hash_hex,
             name,

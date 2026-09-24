@@ -111,10 +111,10 @@ an API daemon. **unsupported**: with the reason.
 | `async_io_threads` | fixed | io_uring: one disk ring (`disk_thread`) |
 | `auto_delete_mode` | n/a | `.torrent` files arrive through the API; there is nothing to delete |
 | `auto_tmm_enabled` | setting | `auto_management` |
-| `autorun_enabled` | planned | run a program on completion |
-| `autorun_on_torrent_added_enabled` | planned | run a program when a torrent is added |
-| `autorun_on_torrent_added_program` | planned | as above |
-| `autorun_program` | planned | as above |
+| `autorun_enabled` | done | webhooks: a webhook with the `finished` event ([ADR 0006](adr/0006-webhooks.md): no program is ever run) |
+| `autorun_on_torrent_added_enabled` | done | webhooks: a webhook with the `added` event |
+| `autorun_on_torrent_added_program` | done | webhooks: the webhook's URL; the payload carries the torrent's row (qBittorrent's `%N`, `%F`, `%L`, ... placeholders) |
+| `autorun_program` | done | webhooks: as above |
 | `banned_IPs` | setting | `banned_ips` (also `POST /transfer/bans`); ranges in `banned_ip_ranges` |
 | `bdecode_depth_limit` | fixed | library bounds (bencode nesting 32) |
 | `bdecode_token_limit` | fixed | library bounds |

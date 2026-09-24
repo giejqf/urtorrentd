@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-09-24
+
+### Added
+
+- **Metadata preview** (qBittorrent's `fetchMetadata` / `saveMetadata`):
+  `POST /previews` fetches a magnet's (or URL's) metadata without adding
+  the torrent; `GET /previews/{hash}` shows it fetching, then ready with the
+  files; `GET /previews/{hash}/torrent-file` returns the `.torrent`;
+  `DELETE` drops it. Adding the same info-hash uses the fetched metadata.
+  Previews are in no list or statistic, are not kept across restarts, and
+  go away after 15 minutes unread.
+- **Webhooks** (ADR 0006; qBittorrent's run-on-add and run-on-completion,
+  without running programs): `/webhooks` calls URLs on `added`,
+  `metadata`, `finished`, `moved`, `error` and `removed` with a typed
+  `WebhookPayload` (the torrent's list row included), signed with
+  HMAC-SHA256 when a secret is set, retried on no answer, 429 and 5xx,
+  redirects not followed; `POST /webhooks/{id}/test`; the last deliveries
+  are shown. The `autorun_*` preferences are covered.
+
 ## [0.7.0] - 2026-09-23
 
 ### Added

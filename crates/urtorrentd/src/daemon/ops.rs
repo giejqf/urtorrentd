@@ -19,7 +19,7 @@ use crate::model::{
 };
 use crate::settings::valid_tracker_url;
 use crate::store::StopCondition;
-use crate::util::{hex, normalize_ip, now};
+use crate::util::{hex, normalize_ip};
 
 fn usize_of(n: u32) -> usize {
     usize::try_from(n).unwrap_or(usize::MAX)
@@ -101,6 +101,7 @@ impl Daemon {
         with_files: bool,
     ) -> ApiResult<()> {
         let _ops = self.ops.lock().await;
+        let summary = self.hook_summary(hash, TimelineKind::Removed).await;
         let r = if with_files {
             self.session.remove_torrent_with_files(id).await
         } else {
@@ -117,8 +118,8 @@ impl Daemon {
             st.torrents.remove(&hash);
             if let Ok(stats) = &self.stats {
                 stats.forget(&hash);
-                stats.event(now(), hash, TimelineKind::Removed, None);
             }
+            self.lifecycle_with(hash, TimelineKind::Removed, None, summary);
         }
         let _g = self.persist_lock.lock().await;
         let (store, h) = (self.store.clone(), hex(&hash));
@@ -263,7 +264,8 @@ impl Daemon {
                         })
                         .await;
                     d.logs.info(format!("moved {} to {path}", hex(&hash)));
-                    d.stats_event(hash, TimelineKind::Moved, Some(path.clone()));
+                    d.lifecycle(hash, TimelineKind::Moved, Some(path.clone()))
+                        .await;
                 }
                 Err(e) => d
                     .logs

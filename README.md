@@ -34,6 +34,9 @@ profile that allows it).
 - Settings: [docs/settings.md](docs/settings.md).
 - Live updates: `GET /api/v1/events` pushes what changed as server-sent
   events (`EventSource` in a browser); `GET /api/v1/sync` is the polled form.
+- Metadata preview: `POST /api/v1/previews` fetches a magnet's file list
+  without adding it; webhooks (`/api/v1/webhooks`) call your URLs when
+  torrents are added, finish, move or go away (no program is ever run).
 - History: `/api/v1/stats/...` has traffic per torrent and for the session
   over time, each torrent's seeding days, rankings, a timeline, traffic by
   country and network with a GeoIP database you provide

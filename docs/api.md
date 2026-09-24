@@ -66,6 +66,53 @@ resumes where it left off (or gets everything, if that revision is too old).
 Browsers cannot set headers on `EventSource`: use the login cookie; other
 clients can send the API key. Polling `GET /sync` stays for scripts.
 
+## Metadata preview
+
+qBittorrent's `fetchMetadata` / `saveMetadata`: see what a magnet link holds
+before adding it.
+
+```sh
+POST /api/v1/previews {"source": "magnet:?xt=urn:btih:<hash>&dn=..."}   # or an info-hash, or a .torrent URL
+GET  /api/v1/previews/<hash>
+{"hash": "...", "state": "fetching", "peers": 3, "metadata": null, ...}
+{"hash": "...", "state": "ready", "name": "album", "metadata": {"files": [{"path": "album/01.flac", "size": 90000}, ...], ...}}
+GET  /api/v1/previews/<hash>/torrent-file      # the .torrent
+POST /api/v1/torrents {"urls": ["<hash>"], "options": {...}}   # adds it with the fetched metadata
+```
+
+A preview is not a torrent of the session: it is in no list, statistic or
+file, and a restart forgets it. A magnet is fetched from its trackers,
+`x.pe` peers and the DHT, outside the queue; once the metadata is here the
+engine lets go of it and the daemon keeps the `.torrent`. Adding the same
+info-hash (magnet or hash) uses that `.torrent`, so the files are known at
+once. A preview nobody reads for 15 minutes is dropped; 32 at most at once.
+The `add_trackers` setting is not applied to previews.
+
+## Webhooks ([ADR 0006](adr/0006-webhooks.md))
+
+qBittorrent runs a program when a torrent is added or finishes; urtorrentd
+calls a URL instead (it never runs a program):
+
+```sh
+POST /api/v1/webhooks {"url": "https://media.lan/hooks/torrents", "events": ["finished", "moved"], "secret": "..."}
+POST /api/v1/webhooks/1/test      # {"status": 200, "error": null, "attempts": 1, ...}
+```
+
+Events: `added`, `metadata`, `finished`, `moved` (with a download path, the
+content reached its save path after `finished`), `error`, `removed`, and
+`test`; `events: []` subscribes to all. Each is a `POST` of a
+`WebhookPayload`:
+
+```json
+{"event": "finished", "time": 1790200000, "delivery": "5f0c...", "hash": "...", "detail": null,
+ "torrent": {"name": "...", "category": "linux", "save_path": "...", "content_path": "...", "size": 1234, ...}}
+```
+
+With a secret, `X-Urtorrentd-Signature: sha256=<hex>` is the HMAC-SHA256 of
+`<X-Urtorrentd-Timestamp>.<body>`; check it on the raw body. Redirects are
+not followed; no answer, 429 and 5xx are retried after 2 s, 10 s and 60 s.
+`GET /webhooks` shows each webhook's last 20 deliveries (since the start).
+
 ## Statistics ([ADR 0005](adr/0005-statistics.md))
 
 The daemon records history in `<data dir>/stats.db` (settings:
@@ -181,6 +228,9 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET, POST | `/torrents` | The list (filter, category, tag, hashes, private, sort, paging); add torrents |
 | GET | `/torrents/count` | How many torrents |
 | POST | `/torrents/parse` | Describe a `.torrent` without adding it |
+| GET, POST | `/previews` | Metadata previews; fetch a magnet's (or URL's) metadata without adding the torrent |
+| GET, DELETE | `/previews/{hash}` | A preview (fetching, ready with the metadata, failed); drop it |
+| GET | `/previews/{hash}/torrent-file` | A ready preview as a `.torrent` |
 | POST | `/torrents/start`, `/stop`, `/force-start`, `/recheck`, `/reannounce`, `/delete` | Bulk lifecycle |
 | POST | `/torrents/queue` | Move in the queue (top, up, down, bottom) |
 | POST | `/torrents/sequential`, `/first-last-piece-priority`, `/limits`, `/share-limits`, `/location`, `/category`, `/tags`, `/auto-management`, `/peers` | Bulk settings and peers |
@@ -204,6 +254,9 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET | `/sync` | Incremental updates: everything, then changes since `rev` |
 | GET | `/events` | The same updates pushed as server-sent events |
 | GET | `/log`, `/log/peers` | Main log; peer (ban) log |
+| GET, POST | `/webhooks` | Webhooks with their last deliveries; add one |
+| GET, PATCH, DELETE | `/webhooks/{id}` | One webhook; change it; remove it |
+| POST | `/webhooks/{id}/test` | Deliver a `test` event now |
 | GET | `/stats` | What the statistics database holds: size, torrents, oldest bucket per step |
 | GET | `/stats/transfer` | Session traffic over time, with the recording periods |
 | GET | `/stats/torrents/{hash}/traffic` | A torrent's traffic over time (minute, hour or day buckets) |
@@ -340,9 +393,9 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `torrents/export` | done | `GET /torrents/{hash}/torrent-file` |
 | `torrents/SSLParameters` | unsupported | SSL torrents are a library non-goal |
 | `torrents/setSSLParameters` | unsupported | as above |
-| `torrents/fetchMetadata` | planned | a metadata preview; the library's hold (0.12) makes it possible |
+| `torrents/fetchMetadata` | done | `POST /previews`, `GET /previews/{hash}` |
 | `torrents/parseMetadata` | done | `POST /torrents/parse` |
-| `torrents/saveMetadata` | planned | with `fetchMetadata` |
+| `torrents/saveMetadata` | done | `GET /previews/{hash}/torrent-file` |
 | `rss/addFolder` | planned | RSS (after 0.1.0) |
 | `rss/addFeed` | planned | RSS |
 | `rss/setFeedURL` | planned | RSS |

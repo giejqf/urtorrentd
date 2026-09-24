@@ -20,5 +20,6 @@ pub(crate) mod stats;
 pub mod store;
 pub mod sync;
 pub mod util;
+pub mod webhooks;
 
 pub use daemon::{Daemon, DaemonConfig, StartError};

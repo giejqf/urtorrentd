@@ -140,7 +140,7 @@ our endpoints are named in `docs/api.md`, which keeps the full, current table.
 | `torrents` | `addTrackers`, `editTracker`, `removeTrackers`, `addWebSeeds`, `editWebSeed`, `removeWebSeeds`, `addPeers` | L `add_tracker` / `remove_tracker` / `add_web_seed` / `remove_web_seed` / `add_peer` (edit = remove + add at the same tier) |
 | `torrents` | `categories`, `createCategory`, `editCategory`, `removeCategories`, `setCategory`, `tags`, `createTags`, `deleteTags`, `addTags`, `removeTags`, `setTags`, `rename`, `setComment`, `setAutoManagement` | D. **`setAutoManagement` is qBittorrent's Automatic Torrent Management (save path from category), not urtorrent's `auto_managed` (the queue).** |
 | `torrents` | `parseMetadata` | L (metainfo parsing only, nothing added) |
-| `torrents` | `fetchMetadata`, `saveMetadata` | D, planned: a held torrent (`hold_after_metadata`, urtorrent 0.12) previewed, then released or removed |
+| `torrents` | `fetchMetadata`, `saveMetadata` | D: a preview (`/previews`) held with `hold_after_metadata` outside the registry; its `.torrent` is kept and used by the add |
 | `torrents` | `toggleFirstLastPiecePrio` | L `set_piece_priorities` (urtorrent 0.13), the pieces chosen by the daemon |
 | `torrents` | `setSuperSeeding`, `SSLParameters`, `setSSLParameters` | U: library non-goals |
 | `rss` | all | D, later milestone (`docs/config.md` lists RSS as frontend work). U until then |
@@ -164,6 +164,7 @@ crates/urtorrentd/src/
     ops.rs              per-torrent operations (lifecycle, limits, moves, files, trackers, ...)
     organize.rs         categories, tags, automatic management
     view.rs             list rows, detail, transfer info, caches
+    preview.rs          metadata previews (fetchMetadata / saveMetadata)
     events.rs           the single event pump (4.4)
     tick.rs             activity tracking, share limits, periodic flushes
   api/                  axum handlers, one module per feature group; guard.rs = auth
@@ -173,6 +174,7 @@ crates/urtorrentd/src/
   stats/                history (ADR 0005): the sampler (mod.rs), per-peer attribution (peers.rs),
                         stats.db (db.rs), /stats (query.rs)
   geo.rs                GeoIP: user-supplied .mmdb files, country and ASN lookups
+  webhooks.rs           webhooks: signed HTTP deliveries of torrent events (ADR 0006)
   auth.rs log.rs sync.rs error.rs util.rs
 crates/urtorrentd/tests/  API tests on real engines, restart / kill -9, statistics, schema, coverage
 sdk/typescript/         generates TypeScript types from openapi.json and type-checks a client
@@ -388,7 +390,8 @@ Everything persistent is in one SQLite database (recorded history is apart, in
 ### 4.10 Authentication and security
 
 The API controls the filesystem: save paths, directory listing, delete with files,
-run-on-completion later. Treat it as a security boundary.
+webhooks to any URL. Treat it as a security boundary. The daemon never runs a program
+(ADR 0006: run-on-completion is a webhook).
 
 - Auth is on by default. Offer both of the reference's schemes: cookie sessions after
   login, and API keys (`Authorization: Bearer`, rotate / delete). Passwords and keys are
@@ -437,6 +440,18 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
   now; tracker hosts only, never URLs); announces per host; opt-in scrapes for completed
   downloads; the idle-seed report (upload in a window ÷ size).
 
+### 4.12 Metadata previews and webhooks
+
+- **Previews** (`daemon/preview.rs`, `/previews`): a magnet is added to the engine with
+  `hold_after_metadata`, not auto-managed, outside the registry (no list, statistic,
+  record or resume data); on `MetadataReceived` the daemon keeps `torrent_file(id)` and
+  removes the engine torrent. `add_one` takes a preview of the same hash and adds its
+  `.torrent`. In memory only; dropped after 15 minutes unread; 32 at most.
+- **Webhooks** (`webhooks.rs`, `/webhooks`, ADR 0006): the lifecycle events that feed the
+  timeline (`Daemon::lifecycle`) also go to the webhooks that want them, with the
+  torrent's list row. Signed (HMAC-SHA256 over `<timestamp>.<body>`), no redirects,
+  retried on no answer, 429 and 5xx. Never a program.
+
 ## 5. Testing
 
 1. **Unit.** Unit and state-flag derivation, the sync diff engine, request parsing, auth
@@ -449,7 +464,9 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
    and LSD off, as `../urtorrent/crates/session/tests/daemon.rs` does). Two daemons
    transfer a real torrent, and every assertion goes through the API. **Every response
    is validated against the OpenAPI schema** (`tests/common`), and calling an
-   undocumented endpoint fails the test.
+   undocumented endpoint fails the test. Previews fetch from a real peer
+   (`tests/previews.rs`); webhooks are delivered to a local receiver that checks the
+   signatures (`tests/webhooks.rs`).
 4. **Schema** (`tests/openapi.rs`, `cargo xtask sdk`). The committed `openapi.json` is
    current, every `$ref` resolves, operation ids are unique, errors are typed; a
    TypeScript client generated from it type-checks, and wrong calls do not.
@@ -490,6 +507,7 @@ server-sent events (4.6). **0.5.0** records statistics (4.11) and aligns with ur
 (GeoIP) and records traffic by country and network. **0.7.0** breaks traffic down by
 peer client, source, transport, encryption, IP version and direction, and by category,
 tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed report.
+**0.8.0** adds metadata previews and webhooks (run-on-completion as HTTP calls, ADR 0006).
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -511,8 +529,8 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
   tracker reliability, idle-seed report, opt-in scrape for completed-download counts (done).
   Later: data-usage caps (needs wire-level counters upstream), Prometheus `/metrics`.
 - **Later, each on request:** the alternative-limits scheduler, RSS, watch folders,
-  run-on-completion, notifications, HTTPS for the API, the client key-value store,
-  metadata preview (`fetchMetadata`). Anything that needs a library change lands in
+  notifications (e-mail), HTTPS for the API, the client key-value store. Anything that
+  needs a library change lands in
   urtorrent first.
 
 ## 7. Working conventions
@@ -531,7 +549,7 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
   `sha2` (credentials), `getrandom`, `base64`, `rustix` (free space, no `unsafe`),
   `rusqlite` with SQLite compiled in (persistence, ADR 0004), `futures-util` (the
   event stream; already in the tree through axum and tower), `maxminddb` (reading the
-  user's GeoIP files; ISC).
+  user's GeoIP files; ISC), `hmac` (webhook signatures; RustCrypto, like `sha2`).
   `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with the library's licence
   allow-list. It does **not** ban `mio` here (4.2).
 - Commands (keep them working forever):
@@ -578,6 +596,8 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
   minutes 48 h, hours 90 days, days forever; removed torrents keep their history;
   geolocation from a user-supplied `.mmdb` file, country and ASN only, peer addresses
   never stored.
+- **Run-on-completion is a webhook** (2026-09-24, ADR 0006): the daemon calls URLs on
+  torrent events and never runs a program.
 
 ### Settled in ADRs (defaults taken while building; revisit with the maintainer if needed)
 

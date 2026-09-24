@@ -171,6 +171,14 @@ pub fn normalize_ip(ip: IpAddr) -> IpAddr {
     }
 }
 
+/// A present patch field (even `null`) is `Some`, an absent one `None`
+/// (with `#[serde(default)]` on the field).
+pub fn patch_field<'de, D: serde::Deserializer<'de>, T: serde::Deserialize<'de>>(
+    d: D,
+) -> Result<Option<T>, D::Error> {
+    T::deserialize(d).map(Some)
+}
+
 /// Run blocking work (file I/O) off the async runtime.
 pub async fn blocking<T, F>(f: F) -> std::io::Result<T>
 where

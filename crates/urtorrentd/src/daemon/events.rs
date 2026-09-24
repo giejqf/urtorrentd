@@ -46,7 +46,11 @@ impl Daemon {
 
     async fn on_event(self: &Arc<Self>, ev: Event) {
         match ev {
-            Event::MetadataReceived { id } => self.on_metadata(id).await,
+            Event::MetadataReceived { id } => {
+                if !self.preview_metadata(id).await {
+                    self.on_metadata(id).await;
+                }
+            }
             Event::Checked { id, .. } => {
                 if let Some(h) = self.hash_of(id) {
                     // Complete files lose the incomplete-file suffix (a check
@@ -66,8 +70,12 @@ impl Daemon {
             Event::TorrentError {
                 id, error, kind, ..
             } => {
+                if self.preview_failed(id, &error).await {
+                    return;
+                }
                 if let Some(h) = self.hash_of(id) {
-                    self.stats_event(h, TimelineKind::Error, Some(error.clone()));
+                    self.lifecycle(h, TimelineKind::Error, Some(error.clone()))
+                        .await;
                     self.logs.log(
                         LogLevel::Error,
                         format!(
@@ -141,7 +149,7 @@ impl Daemon {
         let Some(hash) = self.hash_of(id) else {
             return;
         };
-        self.stats_event(hash, TimelineKind::Metadata, None);
+        self.lifecycle(hash, TimelineKind::Metadata, None).await;
         match self.session.torrent_file(id).await {
             Ok(Some(bytes)) => {
                 let store = self.store.clone();
@@ -202,7 +210,7 @@ impl Daemon {
         };
         self.logs
             .info(format!("finished downloading {}", self.name_of(&hash)));
-        self.stats_event(hash, TimelineKind::Finished, None);
+        self.lifecycle(hash, TimelineKind::Finished, None).await;
         self.save_resume(ResumeSave::One(hash)).await;
         let target = {
             let st = self.state();

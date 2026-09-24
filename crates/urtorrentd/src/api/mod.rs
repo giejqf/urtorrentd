@@ -12,11 +12,13 @@ mod categories;
 mod events;
 mod guard;
 mod logs;
+mod previews;
 mod stats;
 mod sync;
 mod torrent;
 mod torrents;
 mod transfer;
+mod webhooks;
 
 use std::sync::Arc;
 
@@ -35,7 +37,7 @@ use crate::daemon::Daemon;
 use crate::error::{ApiError, ErrorBody, ErrorCode};
 use crate::model::{
     DirectoryMode, GeoDimension, GroupKind, PeerDimension, StatsStep, TopMetric, TorrentFilter,
-    TorrentSort,
+    TorrentSort, WebhookPayload,
 };
 
 /// The API base path.
@@ -195,7 +197,8 @@ Errors always have the `ErrorBody` shape with a stable `code`."
         TopMetric,
         GeoDimension,
         PeerDimension,
-        GroupKind
+        GroupKind,
+        WebhookPayload
     )),
     tags(
         (name = "auth", description = "Login sessions and API keys."),
@@ -206,6 +209,7 @@ Errors always have the `ErrorBody` shape with a stable `code`."
         (name = "transfer", description = "Session-wide transfer state, speed limits and bans."),
         (name = "sync", description = "Incremental updates: polled (`/sync`) or pushed as server-sent events (`/events`)."),
         (name = "log", description = "The main log and the peer log."),
+        (name = "webhooks", description = "HTTP calls on torrent events (added, finished, moved, removed, ...); the body is `WebhookPayload`."),
         (name = "stats", description = "Recorded history: traffic per torrent and for the session, seeding days, rankings, the timeline."),
     )
 )]
@@ -225,6 +229,9 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(torrents::list_torrents, torrents::add_torrents))
         .routes(routes!(torrents::count_torrents))
         .routes(routes!(torrents::parse_torrent))
+        .routes(routes!(previews::list_previews, previews::create_preview))
+        .routes(routes!(previews::get_preview, previews::delete_preview))
+        .routes(routes!(previews::export_preview))
         .routes(routes!(torrents::start_torrents))
         .routes(routes!(torrents::stop_torrents))
         .routes(routes!(torrents::force_start_torrents))
@@ -281,6 +288,13 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(stats::get_tracker_stats))
         .routes(routes!(stats::get_idle_seeds))
         .routes(routes!(stats::get_timeline))
+        .routes(routes!(webhooks::list_webhooks, webhooks::create_webhook))
+        .routes(routes!(
+            webhooks::get_webhook,
+            webhooks::patch_webhook,
+            webhooks::delete_webhook
+        ))
+        .routes(routes!(webhooks::test_webhook))
         .routes(routes!(logs::get_main_log))
         .routes(routes!(logs::get_peer_log));
     (public, protected)

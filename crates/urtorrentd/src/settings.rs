@@ -7,18 +7,11 @@
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use urtorrent::{ActiveLimits, EncryptionMode, Profile, SessionBuilder, TransportPolicy};
 use utoipa::ToSchema;
 
 use crate::util::{Cidr, parse_ip_range};
-
-/// A present patch field (even `null`) is `Some`, an absent one `None`.
-fn patch_field<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
-    d: D,
-) -> Result<Option<T>, D::Error> {
-    T::deserialize(d).map(Some)
-}
 
 /// Declares `Settings` (every field present), `SettingsPatch` (every field
 /// optional) and the merge between them from one field list, so the two
@@ -51,7 +44,7 @@ macro_rules! settings {
         pub struct SettingsPatch {
             $(
                 $(#[doc = $doc])*
-                #[serde(default, deserialize_with = "patch_field")]
+                #[serde(default, deserialize_with = "crate::util::patch_field")]
                 #[schema(nullable = $nullable $(, value_type = $sch)?)]
                 pub $name: Option<$ty>,
             )*

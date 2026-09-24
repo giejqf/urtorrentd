@@ -1962,3 +1962,187 @@ pub struct IdleSeeds {
     /// Least valuable first.
     pub torrents: Vec<IdleSeed>,
 }
+
+// ---- Metadata previews (`/previews`) ----
+
+/// What to preview.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PreviewRequest {
+    /// A magnet link, an info-hash, or the http(s) URL of a `.torrent`.
+    pub source: String,
+    /// Cookie header for the URL.
+    #[serde(default)]
+    pub cookie: Option<String>,
+}
+
+/// Where a preview stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewState {
+    /// Asking peers for the metadata.
+    Fetching,
+    /// The metadata is here (`metadata`).
+    Ready,
+    /// Fetching failed (`error`).
+    Failed,
+}
+
+/// A torrent's metadata, fetched without adding the torrent (qBittorrent's
+/// `fetchMetadata`). Adding the same info-hash (`POST /torrents`, as a
+/// magnet link or info-hash) uses it, with no second fetch.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PreviewInfo {
+    /// Info-hash.
+    pub hash: String,
+    /// The name (the magnet's `dn` until the metadata is here).
+    pub name: String,
+    /// Where it stands.
+    pub state: PreviewState,
+    /// When it was asked for, unix seconds.
+    pub created: u64,
+    /// When it is dropped unless read again, unix seconds.
+    pub expires: u64,
+    /// Peers connected while fetching; `null` otherwise.
+    #[schema(required = true)]
+    pub peers: Option<u32>,
+    /// The metadata (`ready`).
+    #[schema(required = true)]
+    pub metadata: Option<TorrentMetadata>,
+    /// Why fetching failed (`failed`).
+    #[schema(required = true)]
+    pub error: Option<String>,
+}
+
+// ---- Webhooks (`/webhooks`) ----
+
+/// What a webhook is told about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WebhookEvent {
+    /// A torrent was added.
+    Added,
+    /// A magnet link's metadata arrived.
+    Metadata,
+    /// Every wanted piece is downloaded (a move to the save path may
+    /// follow: `moved`).
+    Finished,
+    /// A torrent's content moved (`detail`: the new directory).
+    Moved,
+    /// A torrent stopped with an error (`detail`: the message).
+    Error,
+    /// A torrent was removed.
+    Removed,
+    /// `POST /webhooks/{id}/test`.
+    Test,
+}
+
+/// A new webhook.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WebhookRequest {
+    /// Where to POST the events (http or https).
+    pub url: String,
+    /// A label.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The events it gets; empty (the default) = all.
+    #[serde(default)]
+    pub events: Vec<WebhookEvent>,
+    /// Signs each delivery (`X-Urtorrentd-Signature`); never shown again.
+    #[serde(default)]
+    pub secret: Option<String>,
+    /// On (the default) or off.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+/// A change to a webhook: only the fields present change.
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WebhookPatch {
+    /// Where to POST the events.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// A label; `null` removes it.
+    #[serde(default, deserialize_with = "crate::util::patch_field")]
+    #[schema(nullable = true)]
+    pub name: Option<Option<String>>,
+    /// The events it gets; empty = all.
+    #[serde(default)]
+    pub events: Option<Vec<WebhookEvent>>,
+    /// The signing secret; `null` removes it.
+    #[serde(default, deserialize_with = "crate::util::patch_field")]
+    #[schema(nullable = true)]
+    pub secret: Option<Option<String>>,
+    /// On or off.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+/// One delivery (with its retries).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct WebhookDelivery {
+    /// Its id (`X-Urtorrentd-Delivery`).
+    pub id: String,
+    /// When it was first tried, unix seconds.
+    pub time: u64,
+    /// The event.
+    pub event: WebhookEvent,
+    /// The torrent; `null` for `test`.
+    #[schema(required = true)]
+    pub hash: Option<String>,
+    /// The last HTTP status; `null` = no answer.
+    #[schema(required = true)]
+    pub status: Option<u16>,
+    /// What went wrong on the last try; `null` = delivered (2xx).
+    #[schema(required = true)]
+    pub error: Option<String>,
+    /// Tries made (at most 4: at once, then after 2 s, 10 s and 60 s; only
+    /// no answer, 429 and 5xx are retried).
+    pub attempts: u32,
+}
+
+/// A webhook.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct Webhook {
+    /// Its id.
+    pub id: u32,
+    /// A label.
+    #[schema(required = true)]
+    pub name: Option<String>,
+    /// Where the events go.
+    pub url: String,
+    /// The events it gets; empty = all.
+    pub events: Vec<WebhookEvent>,
+    /// On or off.
+    pub enabled: bool,
+    /// Deliveries are signed.
+    pub has_secret: bool,
+    /// Its last deliveries (since the start, at most 20), newest first.
+    pub deliveries: Vec<WebhookDelivery>,
+}
+
+/// What a webhook receives: `POST` with this JSON body and the headers
+/// `X-Urtorrentd-Event`, `X-Urtorrentd-Delivery`, `X-Urtorrentd-Timestamp`
+/// and, with a secret, `X-Urtorrentd-Signature: sha256=<hex>`: the
+/// HMAC-SHA256 of `<timestamp>.<body>` with the secret.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WebhookPayload {
+    /// What happened.
+    pub event: WebhookEvent,
+    /// When, unix seconds.
+    pub time: u64,
+    /// This delivery's id (the same on every retry).
+    pub delivery: String,
+    /// The torrent's info-hash; `null` for `test`.
+    #[schema(required = true)]
+    pub hash: Option<String>,
+    /// The torrent as the list shows it (for `removed`, just before);
+    /// `null` for `test`, or if it could not be read.
+    #[schema(required = true)]
+    pub torrent: Option<TorrentSummary>,
+    /// The new directory (`moved`) or the error (`error`).
+    #[schema(required = true)]
+    pub detail: Option<String>,
+}

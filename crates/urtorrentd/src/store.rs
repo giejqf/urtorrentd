@@ -198,6 +198,8 @@ pub const SETTINGS: &str = "settings";
 pub const AUTH: &str = "auth";
 /// Totals key.
 pub const TOTALS: &str = "totals";
+/// Key of the webhooks in `state`.
+pub const WEBHOOKS: &str = "webhooks";
 const DHT: &str = "dht";
 
 fn db_err(e: rusqlite::Error) -> io::Error {

@@ -9,6 +9,7 @@ mod add;
 mod events;
 mod ops;
 mod organize;
+mod preview;
 mod suffix;
 mod tick;
 pub(crate) mod view;
@@ -32,6 +33,7 @@ use crate::stats::Stats;
 use crate::store::{self, Categories, Store, Tags, TorrentRecord, Totals};
 use crate::sync::SyncState;
 use crate::util::{self, blocking, hex, now, parse_hash};
+use crate::webhooks::{StoredWebhook, Webhooks};
 
 pub use add::{content_renames, decode_base64, parse_metadata};
 pub(crate) use ops::parse_peer_ip;
@@ -140,6 +142,8 @@ pub(crate) struct State {
     pub incoming_seen: bool,
     /// All-time totals at the start of this run.
     pub base_totals: Totals,
+    /// Metadata previews, by info-hash (not torrents of the session).
+    pub previews: HashMap<InfoHash, preview::Preview>,
 }
 
 /// Torrents found by a bulk selection, and the hashes not found.
@@ -167,6 +171,8 @@ pub struct Daemon {
     pub(crate) stats: Result<Stats, String>,
     /// The GeoIP databases.
     pub(crate) geo: GeoIp,
+    /// The webhooks.
+    pub(crate) webhooks: Arc<Webhooks>,
     shutdown_requested: watch::Sender<bool>,
     closed: watch::Sender<bool>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
@@ -218,7 +224,7 @@ impl Daemon {
             let (s, v) = (store.clone(), settings.clone());
             blocking(move || s.save(store::SETTINGS, &v)).await?;
         }
-        let (creds, categories, tags, totals, dht_state) = {
+        let (creds, categories, tags, totals, dht_state, hooks) = {
             let s = store.clone();
             blocking(move || {
                 Ok((
@@ -227,10 +233,13 @@ impl Daemon {
                     s.tags()?,
                     s.load::<Totals>(store::TOTALS)?.unwrap_or_default(),
                     s.load_dht()?,
+                    s.load::<Vec<StoredWebhook>>(store::WEBHOOKS)?
+                        .unwrap_or_default(),
                 ))
             })
             .await?
         };
+        let webhooks = Webhooks::new(hooks).map_err(StartError::Http)?;
         let auth = Auth::new(creds);
         let temporary_password = auth.ensure_password()?;
         // Statistics are disposable: a database that cannot be opened turns
@@ -265,6 +274,7 @@ impl Daemon {
                 tags,
                 incoming_seen: false,
                 base_totals: totals,
+                previews: HashMap::new(),
             }),
             ops: tokio::sync::Mutex::new(()),
             persist_lock: tokio::sync::Mutex::new(()),
@@ -275,6 +285,7 @@ impl Daemon {
             sync: Mutex::new(SyncState::default()),
             stats,
             geo: GeoIp::default(),
+            webhooks: Arc::new(webhooks),
             shutdown_requested: watch::channel(false).0,
             closed: watch::channel(false).0,
             tasks: Mutex::new(Vec::new()),
@@ -504,11 +515,59 @@ impl Daemon {
         Ok(new)
     }
 
-    /// Record a timeline event (while statistics are recorded).
-    pub(crate) fn stats_event(&self, hash: InfoHash, kind: TimelineKind, detail: Option<String>) {
-        if let Ok(stats) = &self.stats {
-            stats.event(now(), hash, kind, detail);
+    /// A torrent's lifecycle event: the timeline (while statistics are
+    /// recorded) and the webhooks that want it.
+    pub(crate) async fn lifecycle(
+        &self,
+        hash: InfoHash,
+        kind: TimelineKind,
+        detail: Option<String>,
+    ) {
+        let summary = self.hook_summary(hash, kind).await;
+        self.lifecycle_with(hash, kind, detail, summary);
+    }
+
+    /// The torrent's list row for the webhooks, if one wants `kind`.
+    pub(crate) async fn hook_summary(
+        &self,
+        hash: InfoHash,
+        kind: TimelineKind,
+    ) -> Option<crate::model::TorrentSummary> {
+        let event = webhook_event(kind)?;
+        if !self.webhooks.wanted(event) {
+            return None;
         }
+        let id = self.state().torrents.get(&hash)?.id;
+        let s = self.session.status(id).await.ok()?;
+        let st = self.state();
+        let e = st.torrents.get(&hash)?;
+        Some(view::summary(&s, e, &st))
+    }
+
+    /// [`Daemon::lifecycle`] with the row read before (a removal).
+    pub(crate) fn lifecycle_with(
+        &self,
+        hash: InfoHash,
+        kind: TimelineKind,
+        detail: Option<String>,
+        summary: Option<crate::model::TorrentSummary>,
+    ) {
+        if let Ok(stats) = &self.stats {
+            stats.event(now(), hash, kind, detail.clone());
+        }
+        if let Some(event) = webhook_event(kind)
+            && self.webhooks.wanted(event)
+        {
+            self.webhooks
+                .fire(Webhooks::payload(event, Some(hex(&hash)), summary, detail));
+        }
+    }
+
+    /// Store the webhooks.
+    pub(crate) async fn save_webhooks(&self) -> ApiResult<()> {
+        let (s, hooks) = (self.store.clone(), self.webhooks.stored());
+        blocking(move || s.save(store::WEBHOOKS, &hooks)).await?;
+        Ok(())
     }
 
     /// Ask the process to shut down (the `/app/shutdown` endpoint, and the
@@ -759,6 +818,20 @@ impl Daemon {
         }
         self.flush_records().await?;
         Ok(out)
+    }
+}
+
+/// The webhook event of a timeline kind (state changes have none).
+fn webhook_event(kind: TimelineKind) -> Option<crate::model::WebhookEvent> {
+    use crate::model::WebhookEvent as W;
+    match kind {
+        TimelineKind::Added => Some(W::Added),
+        TimelineKind::Metadata => Some(W::Metadata),
+        TimelineKind::Finished => Some(W::Finished),
+        TimelineKind::Moved => Some(W::Moved),
+        TimelineKind::Error => Some(W::Error),
+        TimelineKind::Removed => Some(W::Removed),
+        TimelineKind::State => None,
     }
 }
 

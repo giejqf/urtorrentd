@@ -44,6 +44,7 @@ pub(crate) async fn run(daemon: Weak<Daemon>) {
             d.sample_peers().await;
         }
         d.scrape_due();
+        d.expire_previews().await;
         d.tick_once().await;
         d.save_resume(ResumeSave::Due).await;
         if let Err(e) = d.flush_records().await {
