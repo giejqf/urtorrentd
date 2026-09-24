@@ -431,8 +431,11 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
   (`stats/peers.rs`). Per torrent, hour and day, by country and ASN; peer addresses stay
   in memory. `unattributed` (web seeds, missed closes, the seconds since the last
   sample) makes the rows add up to the torrents' traffic.
-- Next: breakdowns by client, discovery source, transport, IP version, tracker, category
-  and tag, on the same per-peer attribution (`peer_traffic` has a `dim` column for them).
+- **Breakdowns** (0.7.0): peer traffic also by client family, discovery source,
+  transport, encryption, IP version and direction (`peer_traffic.dim`); torrents' traffic
+  by category, tag and tracker host (recorded on the torrents table: membership as it is
+  now; tracker hosts only, never URLs); announces per host; opt-in scrapes for completed
+  downloads; the idle-seed report (upload in a window ÷ size).
 
 ## 5. Testing
 
@@ -460,6 +463,8 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
    recording off; a broken `stats.db` leaves the daemon running. GeoIP files in the
    layouts users have (written by `tests/common/mmdb.rs`, mapping loopback), peers
    located in the API, and traffic by place that adds up to the torrents' traffic.
+   Breakdowns (`tests/breakdowns.rs`) against a local HTTP tracker that answers
+   announces and scrapes.
 7. **Restart and crash** (`tests/restart.rs`). Stop gracefully and restart in process:
    everything is back, including categories, tags, queue order, limits, magnets without
    metadata, and stopped torrents; removed torrents stay removed. The real binary is
@@ -482,7 +487,9 @@ upstream. **0.3.0** added the incomplete-file suffix and verified staging downlo
 move to their category's directory on completion. **0.4.0** pushes the sync diffs as
 server-sent events (4.6). **0.5.0** records statistics (4.11) and aligns with urtorrent
 0.13.2 (resume data saved when it changed, counters included). **0.6.0** locates peers
-(GeoIP) and records traffic by country and network.
+(GeoIP) and records traffic by country and network. **0.7.0** breaks traffic down by
+peer client, source, transport, encryption, IP version and direction, and by category,
+tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed report.
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -501,7 +508,7 @@ server-sent events (4.6). **0.5.0** records statistics (4.11) and aligns with ur
   (never on private torrents), settings coverage. **Released as 0.1.0.**
 - **Analytics** (4.11, the plan of 2026-09-23): 0.5.0 history and seeding days (done);
   0.6.0 geolocation (country and ASN on live peers and in history; done); 0.7.0 breakdowns,
-  tracker reliability, idle-seed report, opt-in scrape for completed-download counts.
+  tracker reliability, idle-seed report, opt-in scrape for completed-download counts (done).
   Later: data-usage caps (needs wire-level counters upstream), Prometheus `/metrics`.
 - **Later, each on request:** the alternative-limits scheduler, RSS, watch folders,
   run-on-completion, notifications, HTTPS for the API, the client key-value store,

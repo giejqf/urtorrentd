@@ -94,6 +94,27 @@ impl Daemon {
                     stats.peer_closed(now(), h, &PeerSample::of(&info), &|ip| self.geo.lookup(ip));
                 }
             }
+            Event::TrackerReply { url, .. } => {
+                if let Ok(stats) = &self.stats {
+                    stats.announce(now(), &url, true);
+                }
+            }
+            Event::TrackerError { url, .. } => {
+                if let Ok(stats) = &self.stats {
+                    stats.announce(now(), &url, false);
+                }
+            }
+            Event::ScrapeReply {
+                id,
+                complete,
+                incomplete,
+                downloaded,
+                ..
+            } => {
+                if let (Some(h), Ok(stats)) = (self.hash_of(id), &self.stats) {
+                    stats.scraped(h, complete, incomplete, downloaded);
+                }
+            }
             Event::PeerConnected { incoming: true, .. } => {
                 self.state().incoming_seen = true;
             }

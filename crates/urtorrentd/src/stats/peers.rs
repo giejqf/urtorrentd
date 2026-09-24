@@ -2,7 +2,9 @@
 // Copyright (c) 2026 urtorrentd contributors
 
 //! Per-peer attribution (ADR 0005): whose traffic it was, grouped by the
-//! peer's country and autonomous system. Each connection's counters are
+//! peer's country and autonomous system (0.6.0), and by its client, how it
+//! was found, transport, encryption, IP version and who connected (0.7.0).
+//! Each connection's counters are
 //! differenced like a torrent's: the tick samples the peers of torrents that
 //! moved data (every [`PEER_SAMPLE_EVERY`] seconds), and `PeerDisconnected`
 //! brings a connection's final counters. Peer addresses stay in memory only.
@@ -30,8 +32,8 @@ const GRACE: u64 = 120;
 /// Start times this close (seconds) are the same connection.
 const SAME: u64 = 2;
 
-/// One connection's counters at an observation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// One connection's counters at an observation, with what it is grouped by.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PeerSample {
     /// Remote address.
     pub addr: SocketAddr,
@@ -41,18 +43,97 @@ pub(crate) struct PeerSample {
     pub uploaded: u64,
     /// Seconds connected.
     pub connected_for: u64,
+    /// The client's name without its version (`qBittorrent`), if known.
+    pub client: Option<String>,
+    /// How the peer was found (`tracker`, `dht`, `pex`, `lsd`, `incoming`,
+    /// `manual`, `resume`).
+    pub source: &'static str,
+    /// `tcp` or `utp`.
+    pub transport: &'static str,
+    /// RC4-encrypted (MSE).
+    pub encrypted: bool,
+    /// The peer connected to us.
+    pub incoming: bool,
 }
 
 impl PeerSample {
     /// From the library's snapshot.
     pub(crate) fn of(p: &PeerInfo) -> PeerSample {
+        use urtorrent::{PeerSource as S, PeerTransport as T};
         PeerSample {
             addr: p.addr,
             downloaded: p.downloaded,
             uploaded: p.uploaded,
             connected_for: p.connected_for.as_secs(),
+            client: client_family(p.client.as_deref(), p.peer_id.as_ref()),
+            source: match p.source {
+                S::Tracker => "tracker",
+                S::Dht => "dht",
+                S::Pex => "pex",
+                S::Lsd => "lsd",
+                S::Incoming => "incoming",
+                S::Manual => "manual",
+                S::Resume => "resume",
+            },
+            transport: match p.transport {
+                T::Tcp => "tcp",
+                T::Utp => "utp",
+                _ => "other",
+            },
+            encrypted: p.encrypted,
+            incoming: p.incoming,
         }
     }
+}
+
+/// Azureus-style peer id prefixes (`-qB4620-`) of common clients, for peers
+/// that send no client name.
+const CLIENT_CODES: &[(&[u8; 2], &str)] = &[
+    (b"qB", "qBittorrent"),
+    (b"TR", "Transmission"),
+    (b"UT", "\u{b5}Torrent"),
+    (b"LT", "libtorrent"),
+    (b"lt", "rTorrent"),
+    (b"DE", "Deluge"),
+    (b"BI", "BiglyBT"),
+    (b"AZ", "Vuze"),
+    (b"UR", "urtorrent"),
+    (b"BT", "BitTorrent"),
+];
+
+/// A client's name without its version: `qBittorrent/4.6.2` and
+/// `qBittorrent 4.6.2` are `qBittorrent`. Peers send anything here: the
+/// result is bounded and printable.
+pub(crate) fn client_family(client: Option<&str>, peer_id: Option<&[u8; 20]>) -> Option<String> {
+    if let Some(c) = client {
+        let mut end = c.len();
+        for (i, ch) in c.char_indices() {
+            if ch == '/' || ch == ' ' {
+                let rest = c[i + ch.len_utf8()..].trim_start_matches('v');
+                if rest.starts_with(|r: char| r.is_ascii_digit()) {
+                    end = i;
+                    break;
+                }
+            }
+        }
+        let name: String = c[..end]
+            .chars()
+            .filter(|ch| !ch.is_control())
+            .take(40)
+            .collect();
+        let name = name.trim();
+        if !name.is_empty() {
+            return Some(name.to_string());
+        }
+    }
+    let id = peer_id?;
+    if id[0] == b'-' && id[7] == b'-' {
+        return CLIENT_CODES
+            .iter()
+            .find(|(code, _)| id[1..3] == code[..])
+            .map(|(_, name)| (*name).to_string());
+    }
+    None
 }
 
 /// What peer traffic is grouped by.
@@ -60,6 +141,12 @@ impl PeerSample {
 pub(crate) enum Dim {
     Country,
     Asn,
+    Client,
+    Source,
+    Transport,
+    Encryption,
+    IpVersion,
+    Direction,
 }
 
 impl Dim {
@@ -68,6 +155,12 @@ impl Dim {
         match self {
             Dim::Country => "country",
             Dim::Asn => "asn",
+            Dim::Client => "client",
+            Dim::Source => "source",
+            Dim::Transport => "transport",
+            Dim::Encryption => "encryption",
+            Dim::IpVersion => "ip_version",
+            Dim::Direction => "direction",
         }
     }
 }
@@ -126,27 +219,22 @@ impl Acc {
             },
         );
         if down > 0 || up > 0 {
-            self.attribute(
-                t,
-                hash,
-                p.addr.ip(),
-                down,
-                up,
-                &locate(normalize_ip(p.addr.ip())),
-            );
+            let ip = normalize_ip(p.addr.ip());
+            self.attribute(t, hash, p, ip, down, up, &locate(ip));
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn attribute(
         &mut self,
         t: u64,
         hash: InfoHash,
+        p: &PeerSample,
         ip: IpAddr,
         down: u64,
         up: u64,
         loc: &Location,
     ) {
-        let ip = normalize_ip(ip);
         if let (Some(asn), Some(org)) = (loc.asn, &loc.as_org)
             && self.asn_names.get(&asn) != Some(org)
         {
@@ -156,6 +244,21 @@ impl Acc {
         let keys = [
             (Dim::Country, loc.country.clone().unwrap_or_default()),
             (Dim::Asn, loc.asn.map(|n| n.to_string()).unwrap_or_default()),
+            (Dim::Client, p.client.clone().unwrap_or_default()),
+            (Dim::Source, p.source.to_string()),
+            (Dim::Transport, p.transport.to_string()),
+            (
+                Dim::Encryption,
+                if p.encrypted { "rc4" } else { "plaintext" }.to_string(),
+            ),
+            (
+                Dim::IpVersion,
+                if ip.is_ipv4() { "ipv4" } else { "ipv6" }.to_string(),
+            ),
+            (
+                Dim::Direction,
+                if p.incoming { "incoming" } else { "outgoing" }.to_string(),
+            ),
         ];
         for step in [StatsStep::Hour, StatsStep::Day] {
             let bucket = step.start(t);
@@ -275,7 +378,44 @@ mod tests {
             downloaded: down,
             uploaded: up,
             connected_for,
+            client: Some("qBittorrent".into()),
+            source: "dht",
+            transport: "tcp",
+            encrypted: false,
+            incoming: false,
         }
+    }
+
+    #[test]
+    fn client_names_lose_their_versions() {
+        let f = |c: &str| client_family(Some(c), None);
+        assert_eq!(f("qBittorrent/4.6.2").as_deref(), Some("qBittorrent"));
+        assert_eq!(f("Transmission 4.0.5").as_deref(), Some("Transmission"));
+        assert_eq!(f("\u{b5}Torrent 3.5.5").as_deref(), Some("\u{b5}Torrent"));
+        assert_eq!(
+            f("Deluge/2.1.1 libtorrent/2.0.9").as_deref(),
+            Some("Deluge")
+        );
+        assert_eq!(f("BitTorrent v7.10").as_deref(), Some("BitTorrent"));
+        assert_eq!(f("Tixati").as_deref(), Some("Tixati"));
+        assert_eq!(f("Some Client 2").as_deref(), Some("Some Client"));
+        assert_eq!(f(&"x".repeat(100)).map(|s| s.len()), Some(40));
+        assert_eq!(f("bad\u{7}name 1").as_deref(), Some("badname"));
+        let id = |p: &[u8; 8]| {
+            let mut a = [b'0'; 20];
+            a[..8].copy_from_slice(p);
+            a
+        };
+        assert_eq!(
+            client_family(None, Some(&id(b"-qB4620-"))).as_deref(),
+            Some("qBittorrent")
+        );
+        assert_eq!(
+            client_family(Some(" "), Some(&id(b"-TR4050-"))).as_deref(),
+            Some("Transmission")
+        );
+        assert_eq!(client_family(None, Some(&id(b"-ZZ0000-"))), None);
+        assert_eq!(client_family(None, Some(&[b'M'; 20])), None);
     }
 
     fn country_totals(s: &Stats) -> HashMap<String, (u64, u64, u32)> {

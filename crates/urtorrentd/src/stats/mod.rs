@@ -55,6 +55,23 @@ pub(crate) struct Sample<'a> {
     pub fresh: bool,
     /// Its share ratio as the API shows it.
     pub ratio: Option<f64>,
+    /// Its category.
+    pub category: Option<&'a str>,
+    /// Its tags.
+    pub tags: Vec<String>,
+    /// Host of the tracker it works with now; `None` = none works (the
+    /// last one recorded stays).
+    pub tracker: Option<String>,
+}
+
+/// What the torrents table records about a torrent.
+#[derive(Debug, Clone, PartialEq)]
+struct TorrentMeta {
+    name: String,
+    size: u64,
+    category: Option<String>,
+    tags: Vec<String>,
+    tracker: Option<String>,
 }
 
 /// The counters of the last observation.
@@ -99,7 +116,12 @@ struct Acc {
     rebase: bool,
     seen: HashMap<InfoHash, Seen>,
     session_seen: (u64, u64),
-    meta: HashMap<InfoHash, (String, u64)>,
+    meta: HashMap<InfoHash, TorrentMeta>,
+    /// Tracker announces by host and bucket: (replies, errors).
+    announces: HashMap<(String, StatsStep, u64), (u32, u32)>,
+    /// Scrape results not folded into a day yet: (seeds, leechers,
+    /// completed downloads).
+    scrapes: HashMap<InfoHash, (u32, u32, u32)>,
     traffic: HashMap<(InfoHash, StatsStep, u64), Traffic>,
     /// Days, and whether data moved in them since the last flush.
     days: HashMap<(InfoHash, u64), (Day, bool)>,
@@ -155,6 +177,9 @@ impl Acc {
             b.peer_traffic.push((hex(&h), step, t, dim.tag(), key, x));
         }
         b.asns = std::mem::take(&mut self.asn_pending);
+        for ((host, step, t), (replies, errors)) in self.announces.drain() {
+            b.announces.push((host, step, t, replies, errors));
+        }
         self.tidy_peers(now);
         for (t, h, kind, state, detail) in self.events.drain(..) {
             hashes.push(h);
@@ -167,10 +192,12 @@ impl Acc {
             });
         }
         for h in hashes {
-            if let Some((name, size)) = self.meta.get(&h) {
+            if let Some(m) = self.meta.get(&h) {
                 b.meta.entry(hex(&h)).or_insert_with(|| Meta {
-                    name: Some(name.clone()),
-                    size: Some(*size),
+                    name: Some(m.name.clone()),
+                    size: Some(m.size),
+                    groups: Some((m.category.clone(), m.tags.clone())),
+                    tracker: m.tracker.clone(),
                 });
             }
         }
@@ -291,11 +318,29 @@ impl Stats {
                     ..now
                 },
             );
-            if a.meta
-                .get(&s.hash)
-                .is_none_or(|(n, size)| n != s.name || *size != st.total_size)
-            {
-                a.meta.insert(s.hash, (s.name.to_string(), st.total_size));
+            let old = a.meta.get(&s.hash);
+            let tracker = s
+                .tracker
+                .clone()
+                .or_else(|| old.and_then(|m| m.tracker.clone()));
+            let changed = old.is_none_or(|m| {
+                m.name != s.name
+                    || m.size != st.total_size
+                    || m.category.as_deref() != s.category
+                    || m.tags != s.tags
+                    || m.tracker != tracker
+            });
+            if changed {
+                a.meta.insert(
+                    s.hash,
+                    TorrentMeta {
+                        name: s.name.to_string(),
+                        size: st.total_size,
+                        category: s.category.map(str::to_string),
+                        tags: s.tags.clone(),
+                        tracker,
+                    },
+                );
             }
             let traffic = Traffic {
                 downloaded: down,
@@ -313,8 +358,14 @@ impl Stats {
                         .add(&traffic);
                 }
             }
-            if moved || active > 0 || seeding > 0 {
+            let scrape = a.scrapes.remove(&s.hash);
+            if moved || active > 0 || seeding > 0 || scrape.is_some() {
                 let (d, day_moved) = a.days.entry((s.hash, day)).or_default();
+                if let Some((seeds, leechers, completed)) = scrape {
+                    d.swarm_seeds_max = max_opt(d.swarm_seeds_max, Some(seeds));
+                    d.swarm_leechers_max = max_opt(d.swarm_leechers_max, Some(leechers));
+                    d.swarm_completed_max = max_opt(d.swarm_completed_max, Some(completed));
+                }
                 d.traffic.add(&traffic);
                 d.active_time += active;
                 d.seeding_time += seeding;
@@ -356,6 +407,38 @@ impl Stats {
         let mut a = self.acc();
         if a.period.is_some() {
             a.events.push((t, hash, kind, None, detail));
+        }
+    }
+
+    /// A tracker answered an announce (`ok`) or failed to.
+    pub(crate) fn announce(&self, t: u64, url: &str, ok: bool) {
+        let Some(host) = db::tracker_host(url) else {
+            return;
+        };
+        let mut a = self.acc();
+        if a.period.is_none() {
+            return;
+        }
+        for step in [StatsStep::Hour, StatsStep::Day] {
+            let e = a
+                .announces
+                .entry((host.clone(), step, step.start(t)))
+                .or_default();
+            if ok {
+                e.0 = e.0.saturating_add(1);
+            } else {
+                e.1 = e.1.saturating_add(1);
+            }
+        }
+    }
+
+    /// A scrape answered: the swarm's seeds, leechers and completed
+    /// downloads (the most of several trackers' answers is kept).
+    pub(crate) fn scraped(&self, hash: InfoHash, seeds: u32, leechers: u32, completed: u32) {
+        let mut a = self.acc();
+        if a.period.is_some() {
+            let e = a.scrapes.entry(hash).or_default();
+            *e = (e.0.max(seeds), e.1.max(leechers), e.2.max(completed));
         }
     }
 

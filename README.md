@@ -35,9 +35,11 @@ profile that allows it).
 - Live updates: `GET /api/v1/events` pushes what changed as server-sent
   events (`EventSource` in a browser); `GET /api/v1/sync` is the polled form.
 - History: `/api/v1/stats/...` has traffic per torrent and for the session
-  over time, each torrent's seeding days, rankings, a timeline, and traffic
-  by country and network with a GeoIP database you provide
-  ([settings](docs/settings.md#geolocation)).
+  over time, each torrent's seeding days, rankings, a timeline, traffic by
+  country and network with a GeoIP database you provide
+  ([settings](docs/settings.md#geolocation)), breakdowns by peer client,
+  source and transport, by category, tag and tracker, and an idle-seed
+  report.
 
 ```sh
 curl -s -c jar -H 'content-type: application/json' \

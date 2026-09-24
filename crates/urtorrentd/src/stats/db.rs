@@ -21,7 +21,7 @@ use crate::model::{StatsStep, TimelineKind, TorrentState};
 /// The file in the data directory.
 pub const STATS_DB_FILE: &str = "stats.db";
 /// The schema version (`PRAGMA user_version`).
-pub const STATS_SCHEMA_VERSION: i64 = 2;
+pub const STATS_SCHEMA_VERSION: i64 = 3;
 
 fn db_err(e: rusqlite::Error) -> io::Error {
     io::Error::other(format!("statistics database: {e}"))
@@ -111,6 +111,8 @@ pub struct Day {
     pub swarm_seeds_max: Option<u32>,
     /// Most leechers the trackers reported.
     pub swarm_leechers_max: Option<u32>,
+    /// Most completed downloads a scrape reported.
+    pub swarm_completed_max: Option<u32>,
 }
 
 /// The larger of two optional values; `None` only if both are.
@@ -183,6 +185,10 @@ pub struct Meta {
     pub name: Option<String>,
     /// Size of the content, bytes.
     pub size: Option<u64>,
+    /// Category and tags; `None` = not known here (kept as recorded).
+    pub groups: Option<(Option<String>, Vec<String>)>,
+    /// Host of the tracker it works with; `None` = kept as recorded.
+    pub tracker: Option<String>,
 }
 
 /// What one flush writes.
@@ -206,6 +212,9 @@ pub struct Batch {
     pub peer_traffic: Vec<(String, StatsStep, u64, &'static str, String, PeerTraffic)>,
     /// Autonomous system names.
     pub asns: Vec<(u32, String)>,
+    /// Tracker announces: (host, step, bucket start, replies, errors); hour
+    /// and day steps.
+    pub announces: Vec<(String, StatsStep, u64, u32, u32)>,
 }
 
 impl Batch {
@@ -218,6 +227,7 @@ impl Batch {
             && self.events.is_empty()
             && self.peer_traffic.is_empty()
             && self.asns.is_empty()
+            && self.announces.is_empty()
     }
 }
 
@@ -242,6 +252,16 @@ impl Retention {
         }
     }
 }
+
+/// A group's totals over a range: `(key, downloaded, uploaded, torrents)`;
+/// `None` = no group.
+pub type KeyTotals = (Option<String>, u64, u64, u32);
+
+/// A tracker host's announces: `(host, replies, errors)`.
+pub type HostAnnounces = (String, u64, u64);
+
+/// A group's bucket: `(t, key, downloaded, uploaded)`.
+pub type KeyBucket = (u64, Option<String>, u64, u64);
 
 /// A torrent the database knows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -389,6 +409,22 @@ const SCHEMA_V2: &str = "CREATE TABLE peer_traffic (
              CREATE INDEX peer_traffic_by_time ON peer_traffic (step, dim, t);
              CREATE TABLE asns (asn INTEGER PRIMARY KEY, name TEXT NOT NULL);";
 
+/// Version 3 (0.7.0): torrents' groups, tracker announces, completed
+/// downloads from scrapes.
+const SCHEMA_V3: &str = "ALTER TABLE torrents ADD COLUMN category TEXT;
+     ALTER TABLE torrents ADD COLUMN tags TEXT;
+     ALTER TABLE torrents ADD COLUMN tracker TEXT;
+     ALTER TABLE daily ADD COLUMN swarm_completed_max INTEGER;
+     CREATE TABLE announces (
+         host TEXT NOT NULL,
+         step INTEGER NOT NULL,
+         t INTEGER NOT NULL,
+         replies INTEGER NOT NULL,
+         errors INTEGER NOT NULL,
+         PRIMARY KEY (host, step, t)
+     ) WITHOUT ROWID;
+     CREATE INDEX announces_by_time ON announces (step, t);";
+
 /// Bring the schema to [`STATS_SCHEMA_VERSION`].
 fn migrate(conn: &mut Connection) -> io::Result<()> {
     let version: i64 = conn
@@ -405,6 +441,9 @@ fn migrate(conn: &mut Connection) -> io::Result<()> {
     }
     if version < 2 {
         tx.execute_batch(SCHEMA_V2).map_err(db_err)?;
+    }
+    if version < 3 {
+        tx.execute_batch(SCHEMA_V3).map_err(db_err)?;
     }
     tx.pragma_update(None, "user_version", STATS_SCHEMA_VERSION)
         .map_err(db_err)?;
@@ -423,29 +462,83 @@ fn ensure(
         let current = meta.is_none_or(|m| {
             (m.name.is_none() || m.name == k.meta.name)
                 && (m.size.is_none() || m.size == k.meta.size)
+                && (m.groups.is_none() || m.groups == k.meta.groups)
+                && (m.tracker.is_none() || m.tracker == k.meta.tracker)
         });
         if current {
             return Ok(k.id);
         }
     }
     let m = meta.cloned().unwrap_or_default();
-    let (id, name, size) = tx.query_row(
-        "INSERT INTO torrents (hash, name, size) VALUES (?1, ?2, ?3)
+    let (category, tags) = match &m.groups {
+        Some((c, t)) => (
+            c.clone(),
+            Some(serde_json::to_string(t).unwrap_or_default()),
+        ),
+        None => (None, None),
+    };
+    let known = tx.query_row(
+        "INSERT INTO torrents (hash, name, size, category, tags, tracker)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(hash) DO UPDATE SET
              name = coalesce(excluded.name, name),
-             size = coalesce(excluded.size, size)
-         RETURNING id, name, size",
-        params![hash, m.name, m.size],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+             size = coalesce(excluded.size, size),
+             category = CASE WHEN ?7 THEN excluded.category ELSE category END,
+             tags = CASE WHEN ?7 THEN excluded.tags ELSE tags END,
+             tracker = coalesce(excluded.tracker, tracker)
+         RETURNING id, name, size, category, tags, tracker",
+        params![
+            hash,
+            m.name,
+            m.size,
+            category,
+            tags,
+            m.tracker,
+            m.groups.is_some()
+        ],
+        known_row,
     )?;
-    new.insert(
-        hash.to_string(),
-        Known {
-            id,
-            meta: Meta { name, size },
-        },
-    );
+    let id = known.id;
+    new.insert(hash.to_string(), known);
     Ok(id)
+}
+
+/// A `torrents` row as the writer caches it: `id, name, size, category,
+/// tags, tracker`.
+fn known_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Known> {
+    let tags: Option<String> = r.get(4)?;
+    Ok(Known {
+        id: r.get(0)?,
+        meta: Meta {
+            name: r.get(1)?,
+            size: r.get(2)?,
+            groups: tags.map(|t| {
+                (
+                    r.get::<_, Option<String>>(3).ok().flatten(),
+                    serde_json::from_str(&t).unwrap_or_default(),
+                )
+            }),
+            tracker: r.get(5)?,
+        },
+    })
+}
+
+/// The host of a tracker URL (`udp://tracker.example.org:1337/announce` is
+/// `tracker.example.org`). Only the host is ever stored: private trackers'
+/// URLs carry the user's passkey.
+pub fn tracker_host(url: &str) -> Option<String> {
+    let rest = url.split_once("://")?.1;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let host = match host_port.strip_prefix('[') {
+        Some(v6) => v6.split(']').next()?,
+        None => match host_port.rsplit_once(':') {
+            Some((h, port)) if port.bytes().all(|b| b.is_ascii_digit()) => h,
+            _ => host_port,
+        },
+    };
+    let host = host.trim().to_ascii_lowercase();
+    (!host.is_empty() && host.len() <= 253 && !host.contains(char::is_whitespace)).then_some(host)
 }
 
 impl StatsDb {
@@ -458,17 +551,26 @@ impl StatsDb {
         let mut ids = HashMap::new();
         {
             let mut stmt = conn
-                .prepare("SELECT hash, id, name, size FROM torrents")
+                .prepare("SELECT hash, id, name, size, category, tags, tracker FROM torrents")
                 .map_err(db_err)?;
             let rows = stmt
                 .query_map([], |r| {
+                    let hash: String = r.get(0)?;
+                    let tags: Option<String> = r.get(5)?;
                     Ok((
-                        r.get::<_, String>(0)?,
+                        hash,
                         Known {
                             id: r.get(1)?,
                             meta: Meta {
                                 name: r.get(2)?,
                                 size: r.get(3)?,
+                                groups: tags.map(|t| {
+                                    (
+                                        r.get::<_, Option<String>>(4).ok().flatten(),
+                                        serde_json::from_str(&t).unwrap_or_default(),
+                                    )
+                                }),
+                                tracker: r.get(6)?,
                             },
                         },
                     ))
@@ -565,8 +667,8 @@ impl StatsDb {
                     "INSERT INTO daily (torrent, t, downloaded, uploaded, peers_max, seeds_max,
                          active_time, seeding_time, downloaded_total, uploaded_total,
                          active_time_total, seeding_time_total, ratio, swarm_seeds_max,
-                         swarm_leechers_max)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                         swarm_leechers_max, swarm_completed_max)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
                      ON CONFLICT(torrent, t) DO UPDATE SET
                          downloaded = downloaded + excluded.downloaded,
                          uploaded = uploaded + excluded.uploaded,
@@ -582,7 +684,9 @@ impl StatsDb {
                          swarm_seeds_max = max(coalesce(swarm_seeds_max, excluded.swarm_seeds_max),
                                                coalesce(excluded.swarm_seeds_max, swarm_seeds_max)),
                          swarm_leechers_max = max(coalesce(swarm_leechers_max, excluded.swarm_leechers_max),
-                                                  coalesce(excluded.swarm_leechers_max, swarm_leechers_max))",
+                                                  coalesce(excluded.swarm_leechers_max, swarm_leechers_max)),
+                         swarm_completed_max = max(coalesce(swarm_completed_max, excluded.swarm_completed_max),
+                                                   coalesce(excluded.swarm_completed_max, swarm_completed_max))",
                 )
                 .map_err(db_err)?;
             for (hash, t, d) in &b.days {
@@ -603,7 +707,8 @@ impl StatsDb {
                         d.totals.seeding_time,
                         d.totals.ratio,
                         d.swarm_seeds_max,
-                        d.swarm_leechers_max
+                        d.swarm_leechers_max,
+                        d.swarm_completed_max
                     ])
                     .map_err(db_err)?;
             }
@@ -657,6 +762,16 @@ impl StatsDb {
                     x.uploaded,
                     x.peers
                 ])
+                .map_err(db_err)?;
+            }
+            for (host, step, t, replies, errors) in &b.announces {
+                tx.execute(
+                    "INSERT INTO announces (host, step, t, replies, errors) VALUES (?1, ?2, ?3, ?4, ?5)
+                     ON CONFLICT(host, step, t) DO UPDATE SET
+                         replies = replies + excluded.replies,
+                         errors = errors + excluded.errors",
+                    params![host, step.secs(), t, replies, errors],
+                )
                 .map_err(db_err)?;
             }
             for (asn, name) in &b.asns {
@@ -716,12 +831,14 @@ impl StatsDb {
             }
             for step in [StatsStep::Hour, StatsStep::Day] {
                 if let Some(keep) = r.of(step) {
-                    n += tx
-                        .execute(
-                            "DELETE FROM peer_traffic WHERE step = ?1 AND t < ?2",
-                            params![step.secs(), cutoff(keep)],
-                        )
-                        .map_err(db_err)?;
+                    for sql in [
+                        "DELETE FROM peer_traffic WHERE step = ?1 AND t < ?2",
+                        "DELETE FROM announces WHERE step = ?1 AND t < ?2",
+                    ] {
+                        n += tx
+                            .execute(sql, params![step.secs(), cutoff(keep)])
+                            .map_err(db_err)?;
+                    }
                 }
             }
             for step in StatsStep::ALL {
@@ -871,7 +988,7 @@ impl StatsDb {
             .prepare_cached(
                 "SELECT t, downloaded, uploaded, peers_max, seeds_max, active_time, seeding_time,
                      downloaded_total, uploaded_total, active_time_total, seeding_time_total,
-                     ratio, swarm_seeds_max, swarm_leechers_max
+                     ratio, swarm_seeds_max, swarm_leechers_max, swarm_completed_max
                  FROM daily WHERE torrent = ?1 AND t BETWEEN ?2 AND ?3 ORDER BY t",
             )
             .map_err(db_err)?;
@@ -896,6 +1013,7 @@ impl StatsDb {
                     },
                     swarm_seeds_max: r.get(12)?,
                     swarm_leechers_max: r.get(13)?,
+                    swarm_completed_max: r.get(14)?,
                 },
             ))
         })
@@ -1182,6 +1300,187 @@ impl StatsDb {
         Ok((attributed, traffic))
     }
 
+    /// The traffic table of a step and its filter (`:step`).
+    fn source(step: StatsStep) -> (&'static str, &'static str) {
+        if step == StatsStep::Day {
+            ("daily", "")
+        } else {
+            ("traffic", "AND x.step = :step")
+        }
+    }
+
+    /// The group key and join: category, or tag (one row per tag; `NULL`
+    /// for none).
+    fn group_key(tags: bool) -> (&'static str, &'static str) {
+        if tags {
+            (
+                "j.value",
+                "LEFT JOIN json_each(coalesce(tr.tags, '[]')) AS j ON 1",
+            )
+        } else {
+            ("tr.category", "")
+        }
+    }
+
+    /// Torrents' traffic by category (`tags` false) or tag, by the
+    /// membership last recorded, ranked: `(key, down, up, torrents)`; `None`
+    /// = no category / no tag.
+    pub fn groups(
+        &self,
+        tags: bool,
+        step: StatsStep,
+        from: u64,
+        to: u64,
+        by_upload: bool,
+        limit: u32,
+    ) -> io::Result<Vec<KeyTotals>> {
+        let conn = self.reader();
+        let (table, step_filter) = Self::source(step);
+        let (key, join) = Self::group_key(tags);
+        let order = if by_upload {
+            "up DESC, down DESC"
+        } else {
+            "down DESC, up DESC"
+        };
+        let sql = format!(
+            "SELECT {key} AS k, sum(x.downloaded) AS down, sum(x.uploaded) AS up,
+                 count(DISTINCT x.torrent)
+             FROM {table} x JOIN torrents tr ON tr.id = x.torrent {join}
+             WHERE x.t BETWEEN :from AND :to {step_filter}
+             GROUP BY k HAVING down > 0 OR up > 0
+             ORDER BY {order}, k LIMIT :limit"
+        );
+        let secs = step.secs();
+        let mut p: Vec<(&str, &dyn rusqlite::ToSql)> =
+            vec![(":from", &from), (":to", &to), (":limit", &limit)];
+        if !step_filter.is_empty() {
+            p.push((":step", &secs));
+        }
+        let mut stmt = conn.prepare_cached(&sql).map_err(db_err)?;
+        stmt.query_map(p.as_slice(), |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .map_err(db_err)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(db_err)
+    }
+
+    /// The buckets of some groups: `(t, key, down, up)`, oldest first.
+    pub fn group_series(
+        &self,
+        tags: bool,
+        step: StatsStep,
+        from: u64,
+        to: u64,
+        keys: &[Option<String>],
+    ) -> io::Result<Vec<KeyBucket>> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.reader();
+        let (table, step_filter) = Self::source(step);
+        let (key, join) = Self::group_key(tags);
+        let named: Vec<&String> = keys.iter().flatten().collect();
+        let wanted = serde_json::to_string(&named).unwrap_or_else(|_| "[]".into());
+        let none = keys.iter().any(Option::is_none);
+        let sql = format!(
+            "SELECT x.t, {key} AS k, sum(x.downloaded), sum(x.uploaded)
+             FROM {table} x JOIN torrents tr ON tr.id = x.torrent {join}
+             WHERE x.t BETWEEN :from AND :to {step_filter}
+               AND (k IN (SELECT value FROM json_each(:keys)) OR (:none AND k IS NULL))
+             GROUP BY x.t, k ORDER BY x.t, k"
+        );
+        let secs = step.secs();
+        let mut p: Vec<(&str, &dyn rusqlite::ToSql)> = vec![
+            (":from", &from),
+            (":to", &to),
+            (":keys", &wanted),
+            (":none", &none),
+        ];
+        if !step_filter.is_empty() {
+            p.push((":step", &secs));
+        }
+        let mut stmt = conn.prepare_cached(&sql).map_err(db_err)?;
+        stmt.query_map(p.as_slice(), |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .map_err(db_err)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(db_err)
+    }
+
+    /// Per tracker host over a range: the torrents' traffic by the tracker
+    /// they last worked with, `(host, down, up, torrents)` (`None` = no
+    /// working tracker recorded), and the announces, `(host, replies,
+    /// errors)`.
+    pub fn trackers(
+        &self,
+        step: StatsStep,
+        from: u64,
+        to: u64,
+    ) -> io::Result<(Vec<KeyTotals>, Vec<HostAnnounces>)> {
+        let conn = self.reader();
+        let (table, step_filter) = Self::source(step);
+        let sql = format!(
+            "SELECT tr.tracker, sum(x.downloaded), sum(x.uploaded), count(DISTINCT x.torrent)
+             FROM {table} x JOIN torrents tr ON tr.id = x.torrent
+             WHERE x.t BETWEEN :from AND :to {step_filter}
+             GROUP BY tr.tracker"
+        );
+        let secs = step.secs();
+        let mut p: Vec<(&str, &dyn rusqlite::ToSql)> = vec![(":from", &from), (":to", &to)];
+        if !step_filter.is_empty() {
+            p.push((":step", &secs));
+        }
+        let mut stmt = conn.prepare_cached(&sql).map_err(db_err)?;
+        let traffic = stmt
+            .query_map(p.as_slice(), |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
+            .map_err(db_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(db_err)?;
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT host, sum(replies), sum(errors) FROM announces
+                 WHERE step = ?1 AND t BETWEEN ?2 AND ?3 GROUP BY host",
+            )
+            .map_err(db_err)?;
+        let announces = stmt
+            .query_map(params![step.secs(), from, to], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .map_err(db_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(db_err)?;
+        Ok((traffic, announces))
+    }
+
+    /// Per torrent (hex hash), the bytes uploaded and seconds seeding on the
+    /// days starting at or after `from`.
+    pub fn seeding_since(&self, from: u64) -> io::Result<HashMap<String, (u64, u64)>> {
+        let conn = self.reader();
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT tr.hash, sum(x.uploaded), sum(x.seeding_time)
+                 FROM daily x JOIN torrents tr ON tr.id = x.torrent
+                 WHERE x.t >= ?1 GROUP BY x.torrent",
+            )
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map(params![from], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))
+            .map_err(db_err)?;
+        rows.collect::<rusqlite::Result<HashMap<_, _>>>()
+            .map_err(db_err)
+    }
+
+    /// When recording first started (the oldest period kept).
+    pub fn first_recorded(&self) -> io::Result<Option<u64>> {
+        self.reader()
+            .query_row("SELECT min(started) FROM periods", [], |r| r.get(0))
+            .map_err(db_err)
+    }
+
     /// Names of autonomous systems.
     pub fn asn_names(&self, asns: &[u32]) -> io::Result<HashMap<u32, String>> {
         let conn = self.reader();
@@ -1254,6 +1553,7 @@ mod tests {
             Meta {
                 name: Some(name.to_string()),
                 size: Some(100),
+                ..Default::default()
             },
         )]
         .into()
@@ -1304,6 +1604,7 @@ mod tests {
             },
             swarm_seeds_max: swarm,
             swarm_leechers_max: None,
+            swarm_completed_max: None,
         };
         for d in [day(5, 60, 105, Some(4)), day(1, 30, 106, None)] {
             db.write(&Batch {
@@ -1416,6 +1717,116 @@ mod tests {
         assert!(db.purge(H1).unwrap());
         assert!(!db.purge(H1).unwrap());
         assert!(db.torrent(H1).unwrap().is_none());
+    }
+
+    #[test]
+    fn tracker_hosts_never_keep_passkeys() {
+        let h = |u: &str| tracker_host(u);
+        assert_eq!(
+            h("https://tracker.example.org/abcdef0123456789/announce").as_deref(),
+            Some("tracker.example.org")
+        );
+        assert_eq!(
+            h("udp://Tracker.Example.org:1337/announce").as_deref(),
+            Some("tracker.example.org")
+        );
+        assert_eq!(
+            h("http://user:pass@t.example:80/a?passkey=x").as_deref(),
+            Some("t.example")
+        );
+        assert_eq!(
+            h("http://[2001:db8::1]:6969/announce").as_deref(),
+            Some("2001:db8::1")
+        );
+        assert_eq!(h("not a url"), None);
+        assert_eq!(h("http:///announce"), None);
+    }
+
+    #[test]
+    fn traffic_by_group_and_tracker() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = StatsDb::open(dir.path()).unwrap();
+        let meta = |cat: Option<&str>, tags: &[&str], tracker: &str| Meta {
+            name: Some("x".into()),
+            size: Some(1),
+            groups: Some((
+                cat.map(str::to_string),
+                tags.iter().map(|t| t.to_string()).collect(),
+            )),
+            tracker: Some(tracker.into()),
+        };
+        let h3 = "3333333333333333333333333333333333333333";
+        db.write(&Batch {
+            meta: [
+                (
+                    H1.to_string(),
+                    meta(Some("linux"), &["iso", "big"], "t.one"),
+                ),
+                (H2.to_string(), meta(Some("linux"), &["iso"], "t.two")),
+                (h3.to_string(), meta(None, &[], "t.two")),
+            ]
+            .into(),
+            traffic: vec![
+                (H1.into(), StatsStep::Hour, 0, traffic(0, 10, 1)),
+                (H2.into(), StatsStep::Hour, 0, traffic(5, 20, 1)),
+                (h3.into(), StatsStep::Hour, 3_600, traffic(0, 1, 1)),
+            ],
+            announces: vec![
+                ("t.one".into(), StatsStep::Hour, 0, 3, 1),
+                ("t.gone".into(), StatsStep::Hour, 0, 0, 4),
+            ],
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            db.groups(false, StatsStep::Hour, 0, 7_200, true, 10)
+                .unwrap(),
+            vec![(Some("linux".into()), 5, 30, 2), (None, 0, 1, 1)]
+        );
+        assert_eq!(
+            db.groups(true, StatsStep::Hour, 0, 7_200, true, 10)
+                .unwrap(),
+            vec![
+                (Some("iso".into()), 5, 30, 2),
+                (Some("big".into()), 0, 10, 1),
+                (None, 0, 1, 1)
+            ]
+        );
+        let series = db
+            .group_series(true, StatsStep::Hour, 0, 7_200, &[Some("big".into()), None])
+            .unwrap();
+        assert_eq!(
+            series,
+            vec![(0, Some("big".into()), 0, 10), (3_600, None, 0, 1)]
+        );
+        let (by_tracker, announces) = db.trackers(StatsStep::Hour, 0, 7_200).unwrap();
+        let mut by_tracker = by_tracker;
+        by_tracker.sort();
+        assert_eq!(
+            by_tracker,
+            vec![
+                (Some("t.one".into()), 0, 10, 1),
+                (Some("t.two".into()), 5, 21, 2)
+            ]
+        );
+        let mut announces = announces;
+        announces.sort();
+        assert_eq!(
+            announces,
+            vec![("t.gone".into(), 0, 4), ("t.one".into(), 3, 1)]
+        );
+        // A category change moves the torrent's history with it.
+        db.write(&Batch {
+            meta: [(H2.to_string(), meta(Some("iso"), &[], "t.two"))].into(),
+            traffic: vec![(H2.into(), StatsStep::Hour, 0, traffic(0, 0, 0))],
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            db.groups(false, StatsStep::Hour, 0, 7_200, true, 1)
+                .unwrap(),
+            vec![(Some("iso".into()), 5, 20, 1)]
+        );
     }
 
     #[test]

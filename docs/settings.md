@@ -53,6 +53,12 @@ kind of bucket is kept, in seconds (`null` = forever):
 | `stats_hour_retention` | `7776000` (90 days) | per-hour traffic |
 | `stats_day_retention` | `null` | days (seeding history), the timeline, recording periods |
 
+`stats_scrape_interval` (seconds, at least 1800; default `null` = off)
+scrapes every torrent's trackers that often, a few per tick, for the swarm's
+completed downloads in the days (`swarm_completed_max`). Scrapes are ordinary
+tracker requests; some private trackers disable them, and the failures are
+harmless.
+
 Without a `step`, a query uses the finest step kept for its whole range, so
 shortening a retention changes which step long ranges get.
 

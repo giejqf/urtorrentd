@@ -10,7 +10,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.6.0"
+    "version": "0.7.0"
   },
   "paths": {
     "/api/v1/app": {
@@ -1924,6 +1924,454 @@
         }
       }
     },
+    "/api/v1/stats/groups": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Traffic by category or tag.",
+        "operationId": "get_group_stats",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "query",
+            "description": "Grouped by.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/GroupKind"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Buckets starting at or after this time, unix seconds; default: one\nday before `to`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Buckets starting at or before this time, unix seconds; default: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "step",
+            "in": "query",
+            "description": "Bucket size; default: the finest kept for the whole range.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StatsStep"
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "description": "Ranked by; default `uploaded`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TopMetric"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many groups (1 to 250); default 20.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "description": "Also return each group's buckets (`points`); default false.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupStats"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/idle-seeds": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Complete torrents by what they uploaded in the last days relative to\ntheir size, least first: what to remove to win back disk space.",
+        "operationId": "get_idle_seeds",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "description": "The window, in days back from today (1 to 365); default 30.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many torrents (1 to 1000); default 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdleSeeds"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/peers": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Peer traffic by client, discovery source, transport, encryption, IP\nversion or direction (all torrents, or one), with what could not be tied\nto a peer.",
+        "operationId": "get_peer_stats",
+        "parameters": [
+          {
+            "name": "dim",
+            "in": "query",
+            "description": "Broken down by.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/PeerDimension"
+            }
+          },
+          {
+            "name": "hash",
+            "in": "query",
+            "description": "One torrent (info-hash); default: all.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Buckets starting at or after this time, unix seconds; default: one\nday before `to`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Buckets starting at or before this time, unix seconds; default: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "step",
+            "in": "query",
+            "description": "`hour` or `day`; default: the finest kept for the whole range.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StatsStep"
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "description": "Ranked by; default `uploaded`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TopMetric"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many values (1 to 250); default 20.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "description": "Also return each value's buckets (`points`); default false.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerBreakdown"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stats/timeline": {
       "get": {
         "tags": [
@@ -2481,6 +2929,150 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TorrentTraffic"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/trackers": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Per tracker (by host): the traffic of the torrents working with it, and\nits announces answered and failed.",
+        "operationId": "get_tracker_stats",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Buckets starting at or after this time, unix seconds; default: one\nday before `to`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Buckets starting at or before this time, unix seconds; default: now.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "step",
+            "in": "query",
+            "description": "`hour` or `day`; default: the finest kept for the whole range.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StatsStep"
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "description": "Ranked by; default `uploaded`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TopMetric"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many trackers (1 to 250); default 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackerStats"
                 }
               }
             }
@@ -8383,6 +8975,136 @@
           }
         }
       },
+      "GroupKind": {
+        "type": "string",
+        "description": "How torrents are grouped.",
+        "enum": [
+          "category",
+          "tag"
+        ]
+      },
+      "GroupPoint": {
+        "type": "object",
+        "description": "A group's traffic in one bucket.",
+        "required": [
+          "t",
+          "key",
+          "downloaded",
+          "uploaded"
+        ],
+        "properties": {
+          "t": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bucket start, unix seconds.",
+            "minimum": 0
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The category or tag; `null` = none."
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes downloaded.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes uploaded.",
+            "minimum": 0
+          }
+        }
+      },
+      "GroupRow": {
+        "type": "object",
+        "description": "A group's traffic over a range.",
+        "required": [
+          "key",
+          "downloaded",
+          "uploaded",
+          "torrents"
+        ],
+        "properties": {
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The category or tag; `null` = none."
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes downloaded by its torrents.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes uploaded by its torrents.",
+            "minimum": 0
+          },
+          "torrents": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its torrents that moved data.",
+            "minimum": 0
+          }
+        }
+      },
+      "GroupStats": {
+        "type": "object",
+        "description": "Traffic by category or tag, by the membership each torrent has now (or\nhad when it was removed): changing a torrent's category moves its\nhistory with it. With tags, a torrent counts in each of its tags.",
+        "required": [
+          "from",
+          "to",
+          "step",
+          "group",
+          "rows",
+          "points"
+        ],
+        "properties": {
+          "from": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "step": {
+            "$ref": "#/components/schemas/StatsStep",
+            "description": "The bucket size."
+          },
+          "group": {
+            "$ref": "#/components/schemas/GroupKind",
+            "description": "Grouped by."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupRow"
+            },
+            "description": "Groups, highest first."
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupPoint"
+            },
+            "description": "Their buckets, oldest first (`series=true`)."
+          }
+        }
+      },
       "Hashes": {
         "oneOf": [
           {
@@ -8419,6 +9141,131 @@
           "native",
           "qbt_5_2_3_lt2_0_14"
         ]
+      },
+      "IdleSeed": {
+        "type": "object",
+        "description": "A complete torrent and what it uploaded in the window.",
+        "required": [
+          "hash",
+          "name",
+          "size",
+          "uploaded",
+          "value",
+          "seeding_time",
+          "last_upload",
+          "ratio",
+          "added_on",
+          "state",
+          "category",
+          "tracker"
+        ],
+        "properties": {
+          "hash": {
+            "type": "string",
+            "description": "Info-hash."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes on disk (the wanted files).",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes uploaded in the window.",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "format": "double",
+            "description": "`uploaded` / `size`: how many times over it was shared in the window."
+          },
+          "seeding_time": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds it was seeding in the window.",
+            "minimum": 0
+          },
+          "last_upload": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When it last uploaded, unix seconds; `null` = never.",
+            "minimum": 0
+          },
+          "ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "All-time share ratio."
+          },
+          "added_on": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was added, unix seconds.",
+            "minimum": 0
+          },
+          "state": {
+            "$ref": "#/components/schemas/TorrentState",
+            "description": "Its state."
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its category."
+          },
+          "tracker": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Host of the tracker it works with."
+          }
+        }
+      },
+      "IdleSeeds": {
+        "type": "object",
+        "description": "Complete torrents by what they uploaded in a window relative to their\nsize, least first: the candidates for removal come first.",
+        "required": [
+          "from",
+          "recorded_from",
+          "torrents"
+        ],
+        "properties": {
+          "from": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The window's start (00:00 UTC, `days` days back), unix seconds.",
+            "minimum": 0
+          },
+          "recorded_from": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Recording covers the window from here (later than `from` when\nstatistics started within the window); `null` = nothing recorded.",
+            "minimum": 0
+          },
+          "torrents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdleSeed"
+            },
+            "description": "Least valuable first."
+          }
+        }
       },
       "LimitsRequest": {
         "type": "object",
@@ -8595,6 +9442,79 @@
             "description": "The `.torrent`, base64-encoded."
           }
         }
+      },
+      "PeerBreakdown": {
+        "type": "object",
+        "description": "Peer traffic broken down. Rows plus `unattributed` add up to the\ntorrents' traffic in the range (as in `GeoStats`).",
+        "required": [
+          "hash",
+          "from",
+          "to",
+          "step",
+          "dim",
+          "rows",
+          "points",
+          "unattributed"
+        ],
+        "properties": {
+          "hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The torrent, or `null` for all."
+          },
+          "from": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "step": {
+            "$ref": "#/components/schemas/StatsStep",
+            "description": "The bucket size."
+          },
+          "dim": {
+            "$ref": "#/components/schemas/PeerDimension",
+            "description": "Broken down by."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeerRow"
+            },
+            "description": "Values, highest first."
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeerPoint"
+            },
+            "description": "Their buckets, oldest first (`series=true`)."
+          },
+          "unattributed": {
+            "$ref": "#/components/schemas/ByteTotals",
+            "description": "Traffic not tied to a peer (see `GeoStats`)."
+          }
+        }
+      },
+      "PeerDimension": {
+        "type": "string",
+        "description": "What peer traffic is broken down by (besides place: `/stats/geo`).",
+        "enum": [
+          "client",
+          "source",
+          "transport",
+          "encryption",
+          "ip_version",
+          "direction"
+        ]
       },
       "PeerInfo": {
         "type": "object",
@@ -8782,6 +9702,87 @@
           "reason": {
             "type": "string",
             "description": "Why."
+          }
+        }
+      },
+      "PeerPoint": {
+        "type": "object",
+        "description": "Peer traffic with one value in one bucket.",
+        "required": [
+          "t",
+          "key",
+          "downloaded",
+          "uploaded",
+          "peers"
+        ],
+        "properties": {
+          "t": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bucket start, unix seconds.",
+            "minimum": 0
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The value."
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes received.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes sent.",
+            "minimum": 0
+          },
+          "peers": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its peers that moved data in the bucket.",
+            "minimum": 0
+          }
+        }
+      },
+      "PeerRow": {
+        "type": "object",
+        "description": "Peer traffic with one value over a range.",
+        "required": [
+          "key",
+          "downloaded",
+          "uploaded",
+          "peers_max"
+        ],
+        "properties": {
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The value (`qBittorrent`, `dht`, `utp`, ...); `null` = unknown (a\npeer that sent no client name)."
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes received from its peers.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes sent to its peers.",
+            "minimum": 0
+          },
+          "peers_max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The most of its peers that moved data in one bucket (distinct\naddresses per torrent, summed over torrents).",
+            "minimum": 0
           }
         }
       },
@@ -9033,6 +10034,7 @@
           "stats_minute_retention",
           "stats_hour_retention",
           "stats_day_retention",
+          "stats_scrape_interval",
           "api_bypass_local_auth",
           "api_auth_whitelist",
           "api_allowed_hosts",
@@ -9454,6 +10456,16 @@
             "default": null,
             "minimum": 0
           },
+          "stats_scrape_interval": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Scrape every torrent's trackers this often (seconds, at least 1800)\nfor the swarm's completed downloads in `/stats/torrents/{hash}/days`;\n`null` = never (the default: announces already report the swarm's\nseeds and leechers).",
+            "default": null,
+            "minimum": 0
+          },
           "api_bypass_local_auth": {
             "type": "boolean",
             "description": "Loopback clients need no authentication.",
@@ -9830,6 +10842,15 @@
             ],
             "format": "int64",
             "description": "Seconds days, the timeline and recording periods are kept; `null` =\nforever.",
+            "minimum": 0
+          },
+          "stats_scrape_interval": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Scrape every torrent's trackers this often (seconds, at least 1800)\nfor the swarm's completed downloads in `/stats/torrents/{hash}/days`;\n`null` = never (the default: announces already report the swarm's\nseeds and leechers).",
             "minimum": 0
           },
           "api_bypass_local_auth": {
@@ -10395,7 +11416,8 @@
           "seeding_time_total",
           "ratio",
           "swarm_seeds_max",
-          "swarm_leechers_max"
+          "swarm_leechers_max",
+          "swarm_completed_max"
         ],
         "properties": {
           "t": {
@@ -10488,6 +11510,15 @@
             ],
             "format": "int32",
             "description": "Most leechers the trackers reported for the swarm; `null` = no report.",
+            "minimum": 0
+          },
+          "swarm_completed_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Most completed downloads a scrape reported for the swarm; `null` = no\nscrape (they run only with `stats_scrape_interval`).",
             "minimum": 0
           }
         }
@@ -11439,6 +12470,92 @@
               "$ref": "#/components/schemas/TrackerEndpointInfo"
             },
             "description": "The tracker per listen socket (it is announced once per socket)."
+          }
+        }
+      },
+      "TrackerRow": {
+        "type": "object",
+        "description": "A tracker (by host) over a range.",
+        "required": [
+          "host",
+          "downloaded",
+          "uploaded",
+          "torrents",
+          "announces",
+          "announce_errors"
+        ],
+        "properties": {
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tracker's host; `null` = torrents with no working tracker\n(DHT only, or every tracker failing)."
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes downloaded by the torrents working with it.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes uploaded by the torrents working with it (what a\nprivate tracker credits, less what it does not see).",
+            "minimum": 0
+          },
+          "torrents": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Torrents working with it that moved data.",
+            "minimum": 0
+          },
+          "announces": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Announces it answered.",
+            "minimum": 0
+          },
+          "announce_errors": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Announces that failed.",
+            "minimum": 0
+          }
+        }
+      },
+      "TrackerStats": {
+        "type": "object",
+        "description": "Per tracker: the traffic of the torrents that work with it (the one each\ntorrent last worked with), and how its announces went. Only hosts are\nkept: private trackers' URLs carry passkeys.",
+        "required": [
+          "from",
+          "to",
+          "step",
+          "rows"
+        ],
+        "properties": {
+          "from": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The range, unix seconds.",
+            "minimum": 0
+          },
+          "step": {
+            "$ref": "#/components/schemas/StatsStep",
+            "description": "The bucket size."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrackerRow"
+            },
+            "description": "Trackers, highest first."
           }
         }
       },

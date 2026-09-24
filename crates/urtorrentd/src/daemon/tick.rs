@@ -20,6 +20,8 @@ use crate::util::now;
 const TICK: Duration = Duration::from_secs(2);
 /// Totals are saved every this many ticks (and at shutdown).
 const TOTALS_EVERY: u64 = 30;
+/// Scrapes started per tick at most (`stats_scrape_interval`).
+const SCRAPES_PER_TICK: usize = 4;
 
 pub(crate) async fn run(daemon: Weak<Daemon>) {
     let mut interval = tokio::time::interval(TICK);
@@ -41,6 +43,7 @@ pub(crate) async fn run(daemon: Weak<Daemon>) {
             // torrents' traffic it is part of.
             d.sample_peers().await;
         }
+        d.scrape_due();
         d.tick_once().await;
         d.save_resume(ResumeSave::Due).await;
         if let Err(e) = d.flush_records().await {
@@ -106,6 +109,41 @@ fn share_limit_reached(
 }
 
 impl Daemon {
+    /// Scrape the torrents whose last scrape is older than
+    /// `stats_scrape_interval` (off by default), a few per tick, for the
+    /// swarm's completed downloads in the statistics.
+    fn scrape_due(self: &Arc<Self>) {
+        let Some(every) = self.settings().stats_scrape_interval else {
+            return;
+        };
+        if !self.stats.as_ref().is_ok_and(|s| s.recording()) {
+            return;
+        }
+        let every = Duration::from_secs(every);
+        let due: Vec<TorrentId> = {
+            let mut st = self.state();
+            let now = std::time::Instant::now();
+            st.torrents
+                .values_mut()
+                .filter(|e| {
+                    e.has_trackers && e.last_scrape.is_none_or(|t| now.duration_since(t) >= every)
+                })
+                .take(SCRAPES_PER_TICK)
+                .map(|e| {
+                    e.last_scrape = Some(now);
+                    e.id
+                })
+                .collect()
+        };
+        for id in due {
+            // The answers arrive as `ScrapeReply` events.
+            let d = self.clone();
+            tokio::spawn(async move {
+                let _ = d.session.scrape(id).await;
+            });
+        }
+    }
+
     /// Sample the peers of the torrents that moved data since the last
     /// sample, for the statistics by place.
     async fn sample_peers(&self) {
@@ -157,6 +195,7 @@ impl Daemon {
                 if e.name.as_deref() != Some(s.name.as_str()) {
                     e.name = Some(s.name.clone());
                 }
+                e.has_trackers = s.trackers_count > 0;
                 if s.complete
                     && s.state == L::Seeding
                     && !e.moving
@@ -190,6 +229,12 @@ impl Daemon {
                                 s.downloaded,
                                 s.total_wanted_done,
                             ),
+                            category: e.record.category.as_deref(),
+                            tags: e.record.tags.iter().cloned().collect(),
+                            tracker: s
+                                .working_tracker
+                                .as_deref()
+                                .and_then(crate::stats::db::tracker_host),
                         })
                     })
                     .collect();

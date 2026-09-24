@@ -84,6 +84,18 @@ export async function demo(): Promise<void> {
   const flags: (string | null)[] = peers.data?.map((p) => p.country) ?? [];
   console.log(byCountry, unattributed, orgs, flags);
 
+  // Breakdowns: clients, groups, trackers, and what to remove.
+  const clients = await api.GET("/api/v1/stats/peers", { params: { query: { dim: "client", step: "day" } } });
+  const clientShare = clients.data?.rows.map((r: Schemas["PeerRow"]) => [r.key ?? "unknown", r.uploaded]);
+  const byTag = await api.GET("/api/v1/stats/groups", { params: { query: { group: "tag", series: true } } });
+  const trackers = await api.GET("/api/v1/stats/trackers", { params: { query: { from: 0, step: "day" } } });
+  const failing = trackers.data?.rows.filter((r) => r.announce_errors > r.announces).map((r) => r.host);
+  const idle = await api.GET("/api/v1/stats/idle-seeds", { params: { query: { days: 90, limit: 20 } } });
+  const reclaim: number = (idle.data?.torrents ?? []).filter((t) => t.value < 0.1).reduce((n, t) => n + t.size, 0);
+  console.log(clientShare, byTag.data?.points.length, failing, reclaim);
+
+  // @ts-expect-error: `dim` is required.
+  await api.GET("/api/v1/stats/peers", { params: { query: {} } });
   // @ts-expect-error: not a dimension.
   await api.GET("/api/v1/stats/geo", { params: { query: { dim: "city" } } });
   // @ts-expect-error: not a step.

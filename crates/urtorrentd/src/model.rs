@@ -1384,6 +1384,10 @@ pub struct TorrentDay {
     /// Most leechers the trackers reported for the swarm; `null` = no report.
     #[schema(required = true)]
     pub swarm_leechers_max: Option<u32>,
+    /// Most completed downloads a scrape reported for the swarm; `null` = no
+    /// scrape (they run only with `stats_scrape_interval`).
+    #[schema(required = true)]
+    pub swarm_completed_max: Option<u32>,
 }
 
 /// One torrent's days.
@@ -1673,4 +1677,288 @@ pub struct GeoStats {
     pub unattributed: ByteTotals,
     /// A GeoIP database is loaded now.
     pub located: bool,
+}
+
+/// What peer traffic is broken down by (besides place: `/stats/geo`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PeerDimension {
+    /// The client, without its version (`qBittorrent`).
+    Client,
+    /// How the peer was found: `tracker`, `dht`, `pex`, `lsd`, `incoming`,
+    /// `manual`, `resume`.
+    Source,
+    /// `tcp` or `utp`.
+    Transport,
+    /// `rc4` (MSE) or `plaintext`.
+    Encryption,
+    /// `ipv4` or `ipv6`.
+    IpVersion,
+    /// Who connected: `incoming` or `outgoing`.
+    Direction,
+}
+
+/// Query of a peer traffic breakdown.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct PeerQuery {
+    /// Broken down by.
+    pub dim: PeerDimension,
+    /// One torrent (info-hash); default: all.
+    pub hash: Option<String>,
+    /// Buckets starting at or after this time, unix seconds; default: one
+    /// day before `to`.
+    pub from: Option<u64>,
+    /// Buckets starting at or before this time, unix seconds; default: now.
+    pub to: Option<u64>,
+    /// `hour` or `day`; default: the finest kept for the whole range.
+    pub step: Option<StatsStep>,
+    /// Ranked by; default `uploaded`.
+    pub by: Option<TopMetric>,
+    /// At most this many values (1 to 250); default 20.
+    pub limit: Option<u32>,
+    /// Also return each value's buckets (`points`); default false.
+    pub series: Option<bool>,
+}
+
+/// Peer traffic with one value over a range.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct PeerRow {
+    /// The value (`qBittorrent`, `dht`, `utp`, ...); `null` = unknown (a
+    /// peer that sent no client name).
+    #[schema(required = true)]
+    pub key: Option<String>,
+    /// Payload bytes received from its peers.
+    pub downloaded: u64,
+    /// Payload bytes sent to its peers.
+    pub uploaded: u64,
+    /// The most of its peers that moved data in one bucket (distinct
+    /// addresses per torrent, summed over torrents).
+    pub peers_max: u32,
+}
+
+/// Peer traffic with one value in one bucket.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct PeerPoint {
+    /// Bucket start, unix seconds.
+    pub t: u64,
+    /// The value.
+    #[schema(required = true)]
+    pub key: Option<String>,
+    /// Payload bytes received.
+    pub downloaded: u64,
+    /// Payload bytes sent.
+    pub uploaded: u64,
+    /// Its peers that moved data in the bucket.
+    pub peers: u32,
+}
+
+/// Peer traffic broken down. Rows plus `unattributed` add up to the
+/// torrents' traffic in the range (as in `GeoStats`).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PeerBreakdown {
+    /// The torrent, or `null` for all.
+    #[schema(required = true)]
+    pub hash: Option<String>,
+    /// The range, unix seconds.
+    pub from: u64,
+    /// The range, unix seconds.
+    pub to: u64,
+    /// The bucket size.
+    pub step: StatsStep,
+    /// Broken down by.
+    pub dim: PeerDimension,
+    /// Values, highest first.
+    pub rows: Vec<PeerRow>,
+    /// Their buckets, oldest first (`series=true`).
+    pub points: Vec<PeerPoint>,
+    /// Traffic not tied to a peer (see `GeoStats`).
+    pub unattributed: ByteTotals,
+}
+
+/// How torrents are grouped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupKind {
+    /// By category.
+    Category,
+    /// By tag (a torrent counts in each of its tags).
+    Tag,
+}
+
+/// Query of traffic by category or tag.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct GroupQuery {
+    /// Grouped by.
+    pub group: GroupKind,
+    /// Buckets starting at or after this time, unix seconds; default: one
+    /// day before `to`.
+    pub from: Option<u64>,
+    /// Buckets starting at or before this time, unix seconds; default: now.
+    pub to: Option<u64>,
+    /// Bucket size; default: the finest kept for the whole range.
+    pub step: Option<StatsStep>,
+    /// Ranked by; default `uploaded`.
+    pub by: Option<TopMetric>,
+    /// At most this many groups (1 to 250); default 20.
+    pub limit: Option<u32>,
+    /// Also return each group's buckets (`points`); default false.
+    pub series: Option<bool>,
+}
+
+/// A group's traffic over a range.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct GroupRow {
+    /// The category or tag; `null` = none.
+    #[schema(required = true)]
+    pub key: Option<String>,
+    /// Payload bytes downloaded by its torrents.
+    pub downloaded: u64,
+    /// Payload bytes uploaded by its torrents.
+    pub uploaded: u64,
+    /// Its torrents that moved data.
+    pub torrents: u32,
+}
+
+/// A group's traffic in one bucket.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct GroupPoint {
+    /// Bucket start, unix seconds.
+    pub t: u64,
+    /// The category or tag; `null` = none.
+    #[schema(required = true)]
+    pub key: Option<String>,
+    /// Payload bytes downloaded.
+    pub downloaded: u64,
+    /// Payload bytes uploaded.
+    pub uploaded: u64,
+}
+
+/// Traffic by category or tag, by the membership each torrent has now (or
+/// had when it was removed): changing a torrent's category moves its
+/// history with it. With tags, a torrent counts in each of its tags.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct GroupStats {
+    /// The range, unix seconds.
+    pub from: u64,
+    /// The range, unix seconds.
+    pub to: u64,
+    /// The bucket size.
+    pub step: StatsStep,
+    /// Grouped by.
+    pub group: GroupKind,
+    /// Groups, highest first.
+    pub rows: Vec<GroupRow>,
+    /// Their buckets, oldest first (`series=true`).
+    pub points: Vec<GroupPoint>,
+}
+
+/// Query of the per-tracker statistics.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct TrackerQuery {
+    /// Buckets starting at or after this time, unix seconds; default: one
+    /// day before `to`.
+    pub from: Option<u64>,
+    /// Buckets starting at or before this time, unix seconds; default: now.
+    pub to: Option<u64>,
+    /// `hour` or `day`; default: the finest kept for the whole range.
+    pub step: Option<StatsStep>,
+    /// Ranked by; default `uploaded`.
+    pub by: Option<TopMetric>,
+    /// At most this many trackers (1 to 250); default 50.
+    pub limit: Option<u32>,
+}
+
+/// A tracker (by host) over a range.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct TrackerRow {
+    /// The tracker's host; `null` = torrents with no working tracker
+    /// (DHT only, or every tracker failing).
+    #[schema(required = true)]
+    pub host: Option<String>,
+    /// Payload bytes downloaded by the torrents working with it.
+    pub downloaded: u64,
+    /// Payload bytes uploaded by the torrents working with it (what a
+    /// private tracker credits, less what it does not see).
+    pub uploaded: u64,
+    /// Torrents working with it that moved data.
+    pub torrents: u32,
+    /// Announces it answered.
+    pub announces: u64,
+    /// Announces that failed.
+    pub announce_errors: u64,
+}
+
+/// Per tracker: the traffic of the torrents that work with it (the one each
+/// torrent last worked with), and how its announces went. Only hosts are
+/// kept: private trackers' URLs carry passkeys.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TrackerStats {
+    /// The range, unix seconds.
+    pub from: u64,
+    /// The range, unix seconds.
+    pub to: u64,
+    /// The bucket size.
+    pub step: StatsStep,
+    /// Trackers, highest first.
+    pub rows: Vec<TrackerRow>,
+}
+
+/// Query of the idle-seed report.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct IdleQuery {
+    /// The window, in days back from today (1 to 365); default 30.
+    pub days: Option<u32>,
+    /// At most this many torrents (1 to 1000); default 50.
+    pub limit: Option<u32>,
+}
+
+/// A complete torrent and what it uploaded in the window.
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+pub struct IdleSeed {
+    /// Info-hash.
+    pub hash: String,
+    /// Name.
+    pub name: String,
+    /// Bytes on disk (the wanted files).
+    pub size: u64,
+    /// Payload bytes uploaded in the window.
+    pub uploaded: u64,
+    /// `uploaded` / `size`: how many times over it was shared in the window.
+    pub value: f64,
+    /// Seconds it was seeding in the window.
+    pub seeding_time: u64,
+    /// When it last uploaded, unix seconds; `null` = never.
+    #[schema(required = true)]
+    pub last_upload: Option<u64>,
+    /// All-time share ratio.
+    #[schema(required = true)]
+    pub ratio: Option<f64>,
+    /// When it was added, unix seconds.
+    pub added_on: u64,
+    /// Its state.
+    pub state: TorrentState,
+    /// Its category.
+    #[schema(required = true)]
+    pub category: Option<String>,
+    /// Host of the tracker it works with.
+    #[schema(required = true)]
+    pub tracker: Option<String>,
+}
+
+/// Complete torrents by what they uploaded in a window relative to their
+/// size, least first: the candidates for removal come first.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct IdleSeeds {
+    /// The window's start (00:00 UTC, `days` days back), unix seconds.
+    pub from: u64,
+    /// Recording covers the window from here (later than `from` when
+    /// statistics started within the window); `null` = nothing recorded.
+    #[schema(required = true)]
+    pub recorded_from: Option<u64>,
+    /// Least valuable first.
+    pub torrents: Vec<IdleSeed>,
 }

@@ -121,6 +121,43 @@ new traffic, not old. `peers` is distinct addresses per torrent and bucket;
 peer addresses themselves are never stored. Places are kept per hour and per
 day, with the same retention as the traffic.
 
+### Breakdowns
+
+The same per-peer accounting breaks traffic down by what peers are:
+
+```sh
+GET /api/v1/stats/peers?dim=client&step=day      # qBittorrent, Transmission, ... (no versions)
+GET /api/v1/stats/peers?dim=source&hash=<hash>   # tracker, dht, pex, lsd, incoming, manual, resume
+GET /api/v1/stats/peers?dim=transport            # tcp, utp; also encryption, ip_version, direction
+```
+
+and torrents' traffic by what they belong to (`PeerBreakdown` and `GroupStats`
+take `series=true` like `/stats/geo`):
+
+```sh
+GET /api/v1/stats/groups?group=category&from=1787000000
+GET /api/v1/stats/groups?group=tag               # a torrent counts in each of its tags
+GET /api/v1/stats/trackers?step=day&from=1787000000
+{"rows": [{"host": "tracker.example.org", "uploaded": 9663676416, "downloaded": 0, "torrents": 12,
+           "announces": 1310, "announce_errors": 4}, ...]}
+```
+
+Groups follow each torrent's category and tags as they are now (or were when
+it was removed): moving a torrent to another category moves its history.
+Trackers are grouped by the host of the tracker each torrent last worked
+with; only hosts are stored, never URLs (private trackers put the passkey in
+them). Announces are counted per host as they are answered or fail.
+
+`GET /api/v1/stats/idle-seeds?days=30` lists the complete torrents with what
+each uploaded in the last `days` days, `value` = uploaded ÷ size, least
+first: the top of the list is what shares least for the disk it takes.
+`recorded_from` says when recording began if that was inside the window.
+
+With `stats_scrape_interval` set ([settings.md](settings.md#statistics)),
+the daemon scrapes the trackers of every torrent that often and the days
+gain `swarm_completed_max`, the swarm's completed downloads. Off by default:
+announces already report the swarm's seeds and leechers.
+
 A time-of-day pattern (an hour × weekday heatmap) is the hourly series
 binned in the viewer's time zone; `sdk/typescript/check.ts` shows it.
 Removed torrents keep their history (with `removed` set) until the retention
@@ -174,6 +211,10 @@ be opened, the daemon runs without statistics and `/stats` answers
 | DELETE | `/stats/torrents/{hash}` | Delete a torrent's history |
 | GET | `/stats/top` | Torrents ranked by bytes up or down over a range (removed ones too) |
 | GET | `/stats/geo` | Peer traffic by country or autonomous system, per torrent or overall, optionally as a series |
+| GET | `/stats/peers` | Peer traffic by client, discovery source, transport, encryption, IP version or direction |
+| GET | `/stats/groups` | Traffic by category or tag |
+| GET | `/stats/trackers` | Per tracker host: traffic of its torrents, announces answered and failed |
+| GET | `/stats/idle-seeds` | Complete torrents by what they uploaded in the last days relative to their size, least first |
 | GET | `/stats/timeline` | What happened to torrents (added, finished, moved, errors, state changes, removed) |
 
 ## Adding torrents: qBittorrent's `torrents/add` parameters

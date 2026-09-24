@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-23
+
+### Added
+
+- **Peer breakdowns**: `GET /stats/peers?dim=` `client` (name without its
+  version), `source` (tracker, DHT, PEX, LSD, incoming, ...), `transport`,
+  `encryption`, `ip_version`, `direction`; per torrent or overall, with
+  `unattributed` so the rows add up, optionally as a series.
+- **Groups**: `GET /stats/groups?group=category|tag`: traffic by the
+  category and tags each torrent has.
+- **Trackers**: `GET /stats/trackers`: per tracker host, the traffic of the
+  torrents working with it and its announces answered and failed. Hosts
+  only, never URLs (passkeys).
+- **Idle seeds**: `GET /stats/idle-seeds?days=`: complete torrents by what
+  they uploaded in the window relative to their size, least first.
+- **Scrapes** (opt-in, `stats_scrape_interval`): the swarm's completed
+  downloads in each day (`swarm_completed_max`).
+- `stats.db` schema version 3 (migrated on open).
+
 ## [0.6.0] - 2026-09-23
 
 ### Added

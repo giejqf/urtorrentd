@@ -11,7 +11,7 @@ mod ops;
 mod organize;
 mod suffix;
 mod tick;
-mod view;
+pub(crate) mod view;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -102,6 +102,10 @@ pub(crate) struct Entry {
     pub resume_mark: Option<ResumeMark>,
     /// Restored with stored resume data.
     pub resume_restored: bool,
+    /// It has trackers (as of the last tick).
+    pub has_trackers: bool,
+    /// When it was last scraped for the statistics.
+    pub last_scrape: Option<Instant>,
 }
 
 impl Entry {
@@ -118,6 +122,8 @@ impl Entry {
             resume_saved: None,
             resume_mark: None,
             resume_restored: false,
+            has_trackers: false,
+            last_scrape: None,
         }
     }
 }

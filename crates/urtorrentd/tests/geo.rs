@@ -222,6 +222,15 @@ async fn peers_are_located_and_their_traffic_adds_up() {
         .as_u64()
         .unwrap();
 
+    // The torrent's own traffic first: `unattributed` is measured against it.
+    wait_get(
+        &seeder,
+        &format!("/api/v1/stats/torrents/{hash}/traffic?step=hour"),
+        "the torrent's traffic",
+        |v| sum(&v["points"], "uploaded") == up,
+    )
+    .await;
+
     // By country: everything went to New Zealand, nothing unattributed.
     let geo = format!("/api/v1/stats/geo?hash={hash}&series=true");
     let v = wait_get(&seeder, &geo, "attributed upload", |v| {
@@ -244,6 +253,13 @@ async fn peers_are_located_and_their_traffic_adds_up() {
 
     // The leecher has no database: its peers are recorded, not located.
     let down = leecher.torrent(&hash).await["downloaded"].as_u64().unwrap();
+    wait_get(
+        &leecher,
+        &format!("/api/v1/stats/torrents/{hash}/traffic?step=hour"),
+        "the leecher's traffic",
+        |v| sum(&v["points"], "downloaded") == down,
+    )
+    .await;
     let v = wait_get(&leecher, "/api/v1/stats/geo", "attributed download", |v| {
         v["rows"][0]["downloaded"].as_u64() == Some(down)
     })

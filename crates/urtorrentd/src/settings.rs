@@ -195,6 +195,11 @@ settings! {
     /// Seconds days, the timeline and recording periods are kept; `null` =
     /// forever.
     stats_day_retention: Option<u64> = None, nullable = true;
+    /// Scrape every torrent's trackers this often (seconds, at least 1800)
+    /// for the swarm's completed downloads in `/stats/torrents/{hash}/days`;
+    /// `null` = never (the default: announces already report the swarm's
+    /// seeds and leechers).
+    stats_scrape_interval: Option<u64> = None, nullable = true;
     /// Loopback clients need no authentication.
     api_bypass_local_auth: bool = false, nullable = false;
     /// Address blocks (`10.0.0.0/8`, `fd00::/8`) whose clients need no authentication.
@@ -317,6 +322,9 @@ impl Settings {
             && !std::path::Path::new(p).is_absolute()
         {
             return Err("download_path must be an absolute path".into());
+        }
+        if self.stats_scrape_interval.is_some_and(|s| s < 1800) {
+            return Err("stats_scrape_interval must be at least 1800 seconds".into());
         }
         for (name, p) in [
             ("geoip_database", &self.geoip_database),

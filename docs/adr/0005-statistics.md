@@ -81,6 +81,17 @@ totals only), so there is no checklist entry to follow: the design is ours.
   tied to a peer (web seeds, a close missed in `Lagged`, the seconds since
   the last sample) is reported as `unattributed` = the torrents' traffic
   minus the peer traffic over the same range, so the rows add up.
+- **Breakdowns (0.7.0)**: the per-peer accounting is also keyed by the
+  client (the name without its version: `qBittorrent/4.6.2` and
+  `qBittorrent 4.6.2` are one row; peers send anything here, so the name is
+  bounded and printable), the discovery source, transport, encryption, IP
+  version and direction. The torrents table records each torrent's
+  category, tags and the host of the tracker it last worked with; traffic
+  by group is by that membership, so a torrent's history moves with it.
+  Only tracker hosts are stored, never URLs (passkeys). Announces answered
+  and failed are counted per host from `TrackerReply` / `TrackerError`.
+  Opt-in scrapes (`stats_scrape_interval`) add the swarm's completed
+  downloads to the days (`ScrapeReply`).
 
 ## Consequences
 

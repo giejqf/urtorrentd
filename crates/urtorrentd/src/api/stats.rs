@@ -14,8 +14,9 @@ use super::{HashPath, Json, Path, Query, no_content};
 use crate::daemon::Daemon;
 use crate::error::ApiResult;
 use crate::model::{
-    GeoQuery, GeoStats, StatsInfo, StatsRangeQuery, TimelineEvent, TimelineQuery, TopQuery,
-    TopTorrents, TorrentDays, TorrentTraffic, TransferStats,
+    GeoQuery, GeoStats, GroupQuery, GroupStats, IdleQuery, IdleSeeds, PeerBreakdown, PeerQuery,
+    StatsInfo, StatsRangeQuery, TimelineEvent, TimelineQuery, TopQuery, TopTorrents, TorrentDays,
+    TorrentTraffic, TrackerQuery, TrackerStats, TransferStats,
 };
 
 /// What the statistics database holds.
@@ -84,6 +85,46 @@ pub(crate) async fn get_geo_stats(
     Query(q): Query<GeoQuery>,
 ) -> ApiResult<Json<GeoStats>> {
     Ok(Json(d.geo_stats(q).await?))
+}
+
+/// Peer traffic by client, discovery source, transport, encryption, IP
+/// version or direction (all torrents, or one), with what could not be tied
+/// to a peer.
+#[utoipa::path(get, path = "/stats/peers", tag = "stats", params(PeerQuery), responses((status = 200, body = PeerBreakdown)))]
+pub(crate) async fn get_peer_stats(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<PeerQuery>,
+) -> ApiResult<Json<PeerBreakdown>> {
+    Ok(Json(d.peer_stats(q).await?))
+}
+
+/// Traffic by category or tag.
+#[utoipa::path(get, path = "/stats/groups", tag = "stats", params(GroupQuery), responses((status = 200, body = GroupStats)))]
+pub(crate) async fn get_group_stats(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<GroupQuery>,
+) -> ApiResult<Json<GroupStats>> {
+    Ok(Json(d.group_stats(q).await?))
+}
+
+/// Per tracker (by host): the traffic of the torrents working with it, and
+/// its announces answered and failed.
+#[utoipa::path(get, path = "/stats/trackers", tag = "stats", params(TrackerQuery), responses((status = 200, body = TrackerStats)))]
+pub(crate) async fn get_tracker_stats(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<TrackerQuery>,
+) -> ApiResult<Json<TrackerStats>> {
+    Ok(Json(d.tracker_stats(q).await?))
+}
+
+/// Complete torrents by what they uploaded in the last days relative to
+/// their size, least first: what to remove to win back disk space.
+#[utoipa::path(get, path = "/stats/idle-seeds", tag = "stats", params(IdleQuery), responses((status = 200, body = IdleSeeds)))]
+pub(crate) async fn get_idle_seeds(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<IdleQuery>,
+) -> ApiResult<Json<IdleSeeds>> {
+    Ok(Json(d.idle_seeds(q).await?))
 }
 
 /// What happened to torrents, newest first.
