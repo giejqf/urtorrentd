@@ -124,6 +124,36 @@ articles. What a rule takes is added with its `add_options`, marked
 `downloaded` and read. Errors of a feed are in its `error` and the log,
 without the URL (a feed URL can carry a passkey).
 
+## Search
+
+Both searches take `search`: words that must all match (case ignored, `*`
+any text, `?` one character, everything else literal).
+
+- `GET /torrents?search=ubuntu%20iso` filters the list. A word matches the
+  name (a display-name override if set), the category, a tag or the host of
+  any of its trackers (working or not); a word of 6 or more hex digits also
+  matches the start of the info-hash. It combines with `filter`, `category`,
+  `tag` and the rest, then `sort` and paging apply.
+- `GET /torrents/files?search=s01e0?%20mkv` searches file paths (with their
+  torrent's folder) across every torrent, or one (`hash`). Torrents come by
+  name, files in their order; `total` counts every match, `limit` (1 to
+  1000, default 100) and `offset` page through them:
+
+```json
+{"total": 2, "files": [
+  {"hash": "5a8e…", "torrent": "Show.S01.1080p", "index": 0,
+   "path": "Show.S01.1080p/Show.S01E01.mkv", "size": 1468006400,
+   "progress": 1.0, "priority": 4}
+]}
+```
+
+`index` is the file's index in `GET /torrents/{hash}/files` (for priorities
+and renames). The daemon keeps every torrent's file paths in memory,
+refreshed on renames, content layouts, the incomplete-file suffix and
+metadata arriving, so a search asks the engine only for the page it
+returns. A magnet has no files until its metadata arrives. At most 16
+words, 512 bytes; more is a 400.
+
 ## Client data
 
 `/client-data` keeps JSON values by key for client UIs (their preferences,
@@ -270,8 +300,9 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET | `/fs/directory` | List a directory (for choosing paths) |
 | GET, PUT | `/app/cookies` | The cookie jar for the daemon's own HTTP requests |
 | GET | `/app/interfaces` | Network interfaces and their addresses |
-| GET, POST | `/torrents` | The list (filter, category, tag, hashes, private, sort, paging); add torrents |
+| GET, POST | `/torrents` | The list (filter, category, tag, hashes, private, search, sort, paging); add torrents |
 | GET | `/torrents/count` | How many torrents |
+| GET | `/torrents/files` | Search file names across torrents ([Search](#search)) |
 | POST | `/torrents/parse` | Describe a `.torrent` without adding it |
 | GET, POST | `/previews` | Metadata previews; fetch a magnet's (or URL's) metadata without adding the torrent |
 | GET, DELETE | `/previews/{hash}` | A preview (fetching, ready with the metadata, failed); drop it |
@@ -393,7 +424,7 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `transfer/toggleSpeedLimitsMode` | done | `PUT /transfer/alt-speed` |
 | `transfer/banPeers` | done | `POST /transfer/bans` (ranges: the `banned_ip_ranges` setting) |
 | `torrents/count` | done | `GET /torrents/count` |
-| `torrents/info` | done | `GET /torrents` |
+| `torrents/info` | done | `GET /torrents` (also `search`: name, category, tags, tracker host, info-hash prefix); `includeFiles`: `GET /torrents/files` (every torrent's files, paged); `includeTrackers`: `GET /torrents/{hash}/trackers` |
 | `torrents/properties` | done | `GET /torrents/{hash}` |
 | `torrents/trackers` | done | `GET /torrents/{hash}/trackers` |
 | `torrents/webseeds` | done | `GET /torrents/{hash}/webseeds` |

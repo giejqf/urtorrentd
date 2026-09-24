@@ -1,30 +1,21 @@
 # What the daemon needs from urtorrent
 
-Things the daemon wants from the library (the `urtorrent` facade, 0.13.2)
+Things the daemon wants from the library (the `urtorrent` facade, 0.13.4)
 that it does not offer or does not do right, with what the daemon does in
 the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 ## Open
 
-### HTTP connections are not bound to the listen address (0.13.3)
-
-Peers are dialled from the listen address (`transport::connect_tcp` with
-the local address), UDP trackers and the DHT use the listen sockets, but
-HTTP(S) trackers and web seeds connect without a source address
-(`engine/http.rs`, `TcpStream::connect`). With `listen_interface` bound to a
-VPN interface, announces to HTTP trackers and web-seed downloads leave by
-the default route instead: the tracker sees the address the user meant to
-hide, and they keep flowing while the VPN is down.
-
-Wanted: HTTP(S) tracker and web-seed connections bind to the listen address
-of their family (as libtorrent does with `outgoing_interfaces` /
-`listen_interfaces`), and fail rather than fall back when it is gone.
-
-Workaround here: none (documented at `listen_interface`); peer traffic is
-bound, and with no address the daemon listens on loopback only.
+Nothing.
 
 ## Resolved upstream
 
+- 0.13.4: HTTP(S) tracker announces and web-seed downloads leave from the
+  listen address of their family and fail when it is gone (no fallback to
+  the default route), and peer dials follow `set_listen`: `listen_interface`
+  on a VPN interface now keeps everything on it. `tests/binding.rs` checks
+  the source address of announces and web-seed requests, before and after a
+  live `listen_v4` change.
 - 0.13.2: `needs_resume_save` is set by every change the resume data records
   (trackers, per-torrent settings, the queue flag, queue moves on every
   torrent they shift). The daemon's shutdown saves only the torrents that

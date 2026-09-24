@@ -13,7 +13,7 @@ workspace = true
 
 [dependencies]
 # The library, through its facade only (AGENTS.md rule 5).
-urtorrent = { path = "../../../urtorrent/crates/urtorrent", version = "0.13.2" }
+urtorrent = { path = "../../../urtorrent/crates/urtorrent", version = "0.13.4" }
 # HTTP API. tokio's runtime is fine here: it serves the API, never torrent I/O (AGENTS.md 4.2).
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net"] }

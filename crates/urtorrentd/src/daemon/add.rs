@@ -512,6 +512,9 @@ impl Daemon {
                             .warn(format!("{}: content layout rename: {e}", p.name));
                     }
                 }
+                if !renames.is_empty() {
+                    self.invalidate_content(p.hash);
+                }
                 self.finish_hold(p.hash, id).await;
             } else if o.first_last_piece_priority
                 && let Err(e) = self.apply_first_last(id, true).await
@@ -566,6 +569,7 @@ impl Daemon {
                     ));
                 }
             }
+            self.invalidate_content(hash);
         }
         if record.exclude_files {
             self.exclude_files(hash, id).await;

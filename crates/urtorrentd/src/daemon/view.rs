@@ -7,6 +7,7 @@
 //! urtorrent 0.12), plus two caches that only change on edits: tracker URLs
 //! for magnet links and the content path (AGENTS.md 4.4).
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use urtorrent::{InfoHash, TorrentId, TorrentStatus};
@@ -108,6 +109,20 @@ pub(crate) fn api_state(s: &TorrentStatus, moving: bool) -> TorrentState {
         L::Held => TorrentState::Held,
         _ => TorrentState::Unknown,
     }
+}
+
+/// Whether a search word matches a list row: its name, category, a tag,
+/// one of its trackers' hosts (`hosts`), or (6+ hex digits) the start of
+/// its info-hash.
+fn search_matches(word: &regex::Regex, t: &TorrentSummary, hosts: &[String]) -> bool {
+    let w = word.as_str();
+    (w.len() >= 6
+        && w.bytes().all(|b| b.is_ascii_hexdigit())
+        && t.hash.starts_with(&w.to_ascii_lowercase()))
+        || word.is_match(&t.name)
+        || t.category.as_deref().is_some_and(|c| word.is_match(c))
+        || t.tags.iter().any(|x| word.is_match(x))
+        || hosts.iter().any(|h| word.is_match(h))
 }
 
 /// Build a list row.
@@ -317,14 +332,32 @@ impl Daemon {
 
     /// The torrent list with filters, sorting and paging.
     pub(crate) async fn list(&self, q: &TorrentListQuery) -> ApiResult<Vec<TorrentSummary>> {
+        let words = crate::util::search_words(q.search.as_deref().unwrap_or(""))
+            .map_err(crate::error::ApiError::bad_request)?;
         let hashes: Option<Vec<String>> = q.hashes.as_ref().map(|h| {
             h.split('|')
                 .map(|x| x.trim().to_ascii_lowercase())
                 .collect()
         });
-        let mut rows: Vec<TorrentSummary> = self
-            .summaries()
-            .await?
+        let rows = self.summaries().await?;
+        // Every tracker's host, not only the working one's.
+        let hosts: HashMap<String, Vec<String>> = if words.is_empty() {
+            HashMap::new()
+        } else {
+            let st = self.state();
+            st.torrents
+                .iter()
+                .map(|(h, e)| {
+                    let urls = e.tracker_urls.as_deref().unwrap_or_default();
+                    let hosts = urls
+                        .iter()
+                        .filter_map(|u| crate::stats::db::tracker_host(u))
+                        .collect();
+                    (hex(h), hosts)
+                })
+                .collect()
+        };
+        let mut rows: Vec<TorrentSummary> = rows
             .into_iter()
             .filter(|t| filter_matches(q.filter.unwrap_or_default(), t))
             .filter(|t| match q.category.as_deref() {
@@ -339,6 +372,10 @@ impl Daemon {
             })
             .filter(|t| hashes.as_ref().is_none_or(|h| h.contains(&t.hash)))
             .filter(|t| q.private.is_none_or(|p| t.private == p))
+            .filter(|t| {
+                let hosts = hosts.get(&t.hash).map_or(&[][..], Vec::as_slice);
+                words.iter().all(|w| search_matches(w, t, hosts))
+            })
             .collect();
         if let Some(key) = q.sort {
             sort_rows(&mut rows, key);

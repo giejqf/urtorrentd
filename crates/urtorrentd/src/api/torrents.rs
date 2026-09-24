@@ -13,9 +13,9 @@ use crate::daemon::{Daemon, MoveTo};
 use crate::error::{ApiError, ApiResult};
 use crate::model::{
     AddPeersRequest, AddTorrentsRequest, AddTorrentsResponse, BulkResult, CategoryRequest,
-    CountResponse, DeleteRequest, DownloadPathRequest, HashesRequest, LimitsRequest,
-    LocationRequest, ParseTorrentRequest, QueueRequest, ShareLimitsRequest, TagsRequest,
-    ToggleRequest, TorrentListQuery, TorrentMetadata, TorrentSummary,
+    CountResponse, DeleteRequest, DownloadPathRequest, FileSearch, FileSearchQuery, HashesRequest,
+    LimitsRequest, LocationRequest, ParseTorrentRequest, QueueRequest, ShareLimitsRequest,
+    TagsRequest, ToggleRequest, TorrentListQuery, TorrentMetadata, TorrentSummary,
 };
 
 /// The torrent list, filtered, sorted and paged.
@@ -41,6 +41,17 @@ pub(crate) async fn add_torrents(
 #[utoipa::path(get, path = "/torrents/count", tag = "torrents", responses((status = 200, body = CountResponse)))]
 pub(crate) async fn count_torrents(State(d): State<Arc<Daemon>>) -> Json<CountResponse> {
     Json(CountResponse { count: d.count() })
+}
+
+/// Search file names across torrents: every word of `search` must match
+/// the file's path (`*` and `?` are wildcards). Torrents come by name,
+/// files in their order.
+#[utoipa::path(get, path = "/torrents/files", tag = "torrents", params(FileSearchQuery), responses((status = 200, body = FileSearch)))]
+pub(crate) async fn search_files(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<FileSearchQuery>,
+) -> ApiResult<Json<FileSearch>> {
+    Ok(Json(d.search_files(q).await?))
 }
 
 /// Describe a `.torrent` without adding it.

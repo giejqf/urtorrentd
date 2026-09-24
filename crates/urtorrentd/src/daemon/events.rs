@@ -133,11 +133,14 @@ impl Daemon {
                 self.logs.warn(format!(
                     "{dropped} engine events were dropped; refreshing all caches"
                 ));
-                let mut st = self.state();
-                for e in st.torrents.values_mut() {
-                    e.tracker_urls = None;
-                    e.content = None;
+                {
+                    let mut st = self.state();
+                    for e in st.torrents.values_mut() {
+                        e.tracker_urls = None;
+                        e.content = None;
+                    }
                 }
+                self.clear_file_index();
             }
             _ => {}
         }
@@ -172,6 +175,7 @@ impl Daemon {
                 e.tracker_urls = None;
             }
         }
+        self.invalidate_files(&hash);
         let status = self.session.status(id).await;
         // Trackers from the settings only once we know the torrent is public
         // (AGENTS.md rule 2).

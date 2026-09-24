@@ -29,6 +29,13 @@ export async function demo(): Promise<void> {
     const limit: Schemas["RatioLimit"] = t.share_limits.ratio;
     console.log(t.hash, state, eta, t.progress, limit.mode);
   }
+  const found = await api.GET("/api/v1/torrents/files", {
+    params: { query: { search: "s01e0? mkv", limit: 50 } },
+  });
+  for (const f of found.data?.files ?? []) {
+    const priority: number = f.priority;
+    console.log(f.hash, f.torrent, f.index, f.path, f.progress, priority);
+  }
 
   const added = await api.POST("/api/v1/torrents", {
     body: {

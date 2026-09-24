@@ -193,6 +193,33 @@ pub fn wildcard(pattern: &str) -> Result<regex::Regex, String> {
         .map_err(|e| format!("{pattern:?}: {e}"))
 }
 
+/// Search words: each a case-insensitive pattern found anywhere in a text
+/// (`*` any text, `?` any character). Empty for an empty query.
+pub fn search_words(query: &str) -> Result<Vec<regex::Regex>, String> {
+    let words: Vec<&str> = query.split_whitespace().collect();
+    if words.len() > 16 || query.len() > 512 {
+        return Err("a search is at most 16 words, 512 bytes".into());
+    }
+    words
+        .iter()
+        .map(|w| {
+            let mut re = String::new();
+            for c in w.chars() {
+                match c {
+                    '*' => re.push_str(".*"),
+                    '?' => re.push('.'),
+                    c => re.push_str(&regex::escape(&c.to_string())),
+                }
+            }
+            regex::RegexBuilder::new(&re)
+                .case_insensitive(true)
+                .size_limit(1 << 20)
+                .build()
+                .map_err(|e| format!("{w:?}: {e}"))
+        })
+        .collect()
+}
+
 /// A present patch field (even `null`) is `Some`, an absent one `None`
 /// (with `#[serde(default)]` on the field).
 pub fn patch_field<'de, D: serde::Deserializer<'de>, T: serde::Deserialize<'de>>(
@@ -216,6 +243,24 @@ where
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_words_are_unanchored_wildcards() {
+        let w = search_words("  S01E0?  *.MKV ").unwrap();
+        assert_eq!(w.len(), 2);
+        assert!(w[0].is_match("show.s01e02.mkv"));
+        assert!(!w[0].is_match("show.s01e.mkv"));
+        assert!(w[1].is_match("Show/Pilot.mkv"));
+        assert!(!w[1].is_match("Show/Pilot_mkv"));
+        // Everything but `*` and `?` is literal.
+        let w = search_words("a+b (1)").unwrap();
+        assert!(w[0].is_match("xa+by"));
+        assert!(!w[0].is_match("aab"));
+        assert!(w[1].is_match("(1)"));
+        assert!(search_words("").unwrap().is_empty());
+        assert!(search_words(&["x"; 17].join(" ")).is_err());
+        assert!(search_words(&"x".repeat(513)).is_err());
+    }
 
     #[test]
     fn hash_round_trip() {

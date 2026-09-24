@@ -59,16 +59,21 @@ impl Daemon {
         }
         let files = self.session.files(id).await?;
         let mut renamed = 0;
+        let mut r = Ok(());
         for (index, f) in files.iter().enumerate() {
             let want = wanted_name(&f.path, f.done >= f.size, old, new);
             if want != f.path {
-                self.session.rename_file(id, index, want).await?;
+                r = self.session.rename_file(id, index, want).await;
+                if r.is_err() {
+                    break;
+                }
                 renamed += 1;
             }
         }
         if renamed > 0 {
             self.invalidate_content(hash);
         }
+        r?;
         Ok(renamed)
     }
 

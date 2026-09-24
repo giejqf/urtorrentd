@@ -7,6 +7,7 @@
 
 mod add;
 mod events;
+mod filesearch;
 mod net;
 mod ops;
 mod organize;
@@ -187,6 +188,8 @@ pub struct Daemon {
     pub(crate) net: Mutex<net::NetState>,
     /// Serializes the RSS rules' read-modify-write (runs, saves, renames).
     pub(crate) rss_rules_lock: tokio::sync::Mutex<()>,
+    /// The file paths the file search looks through.
+    pub(crate) file_index: filesearch::FileIndex,
     shutdown_requested: watch::Sender<bool>,
     closed: watch::Sender<bool>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
@@ -308,6 +311,7 @@ impl Daemon {
             rss: Mutex::new(crate::rss::RssState::default()),
             net: Mutex::new(net::NetState::new(cookies, listening)),
             rss_rules_lock: tokio::sync::Mutex::new(()),
+            file_index: filesearch::FileIndex::default(),
             shutdown_requested: watch::channel(false).0,
             closed: watch::channel(false).0,
             tasks: Mutex::new(Vec::new()),
@@ -342,9 +346,11 @@ impl Daemon {
         daemon.restore().await;
         let pump = tokio::spawn(events::run(Arc::downgrade(&daemon), events));
         let tick = tokio::spawn(tick::run(Arc::downgrade(&daemon)));
+        let index = daemon.spawn_file_index();
         if let Ok(mut t) = daemon.tasks.lock() {
             t.push(pump);
             t.push(tick);
+            t.push(index);
         }
         Ok(daemon)
     }

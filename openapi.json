@@ -10,7 +10,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.11.0"
+    "version": "0.12.0"
   },
   "paths": {
     "/api/v1/app": {
@@ -6417,6 +6417,15 @@
             }
           },
           {
+            "name": "search",
+            "in": "query",
+            "description": "Words that must all match (case ignored; `*` any text, `?` any\ncharacter), each in the name, the category, a tag or a tracker's\nhost (any tracker, working or not); a word of 6 or more hex digits\nalso matches an info-hash that starts with it.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "description": "Sort key.",
@@ -7059,6 +7068,137 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/torrents/files": {
+      "get": {
+        "tags": [
+          "torrents"
+        ],
+        "summary": "Search file names across torrents: every word of `search` must match\nthe file's path (`*` and `?` are wildcards). Torrents come by name,\nfiles in their order.",
+        "operationId": "search_files",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words that must all appear in a file's path (case ignored; `*` any\ntext, `?` any character): `s01e0? mkv`. Empty = every file.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hash",
+            "in": "query",
+            "description": "One torrent (info-hash); default: all.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (1 to 1000); default 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Page start.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileSearch"
                 }
               }
             }
@@ -12290,6 +12430,55 @@
           }
         }
       },
+      "FileMatch": {
+        "type": "object",
+        "description": "A file of a torrent.",
+        "required": [
+          "hash",
+          "torrent",
+          "index",
+          "path",
+          "size",
+          "progress",
+          "priority"
+        ],
+        "properties": {
+          "hash": {
+            "type": "string",
+            "description": "The torrent's info-hash."
+          },
+          "torrent": {
+            "type": "string",
+            "description": "The torrent's name."
+          },
+          "index": {
+            "type": "integer",
+            "description": "The file's index (as in `GET /torrents/{hash}/files`).",
+            "minimum": 0
+          },
+          "path": {
+            "type": "string",
+            "description": "Its path within the torrent."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its size, bytes.",
+            "minimum": 0
+          },
+          "progress": {
+            "type": "number",
+            "format": "double",
+            "description": "Fraction downloaded."
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its priority (0 = skipped, 1 to 7).",
+            "minimum": 0
+          }
+        }
+      },
       "FilePriorityRequest": {
         "type": "object",
         "description": "Set file priorities.",
@@ -12312,6 +12501,28 @@
             "description": "0 = skip, 1..=7, higher first; 4 is normal.",
             "maximum": 7,
             "minimum": 0
+          }
+        }
+      },
+      "FileSearch": {
+        "type": "object",
+        "description": "Files that match, by torrent name then file order.",
+        "required": [
+          "total",
+          "files"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "How many match in all.",
+            "minimum": 0
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileMatch"
+            },
+            "description": "This page of them."
           }
         }
       },
@@ -14454,7 +14665,7 @@
               "string",
               "null"
             ],
-            "description": "Listen on (and dial peers from) this network interface's addresses\n(`GET /app/interfaces`), in the families `listen_v4` / `listen_v6`\nenable; followed as they change. With no address (a VPN down) only\nloopback is used, so nothing leaves through another interface.\n`null` = the `listen_v4` / `listen_v6` addresses.",
+            "description": "Listen on this network interface's addresses (`GET /app/interfaces`),\nin the families `listen_v4` / `listen_v6` enable, and send\neverything from them (peers, trackers, web seeds, DHT); followed as\nthey change. With no address (a VPN down) only loopback is used, so\nnothing leaves through another interface.\n`null` = the `listen_v4` / `listen_v6` addresses.",
             "default": null
           },
           "alt_speed_schedule": {
@@ -15023,7 +15234,7 @@
               "string",
               "null"
             ],
-            "description": "Listen on (and dial peers from) this network interface's addresses\n(`GET /app/interfaces`), in the families `listen_v4` / `listen_v6`\nenable; followed as they change. With no address (a VPN down) only\nloopback is used, so nothing leaves through another interface.\n`null` = the `listen_v4` / `listen_v6` addresses."
+            "description": "Listen on this network interface's addresses (`GET /app/interfaces`),\nin the families `listen_v4` / `listen_v6` enable, and send\neverything from them (peers, trackers, web seeds, DHT); followed as\nthey change. With no address (a VPN down) only loopback is used, so\nnothing leaves through another interface.\n`null` = the `listen_v4` / `listen_v6` addresses."
           },
           "alt_speed_schedule": {
             "oneOf": [

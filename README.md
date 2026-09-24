@@ -38,6 +38,9 @@ profile that allows it).
   settings ([docs/settings.md](docs/settings.md)); RSS feeds with download
   rules are under `/api/v1/rss`; client UIs keep their preferences in
   `/api/v1/client-data`.
+- Search: `GET /api/v1/torrents?search=` filters the list by name,
+  category, tag, tracker or info-hash; `GET /api/v1/torrents/files?search=`
+  finds files by name across every torrent.
 - Metadata preview: `POST /api/v1/previews` fetches a magnet's file list
   without adding it; webhooks (`/api/v1/webhooks`) call your URLs when
   torrents are added, finish, move or go away (no program is ever run).

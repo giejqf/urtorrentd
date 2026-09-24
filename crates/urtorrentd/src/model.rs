@@ -442,6 +442,11 @@ pub struct TorrentListQuery {
     pub hashes: Option<String>,
     /// Only private (`true`) or public (`false`) torrents.
     pub private: Option<bool>,
+    /// Words that must all match (case ignored; `*` any text, `?` any
+    /// character), each in the name, the category, a tag or a tracker's
+    /// host (any tracker, working or not); a word of 6 or more hex digits
+    /// also matches an info-hash that starts with it.
+    pub search: Option<String>,
     /// Sort key.
     pub sort: Option<TorrentSort>,
     /// Sort descending.
@@ -2480,4 +2485,49 @@ pub struct DownloadPathRequest {
     /// the save path).
     #[serde(default)]
     pub path: Option<String>,
+}
+
+// ---- File search (`GET /torrents/files`) ----
+
+/// Query of files across torrents.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct FileSearchQuery {
+    /// Words that must all appear in a file's path (case ignored; `*` any
+    /// text, `?` any character): `s01e0? mkv`. Empty = every file.
+    pub search: Option<String>,
+    /// One torrent (info-hash); default: all.
+    pub hash: Option<String>,
+    /// Page size (1 to 1000); default 100.
+    pub limit: Option<usize>,
+    /// Page start.
+    pub offset: Option<usize>,
+}
+
+/// A file of a torrent.
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+pub struct FileMatch {
+    /// The torrent's info-hash.
+    pub hash: String,
+    /// The torrent's name.
+    pub torrent: String,
+    /// The file's index (as in `GET /torrents/{hash}/files`).
+    pub index: usize,
+    /// Its path within the torrent.
+    pub path: String,
+    /// Its size, bytes.
+    pub size: u64,
+    /// Fraction downloaded.
+    pub progress: f64,
+    /// Its priority (0 = skipped, 1 to 7).
+    pub priority: u8,
+}
+
+/// Files that match, by torrent name then file order.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FileSearch {
+    /// How many match in all.
+    pub total: usize,
+    /// This page of them.
+    pub files: Vec<FileMatch>,
 }

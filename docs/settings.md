@@ -113,12 +113,14 @@ links to folders are skipped).
 ## Network interface
 
 `listen_interface` (a name from `GET /app/interfaces`, like `wg0`) listens
-on, and dials peers from, that interface's addresses in the families
-`listen_v4` / `listen_v6` enable. The daemon follows the addresses as they
-change (every 10 seconds); while the interface has none (a VPN down) it
-listens on loopback only, so peers are not reached through another route.
-HTTP(S) trackers and web seeds are not bound yet ([gaps.md](gaps.md)): they
-use the default route.
+on that interface's addresses in the families `listen_v4` / `listen_v6`
+enable, and everything the engine sends leaves from them: peer
+connections, UDP and HTTP(S) tracker announces, web-seed downloads and the
+DHT (urtorrent 0.13.4). The daemon follows the addresses as they change
+(every 10 seconds); while the interface has none (a VPN down) it listens on
+loopback only, so nothing reaches the internet through another route:
+announces and web seeds fail until the address is back. A specific
+`listen_v4` / `listen_v6` address binds the same way.
 
 ## Geolocation
 

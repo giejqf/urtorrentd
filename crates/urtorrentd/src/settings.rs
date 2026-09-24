@@ -113,10 +113,11 @@ settings! {
     /// A name for this daemon that clients show (`GET /app`); `null` =
     /// none.
     instance_name: Option<String> = None, nullable = true;
-    /// Listen on (and dial peers from) this network interface's addresses
-    /// (`GET /app/interfaces`), in the families `listen_v4` / `listen_v6`
-    /// enable; followed as they change. With no address (a VPN down) only
-    /// loopback is used, so nothing leaves through another interface.
+    /// Listen on this network interface's addresses (`GET /app/interfaces`),
+    /// in the families `listen_v4` / `listen_v6` enable, and send
+    /// everything from them (peers, trackers, web seeds, DHT); followed as
+    /// they change. With no address (a VPN down) only loopback is used, so
+    /// nothing leaves through another interface.
     /// `null` = the `listen_v4` / `listen_v6` addresses.
     listen_interface: Option<String> = None, nullable = true;
     /// Turn the alternative limits on and off by the clock; `null` = only

@@ -167,10 +167,11 @@ crates/urtorrentd/src/
     preview.rs          metadata previews (fetchMetadata / saveMetadata)
     watched.rs          watch folders (scan_dirs)
     net.rs              cookie jar, tracker list from a URL, following listen_interface
-  rss/                  RSS: feeds, articles, rules (mod.rs), SQL (db.rs), documents (parse.rs),
-                        rule matching (rules.rs)
+    filesearch.rs       the file-path index behind the file search
     events.rs           the single event pump (4.4)
     tick.rs             activity tracking, share limits, periodic flushes
+  rss/                  RSS: feeds, articles, rules (mod.rs), SQL (db.rs), documents (parse.rs),
+                        rule matching (rules.rs)
   api/                  axum handlers, one module per feature group; guard.rs = auth
   model.rs              every request / response type (ToSchema)
   settings.rs           Settings / SettingsPatch from one field list, live apply
@@ -192,7 +193,7 @@ docs/adr/               design decisions
 ```
 
 Depend on the facade only: `urtorrent = { path = "../urtorrent/crates/urtorrent", version =
-"0.13.2" }` during development (the version is the oldest library release the daemon is
+"0.13.4" }` during development (the version is the oldest library release the daemon is
 tested against; raise it when the daemon starts using something newer). CI checks both repos out side by side. Switch to a pinned git revision or a
 crates.io version once one is published. The library is `0.x`, so a minor bump is
 breaking: pin the minor. The facade re-exports what the daemon needs, including
@@ -255,8 +256,10 @@ add, and `Profile` for identity.
   activity times, error kind. Never answer a list endpoint with one `status(id)` or
   `trackers(id)` per torrent: urtorrent handles 10 000 torrents in a session, and the
   daemon must not be the bottleneck.
-- Two caches remain, both changed only by edits: tracker URLs (for list rows' magnet
-  links) and the content path. Wanting a field in `statuses()` is a `docs/gaps.md` entry,
+- Three caches remain, all changed only by edits: tracker URLs (for list rows' magnet
+  links and the tracker-host search), the content path, and every torrent's file paths
+  (the file search, `filesearch.rs`; dropped on renames, layouts, the suffix and
+  metadata arriving). Wanting a field in `statuses()` is a `docs/gaps.md` entry,
   not an N+1 loop.
 - **One** task consumes `Session::events()`. It updates caches, feeds the main and peer
   logs (`PeerBanned`), stores magnets' metadata, saves resume data after checks and
@@ -503,7 +506,9 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
    (`tests/previews.rs`); webhooks are delivered to a local receiver that checks the
    signatures (`tests/webhooks.rs`); RSS reads a local feed server whose feed changes
    under it (`tests/rss.rs`); the scheduler and watch folders run on a real daemon
-   (`tests/automation.rs`).
+   (`tests/automation.rs`); search covers renames and removals (`tests/search.rs`);
+   announces and web-seed requests leave from the listen address, before and after a
+   live change (`tests/binding.rs`).
 4. **Schema** (`tests/openapi.rs`, `cargo xtask sdk`). The committed `openapi.json` is
    current, every `$ref` resolves, operation ids are unique, errors are typed; a
    TypeScript client generated from it type-checks, and wrong calls do not.
@@ -547,7 +552,10 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
 **0.8.0** adds metadata previews and webhooks (run-on-completion as HTTP calls, ADR 0006).
 **0.9.0** adds the alternative-limits scheduler and watch folders, tested with urtorrent
 0.13.3. **0.10.0** adds RSS and the client data store. **0.11.0** does the remaining "planned"
-rows: every item of the checklist is now done or unsupported with its reason.
+rows: every item of the checklist is now done or unsupported with its reason. **0.12.0**
+adds search: the list by name, category, tag, tracker host or info-hash prefix, and
+file names across torrents; it requires urtorrent 0.13.4, which closed the last open gap
+(HTTP trackers and web seeds leave from the listen address).
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage

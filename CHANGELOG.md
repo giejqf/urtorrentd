@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-09-24
+
+Search over the managed torrents.
+
+### Added
+
+- `GET /torrents?search=`: words that must all match the name, category,
+  a tag, any tracker's host, or (6+ hex digits) the start of the info-hash;
+  `*` and `?` wildcards, case ignored. Combines with the other filters.
+- `GET /torrents/files?search=`: file names across every torrent (or one,
+  `hash`), paged, with each file's torrent, index, size, progress and
+  priority. The daemon keeps the file paths in memory, so a search does not
+  ask the engine for every torrent's files.
+
+### Changed
+
+- Requires urtorrent 0.13.4: HTTP(S) tracker announces and web-seed
+  downloads now leave from the listen address (and fail while it is gone),
+  and peer connections follow a live `listen_v4` / `listen_v6` /
+  `listen_interface` change. `listen_interface` on a VPN interface keeps
+  all of the daemon's torrent traffic on it; `docs/gaps.md` has no open
+  item.
+
+### Fixed
+
+- A folder rename or incomplete-file suffix pass that failed part way now
+  drops the cached content path, so later reads see the renames that did
+  happen.
+
 ## [0.11.0] - 2026-09-24
 
 The checklist's remaining "planned" rows: every qBittorrent WebAPI endpoint

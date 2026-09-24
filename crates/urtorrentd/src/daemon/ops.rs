@@ -154,6 +154,7 @@ impl Daemon {
             }
             self.lifecycle_with(hash, TimelineKind::Removed, None, summary);
         }
+        self.forget_files(&hash);
         let _g = self.persist_lock.lock().await;
         let (store, h) = (self.store.clone(), hex(&hash));
         crate::util::blocking(move || store.delete_torrent(&h)).await?;
@@ -601,17 +602,24 @@ impl Daemon {
         if moves.is_empty() {
             return Err(ApiError::not_found(format!("no folder {old:?}")));
         }
+        // Some files may have moved even when a later rename fails.
+        let mut r = Ok(());
         for (i, path) in moves {
-            self.session.rename_file(id, i, path).await?;
+            r = self.session.rename_file(id, i, path).await;
+            if r.is_err() {
+                break;
+            }
         }
         self.invalidate_content(hash);
-        Ok(())
+        Ok(r?)
     }
 
+    /// The torrent's file paths changed.
     pub(crate) fn invalidate_content(&self, hash: InfoHash) {
         if let Some(e) = self.state().torrents.get_mut(&hash) {
             e.content = None;
         }
+        self.invalidate_files(&hash);
     }
 
     pub(crate) fn invalidate_trackers(&self, hash: InfoHash) {
