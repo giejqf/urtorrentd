@@ -103,6 +103,17 @@ export async function demo(): Promise<void> {
     await api.POST("/api/v1/torrents", { body: { urls: [hash], options: { category: "music" } } });
   }
 
+  // The alternative-limits schedule and watch folders are settings.
+  await api.PATCH("/api/v1/settings", {
+    body: {
+      alt_speed_schedule: { from: "08:00", to: "23:30", days: ["mon", "fri"], time_zone: "Europe/Berlin" },
+      watch_folders: [{ path: "/srv/watch", recursive: true, after_add: "delete", options: { category: "tv" } }],
+    },
+  });
+  // @ts-expect-error: not a day.
+  const badDay: Schemas["Weekday"] = "funday";
+  void badDay;
+
   // Webhooks.
   const hook = await api.POST("/api/v1/webhooks", {
     body: { url: "https://media.lan/hook", events: ["finished", "moved"], secret: "s3cret" },

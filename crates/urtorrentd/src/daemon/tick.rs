@@ -11,7 +11,7 @@ use std::time::Duration;
 use urtorrent::{InfoHash, TorrentId, TorrentState as L, TorrentStatus};
 
 use super::{Daemon, Entry, ResumeSave};
-use crate::settings::{Settings, ShareLimitAction};
+use crate::settings::{Settings, SettingsPatch, ShareLimitAction};
 use crate::stats::peers::{PEER_SAMPLE_EVERY, PeerSample};
 use crate::stats::{Flush, Sample};
 use crate::store::{RatioLimit, TimeLimit};
@@ -45,6 +45,8 @@ pub(crate) async fn run(daemon: Weak<Daemon>) {
         }
         d.scrape_due();
         d.expire_previews().await;
+        d.apply_schedule().await;
+        d.scan_watch_folders().await;
         d.tick_once().await;
         d.save_resume(ResumeSave::Due).await;
         if let Err(e) = d.flush_records().await {
@@ -110,6 +112,42 @@ fn share_limit_reached(
 }
 
 impl Daemon {
+    /// The alternative-limits scheduler: at each boundary of the window
+    /// (and at the first look), switch the alternative limits to match.
+    /// A switch by hand in between holds until the next boundary.
+    async fn apply_schedule(self: &Arc<Self>) {
+        let s = self.settings();
+        let Some(schedule) = s.alt_speed_schedule else {
+            self.state().scheduled = None;
+            return;
+        };
+        let open = match schedule.contains(jiff::Timestamp::now()) {
+            Ok(open) => open,
+            Err(e) => {
+                tracing::debug!("alternative-limits schedule: {e}");
+                return;
+            }
+        };
+        let last = self.state().scheduled.replace(open);
+        if last == Some(open) || s.alt_speed_enabled == open {
+            return;
+        }
+        let patch = SettingsPatch {
+            alt_speed_enabled: Some(open),
+            ..Default::default()
+        };
+        match self.update_settings(patch).await {
+            Ok(_) => self.logs.info(format!(
+                "alternative speed limits {} (schedule)",
+                if open { "on" } else { "off" }
+            )),
+            Err(e) => {
+                self.state().scheduled = last;
+                self.logs.warn(format!("alternative-limits schedule: {e}"));
+            }
+        }
+    }
+
     /// Scrape the torrents whose last scrape is older than
     /// `stats_scrape_interval` (off by default), a few per tick, for the
     /// swarm's completed downloads in the statistics.

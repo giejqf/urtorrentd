@@ -62,6 +62,42 @@ harmless.
 Without a `step`, a query uses the finest step kept for its whole range, so
 shortening a retention changes which step long ranges get.
 
+## Alternative limits by the clock
+
+```json
+PATCH /api/v1/settings
+{"alt_speed_schedule": {"from": "08:00", "to": "23:30", "days": ["mon", "tue", "wed", "thu", "fri"], "time_zone": "Europe/Berlin"}}
+```
+
+Inside the window `alt_download_limit` / `alt_upload_limit` are in force.
+The scheduler switches them at the window's start and end (and at the first
+look after a start or a schedule change); a switch by hand
+(`PUT /transfer/alt-speed`) holds until the next boundary, as in
+qBittorrent. A window that ends before it starts (`22:00` to `06:00`) runs
+past midnight and belongs to the day it starts on. Times are local to
+`time_zone` (an IANA name; `null` = the system's zone) and follow daylight
+saving.
+
+## Watch folders
+
+```json
+PATCH /api/v1/settings
+{"watch_folders": [
+  {"path": "/srv/watch/movies", "options": {"category": "movies"}},
+  {"path": "/srv/watch/any", "recursive": true, "after_add": "delete", "options": {"stopped": true}}
+]}
+```
+
+`.torrent` files, and `.magnet` files holding a magnet link, are added with
+the folder's `options` (those of `POST /torrents`). A file is taken once it
+has not changed for 3 seconds, so one still being written is left alone.
+Once added it is renamed to `<name>.added` (or deleted with
+`"after_add": "delete"`); a file that cannot be added is renamed to
+`<name>.rejected` and the reason is in the log. A torrent already in the
+session counts as added. Folders are looked at every 2 seconds; with
+`recursive`, subfolders up to 8 levels deep (hidden entries and symbolic
+links to folders are skipped).
+
 ## Geolocation
 
 Peers are placed by MaxMind DB (`.mmdb`) files you provide; the daemon never
@@ -257,13 +293,13 @@ an API daemon. **unsupported**: with the reason.
 | `save_path_changed_tmm_enabled` | fixed | managed torrents follow the default save path |
 | `save_resume_data_interval` | fixed | the engine saves while torrents change and at shutdown |
 | `save_statistics_interval` | fixed | every minute and at shutdown |
-| `scan_dirs` | planned | watch folders |
-| `schedule_from_hour` | planned | the alternative-limits scheduler |
-| `schedule_from_min` | planned | as above |
-| `schedule_to_hour` | planned | as above |
-| `schedule_to_min` | planned | as above |
-| `scheduler_days` | planned | as above |
-| `scheduler_enabled` | planned | as above |
+| `scan_dirs` | setting | `watch_folders` (each with its own add options; see [Watch folders](#watch-folders)) |
+| `schedule_from_hour` | setting | `alt_speed_schedule.from` (`HH:MM`) |
+| `schedule_from_min` | setting | `alt_speed_schedule.from` |
+| `schedule_to_hour` | setting | `alt_speed_schedule.to` |
+| `schedule_to_min` | setting | `alt_speed_schedule.to` |
+| `scheduler_days` | setting | `alt_speed_schedule.days` (any set of weekdays; empty = every day) |
+| `scheduler_enabled` | setting | `alt_speed_schedule` not `null` |
 | `send_buffer_low_watermark` | fixed | io_uring data path |
 | `send_buffer_watermark` | fixed | as above |
 | `send_buffer_watermark_factor` | fixed | as above |

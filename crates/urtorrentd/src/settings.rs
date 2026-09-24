@@ -110,6 +110,10 @@ settings! {
     alt_upload_limit: Option<u64> = Some(10 * MIB), nullable = true;
     /// Use the alternative limits.
     alt_speed_enabled: bool = false, nullable = false;
+    /// Turn the alternative limits on and off by the clock; `null` = only
+    /// by hand. At the window's start they go on, at its end off; a switch
+    /// by hand in between holds until the next boundary.
+    alt_speed_schedule: Option<AltSpeedSchedule> = None, nullable = true;
     /// Limit how many torrents are active at once (the queue).
     queueing_enabled: bool = false, nullable = false;
     /// Active downloading torrents while queueing; `null` = unlimited.
@@ -133,6 +137,8 @@ settings! {
     incomplete_file_suffix: Option<String> = None, nullable = true;
     /// Put new torrents at the front of the queue.
     add_to_top_of_queue: bool = false, nullable = false;
+    /// Folders whose `.torrent` and `.magnet` files are added (at most 32).
+    watch_folders: Vec<WatchFolder> = Vec::new(), nullable = false;
     /// Allocate content files at full size when they are created.
     preallocate: bool = false, nullable = false;
     /// New torrents use automatic management (save path from their category).
@@ -215,6 +221,140 @@ pub const RESTART_FIELDS: &[&str] = &[
     "disk_thread",
     "zero_copy_send",
 ];
+
+/// A day of the week.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Weekday {
+    /// Monday.
+    Mon,
+    /// Tuesday.
+    Tue,
+    /// Wednesday.
+    Wed,
+    /// Thursday.
+    Thu,
+    /// Friday.
+    Fri,
+    /// Saturday.
+    Sat,
+    /// Sunday.
+    Sun,
+}
+
+/// When the alternative speed limits are on by themselves: from `from` to
+/// `to` (local time) on the given days. A window that ends before it
+/// starts runs past midnight and belongs to the day it starts on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AltSpeedSchedule {
+    /// Start, `HH:MM` (24-hour).
+    pub from: String,
+    /// End, `HH:MM`; earlier than `from` = the next day.
+    pub to: String,
+    /// The days a window starts on; empty (the default) = every day.
+    #[serde(default)]
+    pub days: Vec<Weekday>,
+    /// IANA time zone (`Europe/Berlin`); `null` (the default) = the
+    /// system's.
+    #[serde(default)]
+    pub time_zone: Option<String>,
+}
+
+/// `HH:MM` as minutes after midnight.
+fn minutes(s: &str) -> Option<u32> {
+    let (h, m) = s.split_once(':')?;
+    if h.len() != 2 || m.len() != 2 {
+        return None;
+    }
+    let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
+    (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
+impl Weekday {
+    fn of(d: jiff::civil::Weekday) -> Weekday {
+        use jiff::civil::Weekday as W;
+        match d {
+            W::Monday => Weekday::Mon,
+            W::Tuesday => Weekday::Tue,
+            W::Wednesday => Weekday::Wed,
+            W::Thursday => Weekday::Thu,
+            W::Friday => Weekday::Fri,
+            W::Saturday => Weekday::Sat,
+            W::Sunday => Weekday::Sun,
+        }
+    }
+}
+
+impl AltSpeedSchedule {
+    fn zone(&self) -> Result<jiff::tz::TimeZone, String> {
+        match &self.time_zone {
+            Some(name) => jiff::tz::TimeZone::get(name)
+                .map_err(|e| format!("alt_speed_schedule.time_zone {name:?}: {e}")),
+            None => Ok(jiff::tz::TimeZone::system()),
+        }
+    }
+
+    fn bounds(&self) -> Result<(u32, u32), String> {
+        let from = minutes(&self.from)
+            .ok_or_else(|| format!("alt_speed_schedule.from {:?} is not HH:MM", self.from))?;
+        let to = minutes(&self.to)
+            .ok_or_else(|| format!("alt_speed_schedule.to {:?} is not HH:MM", self.to))?;
+        if from == to {
+            return Err("alt_speed_schedule: from and to are the same time".into());
+        }
+        Ok((from, to))
+    }
+
+    /// Whether the window is open at `t`.
+    pub fn contains(&self, t: jiff::Timestamp) -> Result<bool, String> {
+        let (from, to) = self.bounds()?;
+        let local = t.to_zoned(self.zone()?);
+        let now =
+            u32::from(local.hour().unsigned_abs()) * 60 + u32::from(local.minute().unsigned_abs());
+        let day = local.weekday();
+        let on =
+            |d: jiff::civil::Weekday| self.days.is_empty() || self.days.contains(&Weekday::of(d));
+        Ok(if from < to {
+            on(day) && (from..to).contains(&now)
+        } else {
+            // Past midnight: the evening of a listed day, or the morning
+            // after one.
+            (now >= from && on(day)) || (now < to && on(day.previous()))
+        })
+    }
+}
+
+/// What happens to a watched file once it is added.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AfterAdd {
+    /// Renamed to `<name>.added` (kept, and not picked up again).
+    #[default]
+    Rename,
+    /// Deleted.
+    Delete,
+}
+
+/// A folder whose `.torrent` and `.magnet` files (a magnet link inside) are
+/// added. A file is taken once it has not changed for 3 seconds; one that
+/// cannot be added is renamed to `<name>.rejected` and the reason logged.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WatchFolder {
+    /// The folder (absolute).
+    pub path: String,
+    /// Look in subfolders too (up to 8 levels; symbolic links to folders
+    /// are not followed).
+    #[serde(default)]
+    pub recursive: bool,
+    /// How its torrents are added (as in `POST /torrents`).
+    #[serde(default)]
+    pub options: crate::model::AddOptions,
+    /// What happens to a file once added.
+    #[serde(default)]
+    pub after_add: AfterAdd,
+}
 
 /// The identity peers and trackers see (a urtorrent profile).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -315,6 +455,23 @@ impl Settings {
             && !std::path::Path::new(p).is_absolute()
         {
             return Err("download_path must be an absolute path".into());
+        }
+        if let Some(s) = &self.alt_speed_schedule {
+            s.bounds()?;
+            s.zone()?;
+        }
+        if self.watch_folders.len() > 32 {
+            return Err("watch_folders: 32 at most".into());
+        }
+        for (i, w) in self.watch_folders.iter().enumerate() {
+            if !std::path::Path::new(&w.path).is_absolute() {
+                return Err(format!("watch_folders[{i}].path must be an absolute path"));
+            }
+            if self.watch_folders[..i].iter().any(|o| o.path == w.path) {
+                return Err(format!("watch_folders[{i}]: {} is listed twice", w.path));
+            }
+            crate::daemon::check_add_options(&w.options)
+                .map_err(|e| format!("watch_folders[{i}].options: {}", e.message))?;
         }
         if self.stats_scrape_interval.is_some_and(|s| s < 1800) {
             return Err("stats_scrape_interval must be at least 1800 seconds".into());
@@ -619,5 +776,95 @@ mod tests {
             s.pending_restart(&running),
             vec!["hash_threads".to_string()]
         );
+    }
+
+    fn at(s: &str) -> jiff::Timestamp {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn schedules_open_and_close() {
+        let night = AltSpeedSchedule {
+            from: "22:00".into(),
+            to: "06:00".into(),
+            days: vec![Weekday::Fri],
+            time_zone: Some("UTC".into()),
+        };
+        // 2026-07-03 is a Friday.
+        assert!(night.contains(at("2026-07-03T23:00:00Z")).unwrap());
+        assert!(
+            night.contains(at("2026-07-04T05:59:00Z")).unwrap(),
+            "Friday's night"
+        );
+        assert!(!night.contains(at("2026-07-04T06:00:00Z")).unwrap());
+        assert!(
+            !night.contains(at("2026-07-04T23:00:00Z")).unwrap(),
+            "Saturday"
+        );
+        assert!(
+            !night.contains(at("2026-07-03T05:00:00Z")).unwrap(),
+            "Thursday's night"
+        );
+        let day = AltSpeedSchedule {
+            from: "09:00".into(),
+            to: "17:00".into(),
+            days: Vec::new(),
+            time_zone: Some("UTC".into()),
+        };
+        assert!(day.contains(at("2026-07-05T09:00:00Z")).unwrap());
+        assert!(!day.contains(at("2026-07-05T17:00:00Z")).unwrap());
+        assert!(!day.contains(at("2026-07-05T08:59:59Z")).unwrap());
+        // Local time follows daylight saving: 13:30 UTC is 09:30 in New York
+        // in July (UTC-4) and 08:30 in January (UTC-5).
+        let ny = AltSpeedSchedule {
+            from: "09:00".into(),
+            to: "10:00".into(),
+            days: Vec::new(),
+            time_zone: Some("America/New_York".into()),
+        };
+        assert!(ny.contains(at("2026-07-01T13:30:00Z")).unwrap());
+        assert!(!ny.contains(at("2026-01-15T13:30:00Z")).unwrap());
+    }
+
+    #[test]
+    fn schedules_and_watch_folders_are_checked() {
+        let check = |f: &dyn Fn(&mut Settings)| {
+            let mut s = Settings {
+                save_path: "/srv".into(),
+                ..Settings::default()
+            };
+            f(&mut s);
+            s.validate()
+        };
+        let sched = |from: &str, to: &str, tz: Option<&str>| AltSpeedSchedule {
+            from: from.into(),
+            to: to.into(),
+            days: Vec::new(),
+            time_zone: tz.map(str::to_string),
+        };
+        assert!(check(&|s| s.alt_speed_schedule = Some(sched("22:00", "06:30", None))).is_ok());
+        for bad in [
+            sched("24:00", "06:00", None),
+            sched("9:00", "10:00", None),
+            sched("10:00", "10:00", None),
+            sched("10:00", "11:00", Some("Mars/Olympus")),
+        ] {
+            assert!(
+                check(&|s| s.alt_speed_schedule = Some(bad.clone())).is_err(),
+                "{bad:?}"
+            );
+        }
+        let folder = |p: &str| WatchFolder {
+            path: p.into(),
+            recursive: false,
+            options: Default::default(),
+            after_add: AfterAdd::Rename,
+        };
+        assert!(check(&|s| s.watch_folders = vec![folder("/w/a"), folder("/w/b")]).is_ok());
+        assert!(check(&|s| s.watch_folders = vec![folder("w/a")]).is_err());
+        assert!(check(&|s| s.watch_folders = vec![folder("/w/a"), folder("/w/a")]).is_err());
+        let mut bad = folder("/w/c");
+        bad.options.file_priorities = Some(vec![9]);
+        assert!(check(&|s| s.watch_folders = vec![bad.clone()]).is_err());
     }
 }

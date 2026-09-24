@@ -165,6 +165,7 @@ crates/urtorrentd/src/
     organize.rs         categories, tags, automatic management
     view.rs             list rows, detail, transfer info, caches
     preview.rs          metadata previews (fetchMetadata / saveMetadata)
+    watched.rs          watch folders (scan_dirs)
     events.rs           the single event pump (4.4)
     tick.rs             activity tracking, share limits, periodic flushes
   api/                  axum handlers, one module per feature group; guard.rs = auth
@@ -452,6 +453,18 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
   torrent's list row. Signed (HMAC-SHA256 over `<timestamp>.<body>`), no redirects,
   retried on no answer, 429 and 5xx. Never a program.
 
+### 4.13 Scheduler and watch folders
+
+- **Alternative-limits scheduler** (`alt_speed_schedule`, `AltSpeedSchedule::contains`):
+  the tick compares the window with its last look and switches `alt_speed_enabled`
+  through `update_settings` only at a boundary (or the first look), as qBittorrent does;
+  a switch by hand holds until the next one. Local time via `jiff` (DST included).
+- **Watch folders** (`watch_folders`, `daemon/watched.rs`): scanned on the tick (blocking
+  I/O off the runtime); a file settled for 3 s is read, added through the add pipeline
+  with the folder's options, then renamed `.added` (or deleted) or `.rejected`. These
+  files are the daemon's input, not torrent content: rule 5 does not apply to them. A
+  file whose rename fails is not taken again until it changes.
+
 ## 5. Testing
 
 1. **Unit.** Unit and state-flag derivation, the sync diff engine, request parsing, auth
@@ -508,6 +521,8 @@ server-sent events (4.6). **0.5.0** records statistics (4.11) and aligns with ur
 peer client, source, transport, encryption, IP version and direction, and by category,
 tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed report.
 **0.8.0** adds metadata previews and webhooks (run-on-completion as HTTP calls, ADR 0006).
+**0.9.0** adds the alternative-limits scheduler and watch folders, tested with urtorrent
+0.13.3.
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -528,8 +543,8 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
   0.6.0 geolocation (country and ASN on live peers and in history; done); 0.7.0 breakdowns,
   tracker reliability, idle-seed report, opt-in scrape for completed-download counts (done).
   Later: data-usage caps (needs wire-level counters upstream), Prometheus `/metrics`.
-- **Later, each on request:** the alternative-limits scheduler, RSS, watch folders,
-  notifications (e-mail), HTTPS for the API, the client key-value store. Anything that
+- **Later, each on request:** RSS, notifications (e-mail), HTTPS for the API, the client
+  key-value store. Anything that
   needs a library change lands in
   urtorrent first.
 
@@ -549,7 +564,9 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
   `sha2` (credentials), `getrandom`, `base64`, `rustix` (free space, no `unsafe`),
   `rusqlite` with SQLite compiled in (persistence, ADR 0004), `futures-util` (the
   event stream; already in the tree through axum and tower), `maxminddb` (reading the
-  user's GeoIP files; ISC), `hmac` (webhook signatures; RustCrypto, like `sha2`).
+  user's GeoIP files; ISC), `hmac` (webhook signatures; RustCrypto, like `sha2`), `jiff`
+  (local time and daylight saving for the alternative-limits schedule; the system's time
+  zone database, with a bundled copy for containers without one).
   `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with the library's licence
   allow-list. It does **not** ban `mio` here (4.2).
 - Commands (keep them working forever):

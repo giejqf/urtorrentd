@@ -206,7 +206,7 @@ pub enum ContentLayout {
 }
 
 /// Options for new torrents. Absent fields use the settings' defaults.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddOptions {
     /// Save directory (absolute). Ignored with automatic management.

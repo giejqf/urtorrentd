@@ -13,6 +13,7 @@ mod preview;
 mod suffix;
 mod tick;
 pub(crate) mod view;
+mod watched;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -35,6 +36,7 @@ use crate::sync::SyncState;
 use crate::util::{self, blocking, hex, now, parse_hash};
 use crate::webhooks::{StoredWebhook, Webhooks};
 
+pub(crate) use add::check_options as check_add_options;
 pub use add::{content_renames, decode_base64, parse_metadata};
 pub(crate) use ops::parse_peer_ip;
 
@@ -144,6 +146,9 @@ pub(crate) struct State {
     pub base_totals: Totals,
     /// Metadata previews, by info-hash (not torrents of the session).
     pub previews: HashMap<InfoHash, preview::Preview>,
+    /// Whether the alternative-limits window was open at the last look;
+    /// `None` = not looked yet (the next look applies it).
+    pub scheduled: Option<bool>,
 }
 
 /// Torrents found by a bulk selection, and the hashes not found.
@@ -173,6 +178,8 @@ pub struct Daemon {
     pub(crate) geo: GeoIp,
     /// The webhooks.
     pub(crate) webhooks: Arc<Webhooks>,
+    /// What the watch-folder scans remember.
+    pub(crate) watch: Mutex<watched::WatchState>,
     shutdown_requested: watch::Sender<bool>,
     closed: watch::Sender<bool>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
@@ -275,6 +282,7 @@ impl Daemon {
                 incoming_seen: false,
                 base_totals: totals,
                 previews: HashMap::new(),
+                scheduled: None,
             }),
             ops: tokio::sync::Mutex::new(()),
             persist_lock: tokio::sync::Mutex::new(()),
@@ -286,6 +294,7 @@ impl Daemon {
             stats,
             geo: GeoIp::default(),
             webhooks: Arc::new(webhooks),
+            watch: Mutex::new(watched::WatchState::default()),
             shutdown_requested: watch::channel(false).0,
             closed: watch::channel(false).0,
             tasks: Mutex::new(Vec::new()),
@@ -492,7 +501,13 @@ impl Daemon {
                 new.incomplete_file_suffix.clone(),
             );
         }
-        self.state().settings = new.clone();
+        {
+            let mut st = self.state();
+            if old.alt_speed_schedule != new.alt_speed_schedule {
+                st.scheduled = None;
+            }
+            st.settings = new.clone();
+        }
         for ip in new
             .banned_ips
             .iter()

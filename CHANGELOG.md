@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-09-24
+
+### Added
+
+- **Alternative-limits scheduler** (`alt_speed_schedule`: `from` / `to` as
+  `HH:MM`, weekdays, IANA time zone): the alternative limits go on and off
+  at the window's boundaries, in local time with daylight saving; a switch
+  by hand holds until the next boundary. qBittorrent's `scheduler_*` and
+  `schedule_*` preferences are covered.
+- **Watch folders** (`watch_folders`): `.torrent` and `.magnet` files are
+  added with each folder's add options once they have settled, then
+  renamed to `.added` (or deleted) or, when they cannot be added,
+  `.rejected` with the reason logged; optionally recursive. qBittorrent's
+  `scan_dirs` is covered.
+
+### Changed
+
+- Tested with urtorrent 0.13.3 (a partial seed says `upload_only`, as
+  libtorrent's does); 0.13.2 remains the oldest supported.
+
 ## [0.8.0] - 2026-09-24
 
 ### Added

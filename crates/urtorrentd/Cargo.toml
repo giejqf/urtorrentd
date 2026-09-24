@@ -34,6 +34,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "h
 argon2 = { version = "0.5", features = ["std"] }
 sha2 = "0.10"
 hmac = "0.12"
+jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo", "tzdb-bundle-always"] }
 getrandom = "0.3"
 # .torrent files travel as base64 in JSON bodies.
 base64 = "0.22"

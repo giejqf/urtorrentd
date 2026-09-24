@@ -28,7 +28,7 @@ pub(crate) fn needs_hold(r: &TorrentRecord) -> bool {
 }
 
 /// Largest `.torrent` accepted from a URL.
-const MAX_TORRENT_FILE: usize = 64 * 1024 * 1024;
+pub(super) const MAX_TORRENT_FILE: usize = 64 * 1024 * 1024;
 
 /// Redirects are followed (up to 10), except to a `magnet:` link, which is
 /// returned to the caller as the redirect response.
@@ -104,7 +104,7 @@ pub fn content_renames(files: &[String], layout: ContentLayout) -> Vec<(usize, S
     }
 }
 
-fn parse_metainfo(bytes: Vec<u8>, source_url: Option<String>) -> ApiResult<Parsed> {
+pub(super) fn parse_metainfo(bytes: Vec<u8>, source_url: Option<String>) -> ApiResult<Parsed> {
     let t = Torrent::parse(&bytes).map_err(|e| invalid(format!("not a valid .torrent: {e}")))?;
     let files = t.info.content_files().map(|f| f.path.display()).collect();
     Ok(Parsed {
@@ -117,7 +117,7 @@ fn parse_metainfo(bytes: Vec<u8>, source_url: Option<String>) -> ApiResult<Parse
     })
 }
 
-fn parse_magnet(uri: String, source_url: Option<String>) -> ApiResult<Parsed> {
+pub(super) fn parse_magnet(uri: String, source_url: Option<String>) -> ApiResult<Parsed> {
     let m =
         MagnetLink::parse(&uri).map_err(|e| invalid(format!("not a valid magnet link: {e}")))?;
     Ok(Parsed {
@@ -163,7 +163,7 @@ pub fn decode_base64(s: &str) -> ApiResult<Vec<u8>> {
         .map_err(|e| ApiError::bad_request(format!("invalid base64: {e}")))
 }
 
-fn check_options(o: &AddOptions) -> ApiResult<()> {
+pub(crate) fn check_options(o: &AddOptions) -> ApiResult<()> {
     for (name, p) in [
         ("save_path", &o.save_path),
         ("download_path", &o.download_path),
@@ -291,7 +291,11 @@ impl Daemon {
         parse_metainfo(body, Some(url.to_string()))
     }
 
-    async fn add_one(self: &Arc<Self>, mut p: Parsed, o: &AddOptions) -> ApiResult<AddedTorrent> {
+    pub(super) async fn add_one(
+        self: &Arc<Self>,
+        mut p: Parsed,
+        o: &AddOptions,
+    ) -> ApiResult<AddedTorrent> {
         let _ops = self.ops.lock().await;
         let hash_hex = hex(&p.hash);
         // A preview of this torrent: its metadata saves a second fetch.

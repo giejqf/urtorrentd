@@ -10,7 +10,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.8.0"
+    "version": "0.9.0"
   },
   "paths": {
     "/api/v1/app": {
@@ -9308,6 +9308,14 @@
           }
         }
       },
+      "AfterAdd": {
+        "type": "string",
+        "description": "What happens to a watched file once it is added.",
+        "enum": [
+          "rename",
+          "delete"
+        ]
+      },
       "AllTorrents": {
         "type": "string",
         "description": "The literal `\"all\"`.",
@@ -9327,6 +9335,39 @@
             "description": "Use the alternative limits."
           }
         }
+      },
+      "AltSpeedSchedule": {
+        "type": "object",
+        "description": "When the alternative speed limits are on by themselves: from `from` to\n`to` (local time) on the given days. A window that ends before it\nstarts runs past midnight and belongs to the day it starts on.",
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Start, `HH:MM` (24-hour)."
+          },
+          "to": {
+            "type": "string",
+            "description": "End, `HH:MM`; earlier than `from` = the next day."
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Weekday"
+            },
+            "description": "The days a window starts on; empty (the default) = every day."
+          },
+          "time_zone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IANA time zone (`Europe/Berlin`); `null` (the default) = the\nsystem's."
+          }
+        },
+        "additionalProperties": false
       },
       "ApiKeyResponse": {
         "type": "object",
@@ -11201,6 +11242,7 @@
           "alt_download_limit",
           "alt_upload_limit",
           "alt_speed_enabled",
+          "alt_speed_schedule",
           "queueing_enabled",
           "max_active_downloads",
           "max_active_uploads",
@@ -11211,6 +11253,7 @@
           "add_stopped",
           "incomplete_file_suffix",
           "add_to_top_of_queue",
+          "watch_folders",
           "preallocate",
           "auto_management",
           "add_trackers",
@@ -11414,6 +11457,18 @@
             "description": "Use the alternative limits.",
             "default": false
           },
+          "alt_speed_schedule": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AltSpeedSchedule",
+                "description": "Turn the alternative limits on and off by the clock; `null` = only\nby hand. At the window's start they go on, at its end off; a switch\nby hand in between holds until the next boundary."
+              }
+            ],
+            "default": null
+          },
           "queueing_enabled": {
             "type": "boolean",
             "description": "Limit how many torrents are active at once (the queue).",
@@ -11484,6 +11539,14 @@
             "type": "boolean",
             "description": "Put new torrents at the front of the queue.",
             "default": false
+          },
+          "watch_folders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WatchFolder"
+            },
+            "description": "Folders whose `.torrent` and `.magnet` files are added (at most 32).",
+            "default": []
           },
           "preallocate": {
             "type": "boolean",
@@ -11839,6 +11902,17 @@
             "type": "boolean",
             "description": "Use the alternative limits."
           },
+          "alt_speed_schedule": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AltSpeedSchedule",
+                "description": "Turn the alternative limits on and off by the clock; `null` = only\nby hand. At the window's start they go on, at its end off; a switch\nby hand in between holds until the next boundary."
+              }
+            ]
+          },
           "queueing_enabled": {
             "type": "boolean",
             "description": "Limit how many torrents are active at once (the queue)."
@@ -11899,6 +11973,13 @@
           "add_to_top_of_queue": {
             "type": "boolean",
             "description": "Put new torrents at the front of the queue."
+          },
+          "watch_folders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WatchFolder"
+            },
+            "description": "Folders whose `.torrent` and `.magnet` files are added (at most 32)."
           },
           "preallocate": {
             "type": "boolean",
@@ -14115,6 +14196,32 @@
           }
         }
       },
+      "WatchFolder": {
+        "type": "object",
+        "description": "A folder whose `.torrent` and `.magnet` files (a magnet link inside) are\nadded. A file is taken once it has not changed for 3 seconds; one that\ncannot be added is renamed to `<name>.rejected` and the reason logged.",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The folder (absolute)."
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Look in subfolders too (up to 8 levels; symbolic links to folders\nare not followed)."
+          },
+          "options": {
+            "$ref": "#/components/schemas/AddOptions",
+            "description": "How its torrents are added (as in `POST /torrents`)."
+          },
+          "after_add": {
+            "$ref": "#/components/schemas/AfterAdd",
+            "description": "What happens to a file once added."
+          }
+        },
+        "additionalProperties": false
+      },
       "Webhook": {
         "type": "object",
         "description": "A webhook.",
@@ -14379,6 +14486,19 @@
           }
         },
         "additionalProperties": false
+      },
+      "Weekday": {
+        "type": "string",
+        "description": "A day of the week.",
+        "enum": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri",
+          "sat",
+          "sun"
+        ]
       }
     },
     "securitySchemes": {
