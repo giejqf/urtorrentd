@@ -148,7 +148,7 @@ fn authority_of(url: &str) -> Option<&str> {
 
 /// Whether a browser request comes from another origin than the one it is
 /// sent to (only judged when the browser says where it comes from).
-fn cross_origin(headers: &HeaderMap, host: Option<&str>) -> bool {
+pub(crate) fn cross_origin(headers: &HeaderMap, host: Option<&str>) -> bool {
     let origin = headers
         .get(header::ORIGIN)
         .or_else(|| headers.get(header::REFERER))

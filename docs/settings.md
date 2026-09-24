@@ -373,4 +373,4 @@ an API daemon. **unsupported**: with the reason.
 | `web_ui_session_timeout` | setting | `api_session_timeout` |
 | `web_ui_upnp` | unsupported | no port mapping |
 | `web_ui_use_custom_http_headers_enabled` | unsupported | no web UI is served |
-| `web_ui_username` | setting | `PUT /auth/credentials` |
+| `web_ui_username` | setting | `PUT /auth/credentials` (first run: `POST /auth/setup`) |

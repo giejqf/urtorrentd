@@ -22,7 +22,14 @@ API.
 - Authentication: a login session (`POST /auth/login` sets the
   `urtorrentd_sid` cookie) or an API key (`Authorization: Bearer <key>`).
   Loopback clients and whitelisted address blocks can be exempted in the
-  settings. `POST /auth/login` and `GET /openapi.json` are public.
+  settings. `POST /auth/login`, `GET /auth/status`, `POST /auth/setup` and
+  `GET /openapi.json` are public.
+- First run ([ADR 0007](adr/0007-first-run-setup.md)): while no password is
+  set, `GET /auth/status` answers `{"setup_required": true}` and the first
+  `POST /auth/setup` with `{"username": "me", "password": "..."}` (8
+  characters or more) stores them and logs that client in (`204`, session
+  cookie); later calls get `409 conflict`. Until then the temporary password
+  printed at start works too.
 
 ## Typed clients
 
@@ -291,6 +298,8 @@ be opened, the daemon runs without statistics and `/stats` answers
 | Method | Path | What |
 |---|---|---|
 | POST | `/auth/login` | Log in (public); sets the session cookie |
+| GET | `/auth/status` | Whether first-run setup is still open (public) |
+| POST | `/auth/setup` | First run: choose the user name and password, logged in at once (public; `409` once set) |
 | POST | `/auth/logout` | End the session |
 | PUT | `/auth/credentials` | Change user name and password (ends every session) |
 | POST, DELETE | `/auth/api-key` | Create (rotate) or delete the API key |

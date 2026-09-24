@@ -82,7 +82,8 @@ async fn run(data_dir: PathBuf, api_listen: SocketAddr) -> Result<(), String> {
     if let Some(pw) = daemon.temporary_password() {
         let user = daemon.auth_username();
         println!(
-            "No API password is set. Log in as {user:?} with this temporary password (valid for this run): {pw}"
+            "No API password is set. The first client to call POST {}/auth/setup chooses the credentials; until then, log in as {user:?} with this temporary password (valid for this run): {pw}",
+            api::BASE
         );
     }
     let listener = tokio::net::TcpListener::bind(api_listen)

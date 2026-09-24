@@ -1152,6 +1152,14 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+/// Whether the daemon still waits for its credentials.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AuthStatus {
+    /// No user name and password are set yet: the first
+    /// `POST /auth/setup` sets them.
+    pub setup_required: bool,
+}
+
 /// A new API key (shown once; only its hash is stored).
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ApiKeyResponse {

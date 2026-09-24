@@ -404,7 +404,9 @@ webhooks to any URL. Treat it as a security boundary. The daemon never runs a pr
 - Auth is on by default. Offer both of the reference's schemes: cookie sessions after
   login, and API keys (`Authorization: Bearer`, rotate / delete). Passwords and keys are
   stored as hashes (argon2 for passwords, SHA-256 for API keys), never in plain text. With no password set,
-  generate a temporary one per run and print it. Also provide a session timeout, bans
+  the first caller of `POST /auth/setup` chooses the credentials (`GET /auth/status` says
+  whether setup is open; one caller wins, the claim is atomic; cross-origin refused;
+  ADR 0007), and a temporary password is printed per run until then. Also provide a session timeout, bans
   after repeated login failures, an opt-in localhost bypass and an opt-in subnet
   whitelist.
 - Cookie sessions can be used from browsers, so they get CSRF protection (`Origin` /
@@ -555,7 +557,8 @@ tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed r
 rows: every item of the checklist is now done or unsupported with its reason. **0.12.0**
 adds search: the list by name, category, tag, tracker host or info-hash prefix, and
 file names across torrents; it requires urtorrent 0.13.4, which closed the last open gap
-(HTTP trackers and web seeds leave from the listen address).
+(HTTP trackers and web seeds leave from the listen address). **0.13.0** adds first-run
+setup: the first client chooses the credentials (ADR 0007).
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -652,6 +655,8 @@ file names across torrents; it requires urtorrent 0.13.4, which closed the last 
   torrent events and never runs a program.
 - **No e-mail, no HTTPS in the daemon** (2026-09-24): webhooks notify; a reverse proxy
   terminates TLS.
+- **First-run setup without a code** (2026-09-24, ADR 0007): while no password is stored,
+  the first client of `POST /auth/setup` chooses the credentials.
 
 ### Settled in ADRs (defaults taken while building; revisit with the maintainer if needed)
 

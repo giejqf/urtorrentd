@@ -8,14 +8,14 @@ use std::time::Duration;
 
 use axum::Extension;
 use axum::extract::State;
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
-use super::guard::{ClientIp, Principal};
+use super::guard::{Client, ClientIp, Principal, cross_origin};
 use super::{Json, SESSION_COOKIE, no_content};
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult, ErrorCode};
-use crate::model::{ApiKeyResponse, CredentialsRequest, LoginRequest};
+use crate::model::{ApiKeyResponse, AuthStatus, CredentialsRequest, LoginRequest};
 use crate::store;
 use crate::util::blocking;
 
@@ -63,10 +63,99 @@ pub(crate) async fn login(
     if let Some(ip) = ip {
         d.auth.clear_failures(ip);
     }
+    logged_in(&d, timeout)
+}
+
+/// A new login session, as a `204` that sets its cookie.
+fn logged_in(d: &Daemon, timeout: u64) -> ApiResult<Response> {
     let sid = d.auth.new_session()?;
     let cookie =
         format!("{SESSION_COOKIE}={sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age={timeout}");
     Ok((StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response())
+}
+
+/// Whether the daemon still waits for its credentials (public).
+#[utoipa::path(get, path = "/auth/status", tag = "auth", security(()), responses((status = 200, body = AuthStatus)))]
+pub(crate) async fn auth_status(State(d): State<Arc<Daemon>>) -> Json<AuthStatus> {
+    Json(AuthStatus {
+        setup_required: d.auth.needs_setup(),
+    })
+}
+
+/// First-run setup (public): while no password is set, the first caller
+/// chooses the user name and password and is logged in. Afterwards `409`.
+#[utoipa::path(
+    post, path = "/auth/setup", tag = "auth", security(()),
+    responses(
+        (status = 204, description = "Credentials set and logged in; the `urtorrentd_sid` cookie is set.",
+         headers(("set-cookie" = String, description = "The session cookie."))),
+    )
+)]
+pub(crate) async fn setup_credentials(
+    State(d): State<Arc<Daemon>>,
+    ClientIp(ip): ClientIp,
+    client: Option<Extension<Client>>,
+    headers: HeaderMap,
+    Json(req): Json<CredentialsRequest>,
+) -> ApiResult<Response> {
+    let (csrf, timeout) = {
+        let st = d.state();
+        (
+            st.settings.api_csrf_protection,
+            st.settings.api_session_timeout,
+        )
+    };
+    // No web page may claim the daemon for its visitor's browser.
+    let host = client.and_then(|Extension(c)| c.host);
+    if csrf && cross_origin(&headers, host.as_deref()) {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            ErrorCode::CrossOrigin,
+            "cross-origin request refused",
+        ));
+    }
+    check_credentials(&req)?;
+    let already = || ApiError::conflict("the credentials are already set; log in");
+    if !d.auth.needs_setup() {
+        return Err(already());
+    }
+    let password = req.password;
+    let hash = tokio::task::spawn_blocking(move || crate::auth::hash_password(&password))
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))??;
+    // One caller wins, whatever the interleaving: the claim is atomic.
+    let (creds, before) = d.auth.claim_setup(req.username, hash).ok_or_else(already)?;
+    let s = d.store.clone();
+    let saved = blocking(move || s.save(store::AUTH, &creds)).await;
+    if saved.is_err() {
+        d.auth.restore_credentials(before);
+    }
+    saved?;
+    // The temporary password, and sessions opened with it, end here.
+    d.auth.forget_temporary();
+    d.auth.end_all_sessions();
+    match ip {
+        Some(ip) => d.logs.info(format!(
+            "API credentials created by first-run setup from {ip}"
+        )),
+        None => d.logs.info("API credentials created by first-run setup"),
+    }
+    logged_in(&d, timeout)
+}
+
+fn check_credentials(req: &CredentialsRequest) -> ApiResult<()> {
+    if req.username.trim().is_empty() || req.username.chars().count() > 128 {
+        return Err(ApiError::bad_request(
+            "the user name must be 1 to 128 characters",
+        ));
+    }
+    let n = req.password.chars().count();
+    if !(8..=1024).contains(&n) {
+        return Err(ApiError::bad_request(
+            "the password needs 8 to 1024 characters",
+        ));
+    }
+    Ok(())
 }
 
 /// End this login session.
@@ -88,14 +177,7 @@ pub(crate) async fn set_credentials(
     State(d): State<Arc<Daemon>>,
     Json(req): Json<CredentialsRequest>,
 ) -> ApiResult<StatusCode> {
-    if req.username.trim().is_empty() {
-        return Err(ApiError::bad_request("the user name must not be empty"));
-    }
-    if req.password.chars().count() < 8 {
-        return Err(ApiError::bad_request(
-            "the password needs at least 8 characters",
-        ));
-    }
+    check_credentials(&req)?;
     let hasher = d.clone();
     let creds = tokio::task::spawn_blocking(move || {
         hasher.auth.set_credentials(req.username, &req.password)

@@ -224,6 +224,43 @@ impl Auth {
         self.update(|c| c.api_key_hash = None)
     }
 
+    /// Whether no password is stored yet (first-run setup is open).
+    pub fn needs_setup(&self) -> bool {
+        self.credentials().password_hash.is_none()
+    }
+
+    /// First-run setup: while no password is stored, put `username` and an
+    /// already hashed password in force at once (one caller wins, however
+    /// they interleave), keeping the API key. Returns the credentials to
+    /// persist and those they replaced (for [`Auth::restore_credentials`]
+    /// if persisting fails); `None` once a password is stored.
+    pub fn claim_setup(
+        &self,
+        username: String,
+        hash: String,
+    ) -> Option<(Credentials, Credentials)> {
+        let mut c = self.creds.lock().ok()?;
+        if c.password_hash.is_some() {
+            return None;
+        }
+        let before = c.clone();
+        c.username = username;
+        c.password_hash = Some(hash);
+        Some((c.clone(), before))
+    }
+
+    /// Put earlier credentials back (a setup that could not be persisted).
+    pub fn restore_credentials(&self, creds: Credentials) {
+        self.update(|c| *c = creds);
+    }
+
+    /// The temporary password stops working (credentials are stored).
+    pub fn forget_temporary(&self) {
+        if let Ok(mut t) = self.temporary.lock() {
+            *t = None;
+        }
+    }
+
     /// Replace user name and password. Returns the credentials to persist.
     pub fn set_credentials(
         &self,
@@ -275,6 +312,34 @@ mod tests {
         assert!(!auth.check_api_key("urtd_wrong"));
         auth.delete_api_key();
         assert!(!auth.check_api_key(&key));
+    }
+
+    #[test]
+    fn setup_is_claimed_once() {
+        let a = Auth::new(Credentials::default());
+        let temp = a.ensure_password().unwrap().unwrap();
+        assert!(a.needs_setup());
+        let (creds, before) = a
+            .claim_setup("me".into(), hash_password("long enough").unwrap())
+            .unwrap();
+        assert_eq!(creds.username, "me");
+        // A second claim fails at once, before the first is persisted.
+        assert!(!a.needs_setup());
+        assert!(a.claim_setup("you".into(), "h".into()).is_none());
+        assert!(a.check_login("me", "long enough"));
+        assert!(!a.check_login("admin", &temp));
+        // A setup that could not be persisted is undone: open again, and
+        // the temporary password works.
+        a.restore_credentials(before);
+        assert!(a.needs_setup());
+        assert!(a.check_login("admin", &temp));
+        let (creds, _) = a
+            .claim_setup("you".into(), hash_password("other one").unwrap())
+            .unwrap();
+        a.forget_temporary();
+        assert_eq!(a.credentials(), creds);
+        assert!(a.check_login("you", "other one"));
+        assert!(a.claim_setup("x".into(), "h".into()).is_none());
     }
 
     #[test]

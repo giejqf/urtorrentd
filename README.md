@@ -19,10 +19,14 @@ with `sqlite3 urtorrentd.db ".backup copy.db"`, even while the daemon runs.
 Recorded history (statistics) is in `<data dir>/stats.db`: disposable,
 deleting it loses the history only.
 
-On the first start without a password the daemon prints a temporary one for
-the user `admin`; set a permanent login with
-`PUT /api/v1/auth/credentials`, or while stopped with
-`urtorrentd passwd --username admin` (password on stdin). Requirements are
+Until a password is set, the first client to call
+`POST /api/v1/auth/setup` with a user name and password chooses them and is
+logged in (`GET /api/v1/auth/status` tells a client UI whether setup is
+open); meanwhile the daemon prints a temporary password for the user `admin`
+at every start. Change the login later with `PUT /api/v1/auth/credentials`,
+or while stopped with `urtorrentd passwd --username admin` (password on
+stdin). With `--api-listen` on a reachable address, set the credentials
+before anyone else can. Requirements are
 the library's: Linux 6.1+ with io_uring enabled (containers need a seccomp
 profile that allows it).
 

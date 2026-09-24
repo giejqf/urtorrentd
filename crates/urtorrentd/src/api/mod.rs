@@ -220,7 +220,10 @@ struct ApiDoc;
 
 /// Public routes (no authentication) and protected ones.
 fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
-    let public = OpenApiRouter::new().routes(routes!(auth::login));
+    let public = OpenApiRouter::new()
+        .routes(routes!(auth::login))
+        .routes(routes!(auth::auth_status))
+        .routes(routes!(auth::setup_credentials));
     let protected = OpenApiRouter::new()
         .routes(routes!(auth::logout))
         .routes(routes!(auth::set_credentials))

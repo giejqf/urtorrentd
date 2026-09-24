@@ -13,6 +13,14 @@ type Schemas = components["schemas"];
 const api = createClient<paths>({ baseUrl: "http://127.0.0.1:8080" });
 
 export async function demo(): Promise<void> {
+  const status = await api.GET("/api/v1/auth/status");
+  if (status.data?.setup_required) {
+    const setup = await api.POST("/api/v1/auth/setup", { body: { username: "me", password: "correct horse" } });
+    if (setup.error) {
+      const code: Schemas["ErrorCode"] = setup.error.error.code; // "conflict": someone was first
+      console.log(code);
+    }
+  }
   await api.POST("/api/v1/auth/login", { body: { username: "admin", password: "secret" } });
 
   const { data, error } = await api.GET("/api/v1/torrents", {

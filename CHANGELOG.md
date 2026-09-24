@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-09-24
+
+First-run setup ([ADR 0007](docs/adr/0007-first-run-setup.md)).
+
+### Added
+
+- `POST /auth/setup` (public): while no password is set, the first client
+  chooses the user name and password and is logged in at once; afterwards
+  `409 conflict`. One caller wins however requests interleave; a
+  cross-origin request is refused. The temporary password printed at start
+  still works until then, and ends with its sessions at setup.
+- `GET /auth/status` (public): `setup_required`, so a client UI can show a
+  setup form or a login form.
+
+### Changed
+
+- User names are 1 to 128 characters and passwords 8 to 1024, for
+  `PUT /auth/credentials` as for setup.
+
 ## [0.12.0] - 2026-09-24
 
 Search over the managed torrents.

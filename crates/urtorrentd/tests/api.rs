@@ -368,3 +368,158 @@ async fn openapi_document_is_served() {
     assert!(doc["paths"]["/api/v1/torrents"]["post"].is_object());
     t.stop().await;
 }
+
+/// `POST /auth/setup` with `body`; the status and the session cookie.
+async fn setup(t: &TestDaemon, body: serde_json::Value) -> (StatusCode, Option<String>) {
+    let (s, headers, _) = t
+        .request(
+            req(Method::POST, "/api/v1/auth/setup")
+                .header("content-type", "application/json")
+                .body(json_body(body))
+                .unwrap(),
+        )
+        .await;
+    let cookie = headers
+        .get("set-cookie")
+        .map(|v| v.to_str().unwrap().split(';').next().unwrap().to_string());
+    (s, cookie)
+}
+
+async fn get_with(t: &TestDaemon, path: &str, cookie: &str) -> StatusCode {
+    t.request(
+        req(Method::GET, path)
+            .header("cookie", cookie)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await
+    .0
+}
+
+async fn login(t: &TestDaemon, username: &str, password: &str) -> (StatusCode, Option<String>) {
+    let (s, headers, _) = t
+        .request(
+            req(Method::POST, "/api/v1/auth/login")
+                .header("content-type", "application/json")
+                .body(json_body(
+                    json!({"username": username, "password": password}),
+                ))
+                .unwrap(),
+        )
+        .await;
+    let cookie = headers
+        .get("set-cookie")
+        .map(|v| v.to_str().unwrap().split(';').next().unwrap().to_string());
+    (s, cookie)
+}
+
+#[tokio::test]
+async fn first_run_setup() {
+    let t = TestDaemon::start(88, |s| s.api_bypass_local_auth = false).await;
+    let temp = t.daemon.temporary_password().unwrap().to_string();
+
+    // Public: whether the daemon waits for its credentials.
+    assert_eq!(
+        t.get("/api/v1/auth/status").await,
+        json!({"setup_required": true})
+    );
+    let (s, _) = t.call(Method::GET, "/api/v1/app", None).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    // The temporary password works until then.
+    let (s, temp_cookie) = login(&t, "admin", &temp).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let temp_cookie = temp_cookie.unwrap();
+    assert_eq!(
+        get_with(&t, "/api/v1/app", &temp_cookie).await,
+        StatusCode::OK
+    );
+
+    // Bad input changes nothing.
+    for body in [
+        json!({"username": "", "password": "long enough"}),
+        json!({"username": "  ", "password": "long enough"}),
+        json!({"username": "me", "password": "short"}),
+        json!({"username": "me"}),
+    ] {
+        let (s, _) = setup(&t, body.clone()).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{body}");
+    }
+    // A web page cannot claim the daemon for its visitor's browser.
+    let (s, _, body) = t
+        .request(
+            req(Method::POST, "/api/v1/auth/setup")
+                .header("host", "127.0.0.1:8080")
+                .header("origin", "http://evil.test")
+                .header("content-type", "application/json")
+                .body(json_body(
+                    json!({"username": "evil", "password": "long enough"}),
+                ))
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v["error"]["code"], "cross_origin");
+    assert_eq!(t.get("/api/v1/auth/status").await["setup_required"], true);
+
+    // Two at once: exactly one sets the credentials, and is logged in.
+    let (a, b) = tokio::join!(
+        setup(&t, json!({"username": "me", "password": "correct horse"})),
+        setup(&t, json!({"username": "you", "password": "battery staple"})),
+    );
+    let ((won, cookie), (lost, _), winner, loser) = if a.0 == StatusCode::NO_CONTENT {
+        (a, b, ("me", "correct horse"), ("you", "battery staple"))
+    } else {
+        (b, a, ("you", "battery staple"), ("me", "correct horse"))
+    };
+    assert_eq!(won, StatusCode::NO_CONTENT);
+    assert_eq!(lost, StatusCode::CONFLICT);
+    let cookie = cookie.unwrap();
+    assert_eq!(get_with(&t, "/api/v1/app", &cookie).await, StatusCode::OK);
+    assert_eq!(
+        t.get("/api/v1/auth/status").await,
+        json!({"setup_required": false})
+    );
+
+    // Setup is closed; the temporary password and its session are gone.
+    let (s, _) = setup(&t, json!({"username": "late", "password": "long enough"})).await;
+    assert_eq!(s, StatusCode::CONFLICT);
+    assert_eq!(
+        get_with(&t, "/api/v1/app", &temp_cookie).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(login(&t, "admin", &temp).await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        login(&t, loser.0, loser.1).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        login(&t, winner.0, winner.1).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let (s, _, log) = t
+        .request(
+            req(Method::GET, "/api/v1/log")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let log = String::from_utf8_lossy(&log);
+    assert!(log.contains("first-run setup from 127.0.0.1"), "{log}");
+
+    // The credentials are stored: after a restart there is no setup and no
+    // temporary password.
+    let dir = t.stop().await;
+    let t = TestDaemon::start_in(dir, 88, None).await;
+    assert!(t.daemon.temporary_password().is_none());
+    assert_eq!(t.get("/api/v1/auth/status").await["setup_required"], false);
+    assert_eq!(
+        login(&t, winner.0, winner.1).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let (s, _) = setup(&t, json!({"username": "late", "password": "long enough"})).await;
+    assert_eq!(s, StatusCode::CONFLICT);
+    t.stop().await;
+}
