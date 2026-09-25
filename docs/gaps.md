@@ -15,6 +15,18 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
   up to 60 s early, and says "below 2 KiB/s" rather than claiming the slot
   was released. Wanted: the flag in `TorrentStatus`, then a `slow` field in
   list rows.
+- **A queue position set in one call.** `Session::move_in_queue` takes
+  `QueueMove::{Top, Up, Down, Bottom}`: putting a torrent at a given place
+  (the web UI drags rows in Settings › Queue & share limits) would take one
+  call per step, each re-planning the queue, and other moves could land in
+  between. Wanted: a position set directly, for example
+  `Session::set_queue_position(id, position)` (0 = first, past the end =
+  last, the others shift; one re-plan; `needs_resume_save` on every torrent
+  whose position changed). `QueueMove` is not `#[non_exhaustive]`, so a new
+  method rather than a variant keeps it in a patch release. Then the daemon
+  takes a position in `POST /torrents/queue` and the UI replaces its ↑ / ↓
+  buttons with drag handles (maintainer decision, 2026-09-25). Meanwhile the
+  queue list keeps ↑ / ↓.
 
 ## Resolved upstream
 
