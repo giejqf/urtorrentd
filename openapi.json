@@ -387,6 +387,90 @@
         }
       }
     },
+    "/api/v1/app/restart": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Restart the daemon: shut it down gracefully (trackers are told, state is\nsaved), then the process starts again with the same arguments, so\nsettings that apply after a restart (`restart_required`) take effect.\nThe API is away for the few seconds that takes.",
+        "operationId": "restart",
+        "responses": {
+          "202": {
+            "description": "Restarting."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/app/shutdown": {
       "post": {
         "tags": [
@@ -12268,7 +12352,8 @@
           "geoip",
           "instance_name",
           "listen_addresses",
-          "fetched_trackers"
+          "fetched_trackers",
+          "time_zone"
         ],
         "properties": {
           "version": {
@@ -12344,6 +12429,13 @@
                 "description": "The trackers fetched from `add_trackers_url`; `null` = none set."
               }
             ]
+          },
+          "time_zone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The daemon's system time zone (IANA name): the alternative-limits\nschedule's when it names none. `null` when the system's has no name."
           }
         }
       },

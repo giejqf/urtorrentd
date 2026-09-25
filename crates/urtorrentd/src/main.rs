@@ -109,12 +109,13 @@ fn web_ui(cli: &Cli) -> Result<Option<WebUi>, String> {
     }
 }
 
+/// Run until shut down; `Ok(true)` when the shutdown was a restart.
 async fn run(
     data_dir: PathBuf,
     api_listen: SocketAddr,
     initial_settings: Option<Settings>,
     ui: Option<WebUi>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let daemon = Daemon::start(DaemonConfig {
         data_dir,
         initial_settings,
@@ -144,7 +145,24 @@ async fn run(
     .with_graceful_shutdown(shutdown_signal(daemon.clone()))
     .await;
     daemon.shutdown().await;
-    served.map_err(|e| format!("API server: {e}"))
+    served.map_err(|e| format!("API server: {e}"))?;
+    Ok(daemon.restart_requested())
+}
+
+/// Start again after a restart request: the same program (as it was
+/// invoked, so an upgraded binary is the one that starts), arguments and
+/// environment, in this process. Only returns on failure.
+fn re_exec() -> String {
+    use std::os::unix::process::CommandExt;
+    let mut args = std::env::args_os();
+    let program = args
+        .next()
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_exe().ok())
+        .unwrap_or_default();
+    tracing::info!("restarting");
+    let e = std::process::Command::new(&program).args(args).exec();
+    format!("cannot restart {}: {e}", program.display())
 }
 
 fn passwd(data_dir: PathBuf, username: String) -> Result<(), String> {
@@ -189,13 +207,13 @@ fn main() -> ExitCode {
                 .as_deref()
                 .map(initial_settings)
                 .transpose()?;
-            match tokio::runtime::Builder::new_multi_thread()
+            let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
-            {
-                Ok(rt) => rt.block_on(run(data_dir, cli.api_listen, initial, ui)),
-                Err(e) => Err(format!("cannot start the async runtime: {e}")),
-            }
+                .map_err(|e| format!("cannot start the async runtime: {e}"))?;
+            let restart = rt.block_on(run(data_dir, cli.api_listen, initial, ui))?;
+            drop(rt);
+            if restart { Err(re_exec()) } else { Ok(()) }
         }),
     };
     match result {

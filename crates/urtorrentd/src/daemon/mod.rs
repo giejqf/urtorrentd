@@ -191,6 +191,8 @@ pub struct Daemon {
     /// The file paths the file search looks through.
     pub(crate) file_index: filesearch::FileIndex,
     shutdown_requested: watch::Sender<bool>,
+    /// The shutdown asked for is a restart (`POST /app/restart`).
+    restart: std::sync::atomic::AtomicBool,
     closed: watch::Sender<bool>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
 }
@@ -319,6 +321,7 @@ impl Daemon {
             rss_rules_lock: tokio::sync::Mutex::new(()),
             file_index: filesearch::FileIndex::default(),
             shutdown_requested: watch::channel(false).0,
+            restart: std::sync::atomic::AtomicBool::new(false),
             closed: watch::channel(false).0,
             tasks: Mutex::new(Vec::new()),
         });
@@ -627,6 +630,19 @@ impl Daemon {
     /// signal handler, so open event streams end before the server drains).
     pub fn request_shutdown(&self) {
         let _ = self.shutdown_requested.send(true);
+    }
+
+    /// Ask the process to shut down gracefully and then start again (the
+    /// binary re-executes itself with the same arguments).
+    pub fn request_restart(&self) {
+        self.restart
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.request_shutdown();
+    }
+
+    /// Whether the shutdown asked for is a restart.
+    pub fn restart_requested(&self) -> bool {
+        self.restart.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Watch for a shutdown request (open event streams end on it, so the

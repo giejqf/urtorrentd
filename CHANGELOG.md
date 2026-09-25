@@ -65,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `swarm_leechers`) once the metadata is here, and count connected seeds
   (`seeds`) while fetching.
 
+- `POST /app/restart`: a graceful shutdown, then the same binary starts
+  again in the same process with the same arguments, so settings that
+  apply after a restart take effect without a shell on the machine.
+- `GET /app` has the daemon's system time zone (`time_zone`), the one the
+  alternative-limits schedule uses when it names none.
+
 ### Changed
 
 - The session cookie has no `Max-Age`: it lasts for the browser session,

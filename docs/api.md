@@ -350,8 +350,9 @@ be opened, the daemon runs without statistics and `/stats` answers
 | POST | `/auth/logout` | End the session |
 | PUT | `/auth/credentials` | Change user name and password (ends every session) |
 | POST, DELETE | `/auth/api-key` | Create (rotate) or delete the API key |
-| GET | `/app` | Version, library, pid, start time, data dir, default save path, peer port, settings waiting for a restart |
+| GET | `/app` | Version, library, pid, start time, data dir, default save path, peer port, settings waiting for a restart, the system time zone |
 | POST | `/app/shutdown` | Graceful shutdown |
+| POST | `/app/restart` | Graceful shutdown, then the same binary starts again in the same process (settings in `restart_required` take effect) |
 | GET, PATCH | `/settings` | All settings; change some ([settings.md](settings.md)) |
 | GET | `/fs/directory` | List a directory (for choosing paths) |
 | GET, PUT | `/app/cookies` | The cookie jar for the daemon's own HTTP requests |

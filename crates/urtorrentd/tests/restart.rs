@@ -490,3 +490,102 @@ async fn binary_takes_initial_settings_on_the_first_start_only() {
     assert!(err.contains("unknown field"), "{err}");
     assert!(!dir.path().join("fresh/urtorrentd.db").exists());
 }
+
+#[tokio::test]
+async fn binary_restarts_through_the_api() {
+    common::init_log();
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let file = dir.path().join("initial.json");
+    std::fs::write(
+        &file,
+        json!({
+            "listen_port": 0,
+            "listen_v4": "127.0.0.47",
+            "listen_v6": null,
+            "dht": false,
+            "lsd": false,
+            "dht_bootstrap_nodes": [],
+            "save_path": dir.path().join("downloads"),
+            "api_bypass_local_auth": true,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let port = free_port();
+    let base = format!("http://127.0.0.1:{port}/api/v1");
+    let client = reqwest::Client::new();
+    let mut child = spawn_with(
+        &data,
+        port,
+        &[std::ffi::OsStr::new("--initial-settings"), file.as_os_str()],
+    );
+    wait_api(&client, &base).await;
+    let app = |client: reqwest::Client, base: String| async move {
+        client
+            .get(format!("{base}/app"))
+            .send()
+            .await
+            .ok()?
+            .json::<Value>()
+            .await
+            .ok()
+    };
+    let before = app(client.clone(), base.clone()).await.unwrap();
+    assert!(before.get("time_zone").is_some(), "{before}");
+    // A setting that applies only after a restart.
+    let r = client
+        .patch(format!("{base}/settings"))
+        .json(&json!({"hash_threads": 3}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    let pending = app(client.clone(), base.clone()).await.unwrap();
+    assert_eq!(
+        pending["restart_required"],
+        json!(["hash_threads"]),
+        "{pending}"
+    );
+
+    let r = client
+        .post(format!("{base}/app/restart"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 202);
+    // The same process comes back on the same address, freshly started:
+    // nothing waits for a restart any more (start times are whole seconds,
+    // and the restart may land within the same one).
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let after = loop {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        if let Some(a) = app(client.clone(), base.clone()).await
+            && a["restart_required"] == json!([])
+        {
+            break a;
+        }
+        assert!(Instant::now() < deadline, "the daemon did not come back");
+        assert!(child.try_wait().unwrap().is_none(), "the process exited");
+    };
+    assert_eq!(after["pid"], before["pid"]);
+    assert!(after["started_at"].as_u64() >= before["started_at"].as_u64());
+    assert_eq!(
+        client
+            .get(format!("{base}/settings"))
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()["hash_threads"],
+        3
+    );
+    let r = client
+        .post(format!("{base}/app/shutdown"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 202);
+    assert!(wait_exit(&mut child, 30).await.success());
+}

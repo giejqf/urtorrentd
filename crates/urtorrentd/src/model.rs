@@ -1106,6 +1106,10 @@ pub struct AppInfo {
     /// The trackers fetched from `add_trackers_url`; `null` = none set.
     #[schema(required = true)]
     pub fetched_trackers: Option<FetchedTrackers>,
+    /// The daemon's system time zone (IANA name): the alternative-limits
+    /// schedule's when it names none. `null` when the system's has no name.
+    #[schema(required = true)]
+    pub time_zone: Option<String>,
 }
 
 /// What a directory listing includes.

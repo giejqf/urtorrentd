@@ -7,7 +7,8 @@ The schema documents each field (`Settings`, `SettingsPatch` in
 (`dht_bootstrap_nodes`, `hash_threads`, `max_open_files`, `max_checking`,
 `piece_extent_affinity`, `max_concurrent_announces`, `disk_thread`,
 `zero_copy_send`) apply at the next start and are listed in
-`GET /api/v1/app` → `restart_required` until then.
+`GET /api/v1/app` → `restart_required` until then; `POST /api/v1/app/restart`
+restarts the daemon in place to apply them.
 
 Units are uniform: limits in **bytes per second** (qBittorrent's preferences
 use KiB/s), times in seconds, `null` for unlimited.
@@ -303,9 +304,9 @@ an API daemon. **unsupported**: with the reason.
 | `ip_filter_enabled` | unsupported | IP filter files are a library non-goal; addresses and ranges: `banned_ips`, `banned_ip_ranges` |
 | `ip_filter_path` | unsupported | as above |
 | `ip_filter_trackers` | unsupported | as above |
-| `limit_lan_peers` | fixed | library |
-| `limit_tcp_overhead` | fixed | library |
-| `limit_utp_rate` | fixed | library |
+| `limit_lan_peers` | fixed | library: the limits count every peer, local ones too |
+| `limit_tcp_overhead` | fixed | library: always on, the limits count everything a peer connection sends and receives, protocol messages included |
+| `limit_utp_rate` | fixed | library: always on, µTP peers share the limits with TCP ones |
 | `listen_port` | setting | `listen_port` |
 | `locale` | n/a | a client UI concern |
 | `lsd` | setting | `lsd` |

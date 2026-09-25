@@ -42,7 +42,19 @@ pub(crate) async fn get_app_info(State(d): State<Arc<Daemon>>) -> Json<AppInfo> 
                 .collect()
         },
         fetched_trackers: d.fetched_trackers_info(),
+        time_zone: jiff::tz::TimeZone::system().iana_name().map(str::to_string),
     })
+}
+
+/// Restart the daemon: shut it down gracefully (trackers are told, state is
+/// saved), then the process starts again with the same arguments, so
+/// settings that apply after a restart (`restart_required`) take effect.
+/// The API is away for the few seconds that takes.
+#[utoipa::path(post, path = "/app/restart", tag = "app", responses((status = 202, description = "Restarting.")))]
+pub(crate) async fn restart(State(d): State<Arc<Daemon>>) -> StatusCode {
+    d.logs.info("restart requested through the API");
+    d.request_restart();
+    StatusCode::ACCEPTED
 }
 
 /// Shut the daemon down gracefully (trackers are told, state is saved).
