@@ -3,21 +3,16 @@
 
 // Settings › Queue & share limits, as the design has it: how many torrents
 // run at once, with the queue as it stands against the page's limits (slots
-// held, torrents waiting, moving one up or down), and the default share
-// limits with the seeding torrents closest to one. Edits are a draft saved
-// with one `PATCH /settings`; queue moves happen at once.
+// held, torrents waiting, the order changed by dragging), and the default
+// share limits with the seeding torrents closest to one. Edits are a draft
+// saved with one `PATCH /settings`; queue moves happen at once.
 
-import ArrowDown from "lucide-solid/icons/arrow-down";
-import ArrowUp from "lucide-solid/icons/arrow-up";
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { toast } from "solid-sonner";
 
 import { api, ApiError, type Schemas, unwrap } from "~/api/client";
-import { StatusDot } from "~/components/status-dot";
-import { Button } from "~/components/ui/button";
 import { useLive } from "~/features/shell/live";
 import { formatCount, formatDuration } from "~/lib/format";
-import { stateLook, toneBg } from "~/lib/torrent";
 import { cn } from "~/lib/utils";
 
 import { RowSwitch, Segmented, SettingRow, SettingsGroup, UnitInput, UnitSelect } from "./controls";
@@ -31,6 +26,7 @@ import {
   type QueueDraft,
   type TimeUnit,
 } from "./queue-form";
+import { QueueList } from "./queue-list";
 import { type QueueEntry, queueNow } from "./queue-now";
 import { parseCount } from "./speed-form";
 import { closeness, effectiveLimits, type LimitKind, outlook } from "./share";
@@ -55,8 +51,6 @@ const ACTION_WORDS: Record<Schemas["ShareLimitAction"], string> = {
   remove_with_files: "remove with files",
 };
 
-/** Queue rows shown at most; the rest are counted. */
-const QUEUE_ROWS = 10;
 /** Seeding torrents shown against the limits at most. */
 const SEED_ROWS = 8;
 /** Slot boxes drawn at most. */
@@ -210,14 +204,21 @@ function QueueForm(props: { saved: Schemas["Settings"] }) {
     queue().entries.filter((e) => e.slow && e.holds === null && !e.waiting && e.kind === kind)
       .length;
 
-  const move = async (hash: string, to: Schemas["QueueMoveTo"]) => {
+  const place = async (hash: string, position: number) => {
     try {
-      await unwrap(api.POST("/api/v1/torrents/queue", { body: { hashes: [hash], to } }));
+      await unwrap(
+        api.PUT("/api/v1/torrents/{hash}/queue-position", {
+          params: { path: { hash } },
+          body: { position },
+        }),
+      );
+      return true;
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "The torrent did not move.");
+      return false;
     }
   };
-  const holding = (e: QueueEntry<Row>) => {
+  const holding = (e: QueueEntry<Row>): { text: string; tone: "plain" | "warn" | "wait" } => {
     const slot = e.kind === "download" ? "download slot" : "upload slot";
     if (e.waiting)
       return { text: `waiting for ${e.kind === "download" ? "a" : "an"} ${slot}`, tone: "wait" };
@@ -227,7 +228,7 @@ function QueueForm(props: { saved: Schemas["Settings"] }) {
       const quiet =
         e.row.download_rate === 0 && e.row.upload_rate === 0 && e.row.last_activity !== null
           ? `no data for ${formatDuration(now() - e.row.last_activity)}`
-          : "below 2 KiB/s";
+          : "slow";
       return { text: `${slot} · ${quiet}`, tone: "warn" };
     }
     return { text: slot, tone: "plain" };
@@ -368,89 +369,7 @@ function QueueForm(props: { saved: Schemas["Settings"] }) {
               <p class="m-0 px-4 pb-3 text-sm text-subtle">Nothing is running or waiting.</p>
             }
           >
-            <table class="w-full table-fixed border-collapse text-sm">
-              <colgroup>
-                <col class="w-[50px]" />
-                <col />
-                <col class="w-[130px]" />
-                <col class="w-[200px]" />
-                <col class="w-[76px]" />
-              </colgroup>
-              <thead>
-                <tr class="h-7 border-b border-accent text-xs text-subtle">
-                  <th class="pl-4 text-left font-normal">#</th>
-                  <th class="px-1.5 text-left font-normal">Torrent</th>
-                  <th class="px-1.5 text-left font-normal">State</th>
-                  <th class="px-1.5 text-left font-normal">Holding</th>
-                  <th class="pr-4">
-                    <span class="sr-only">Move</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={queue().entries.slice(0, QUEUE_ROWS)}>
-                  {(e) => {
-                    const look = () => stateLook(e.row);
-                    const h = () => holding(e);
-                    return (
-                      <tr class="h-9 border-b border-accent last:border-b-0">
-                        <td class="pl-4 mono text-subtle">{e.row.queue_position}</td>
-                        <td class={cn("truncate px-1.5", e.waiting && "text-muted-foreground")}>
-                          {e.row.name}
-                        </td>
-                        <td class="px-1.5">
-                          <span class="inline-flex h-5 items-center gap-1.5 rounded-[5px] border border-border bg-muted px-[7px] text-xs font-medium whitespace-nowrap">
-                            <StatusDot class={toneBg[look().tone]} />
-                            {look().label}
-                          </span>
-                        </td>
-                        <td
-                          class={cn(
-                            "truncate px-1.5",
-                            h().tone === "warn"
-                              ? "text-warn"
-                              : h().tone === "wait"
-                                ? "text-muted-foreground"
-                                : "text-subtle",
-                          )}
-                        >
-                          {h().text}
-                        </td>
-                        <td class="pr-4">
-                          <span class="flex justify-end gap-0.5">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              class="size-6"
-                              aria-label={`Move ${e.row.name} up`}
-                              disabled={e.row.queue_position === 0}
-                              onClick={() => void move(e.row.hash, "up")}
-                            >
-                              <ArrowUp class="size-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              class="size-6"
-                              aria-label={`Move ${e.row.name} down`}
-                              disabled={e.row.queue_position >= live.torrents().length - 1}
-                              onClick={() => void move(e.row.hash, "down")}
-                            >
-                              <ArrowDown class="size-3.5" />
-                            </Button>
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  }}
-                </For>
-              </tbody>
-            </table>
-            <Show when={queue().entries.length > QUEUE_ROWS}>
-              <p class="m-0 border-t border-accent px-4 py-2 text-sm text-subtle">
-                {formatCount(queue().entries.length - QUEUE_ROWS)} more further down the queue.
-              </p>
-            </Show>
+            <QueueList entries={queue().entries} holding={holding} onPlace={place} />
           </Show>
         </div>
       </SettingsGroup>

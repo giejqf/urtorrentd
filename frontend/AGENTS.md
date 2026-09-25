@@ -137,8 +137,8 @@ frontend/
                         (form.tsx); Downloads (downloads.tsx; downloads-form.ts, categories,
                         the path flow, paths.ts), Speed (speed.tsx; speed-form.ts, the
                         schedule in schedule.ts, the week chart) and Queue (queue.tsx;
-                        queue-form.ts, the queue's slots in queue-now.ts, share limits in
-                        share.ts); later the other sections,
+                        queue-form.ts, the queue's slots in queue-now.ts, the draggable list
+                        in queue-list.tsx, share limits in share.ts); later the other sections,
                         security (credentials, API key), webhooks, watch folders
       rss/ log/ stats/
   e2e/
@@ -527,8 +527,8 @@ These are the known differences. Resolve each as noted, never by faking.
 | Settings › Downloads: category rows and "Add category" | `/categories` (`PUT` replaces a category, share limits included) | A dialog adds a category, or edits and removes one from its row, at once (not part of the page's draft). Editing reads the category first so its share limits are kept. |
 | Settings › Downloads: an off switch next to a path | One nullable setting (`download_path`, `export_dir`, ...) | The switch sends `null`; the typed path stays in the field, also after saving, so turning it back on brings it back. Typing a path turns the switch on. |
 | Settings › Queue: "Force-started torrents ignore the limits" | The library runs them whatever the limits but charges them a slot (Q26) | "Force-started torrents run whatever the limits, and take a slot." |
-| Settings › Queue: slots held, "slow, still counted", "slot released (slow)", "0 B/s for 6 h" | `TorrentStatus` lacks the queue's own slow flag (`docs/gaps.md`); rows have the rates, `forced`, `queue_position`, `last_activity` | Slots are counted from the live rows by the library's rules. Slowness is read from the rates and says so ("below 2 KiB/s"); "no data for 6h" only when both rates are 0. Slot capacities follow the draft, so an over-full kind shows how many are over before saving. |
-| Settings › Queue: drag handles on the queue rows | `POST /torrents/queue` moves one step (`up`, `down`) or to either end; the library cannot set a position in one call yet (`docs/gaps.md`) | Drag handles replace ↑ / ↓ once the library can (maintainer decision, 2026-09-25); until then ↑ and ↓ on each row. The first 10 running or waiting torrents are listed, then a count. |
+| Settings › Queue: slots held, "slow, still counted", "slot released (slow)", "0 B/s for 6 h" | Rows' `slow` (the queue's own flag, urtorrent 0.13.5), `forced`, `queue_position`, `last_activity` | Slots are counted from the live rows by the library's rules; "no data for 6h" only when both rates are 0. Slot capacities follow the draft, so an over-full kind shows how many are over before saving. |
+| Settings › Queue: drag handles on the queue rows | `PUT /torrents/{hash}/queue-position` (urtorrent 0.13.5: one call, one re-plan) | Drag handles, no ↑ / ↓ (maintainer decision, 2026-09-25). From the keyboard: Space picks a row up, the arrow keys move it, Space drops it, Escape puts it back, each announced. The dropped order shows until the daemon's arrives. The first 10 running or waiting torrents are listed, then a count. |
 | Settings › Queue: "Defaults — any torrent can use its own value or none, from its properties" | A torrent's `share_limits`, then its category's, then the settings (`daemon/tick.rs`) | "Defaults: a category or a torrent can set its own, or none". Rows are tagged `own` or `category` when those win. |
 | Settings › Queue: "ratio at this rate in ~9 d", "no limits (tag keep)" | Rows' `ratio`, `uploaded`, `downloaded`, `completed`, `upload_rate`, `seeding_time`, `last_activity` | The limit reached first if things go on as they are, from the draft's defaults: seeding time is certain, the ratio is an estimate at the current upload rate ("at this rate"), inactive time only while nothing moves. "no limits" without a reason (the API has none). |
 | Settings footer: "libtorrent 2.0.11" | `library` in `GET /app` is urtorrent's version | Show the library we run on. |
@@ -699,8 +699,8 @@ Each milestone ends with its end-to-end tests green.
   category paths, add options, skipped file names, `.torrent` exports, trackers for new public
   torrents with the fetched list), Speed (global and alternative limits, the switch, the
   schedule with its week chart, the connection budget) and Queue & share limits (the limits
-  with the slots they hand out and the queue's order, share limits with the seeding torrents
-  closest to one) as designed. The other sections show
+  with the slots they hand out and the queue's order, reordered by dragging, share limits with
+  the seeding torrents closest to one) as designed. The other sections show
   that they are not built yet.
 - **W5 RSS.** Folders, feeds, articles, and rules with their matches.
 - **W6 Statistics.** Traffic over time, seeding days, rankings, the timeline, places,

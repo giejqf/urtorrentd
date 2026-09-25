@@ -4,10 +4,8 @@
 // The queue as it stands, from the live rows, by the library's rules
 // (urtorrent `engine/queue.rs`, docs/quirks.md Q26): a running torrent holds
 // a download slot until it is complete, then an upload slot; force-started
-// torrents are charged too; a slow one (below 2 KiB/s both ways) holds none
-// unless slow torrents count. The library does not report its own slow
-// flag, so slowness here is read from the rates, which the queue waits 60 s
-// to act on (docs/gaps.md). Pure and tested.
+// torrents are charged too; a slow one (the rows' `slow`: a minute below
+// 2 KiB/s both ways) holds none unless slow torrents count. Pure and tested.
 
 import type { Schemas } from "~/api/client";
 
@@ -17,6 +15,7 @@ type Row = Pick<
   | "name"
   | "state"
   | "stalled"
+  | "slow"
   | "forced"
   | "complete"
   | "queue_position"
@@ -24,9 +23,6 @@ type Row = Pick<
   | "upload_rate"
   | "last_activity"
 >;
-
-/** Below this both ways a torrent is slow (libtorrent `inactive_down_rate`). */
-export const SLOW_RATE = 2048;
 
 const RUNNING: ReadonlySet<Schemas["TorrentState"]> = new Set([
   "metadata",
@@ -42,7 +38,7 @@ export interface QueueEntry<R extends Row = Row> {
   kind: "download" | "upload";
   /** Waiting for a slot (`queued`). */
   waiting: boolean;
-  /** Running below the slow rate both ways. */
+  /** Slow in the queue's sense (the row's `slow`). */
   slow: boolean;
 }
 
@@ -61,7 +57,7 @@ export function queueNow<R extends Row>(rows: readonly R[], countSlow: boolean):
     const waiting = row.state === "queued";
     if (!running && !waiting) continue;
     const kind = row.complete ? "upload" : "download";
-    const slow = running && row.download_rate < SLOW_RATE && row.upload_rate < SLOW_RATE;
+    const slow = running && row.slow;
     const holds = running && (countSlow || !slow) ? kind : null;
     entries.push({ row, holds, kind, waiting, slow });
   }
@@ -75,4 +71,13 @@ export function queueNow<R extends Row>(rows: readonly R[], countSlow: boolean):
       upload: entries.filter((e) => e.waiting && e.kind === "upload").length,
     },
   };
+}
+
+/** `list` with the item at `from` moved to `to` (a drag's preview). */
+export function moved<T>(list: readonly T[], from: number, to: number): T[] {
+  const out = [...list];
+  const [item] = out.splice(from, 1);
+  if (item === undefined) return out;
+  out.splice(Math.max(0, Math.min(to, out.length)), 0, item);
+  return out;
 }

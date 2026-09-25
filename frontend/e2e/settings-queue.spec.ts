@@ -20,8 +20,9 @@ test("queue limits, the slots they hand out, and moving a torrent", async ({
   signedIn: page,
   daemon,
 }) => {
-  // Two downloads with no peer: slow, so they hold a slot only while slow
-  // torrents count.
+  // Two downloads with no peer. The library calls them slow after a minute
+  // and would then free their slots; counting slow torrents keeps the test
+  // the same however long it runs.
   const a = makeTorrent({ name: "first-in-queue.bin", size: 256 * 1024, pieceLength: 65_536 });
   const b = makeTorrent({ name: "second-in-queue.bin", size: 256 * 1024, pieceLength: 65_536 });
   await daemon.api.POST("/api/v1/torrents", { body: { torrents: [a.base64, b.base64] } });
@@ -37,7 +38,7 @@ test("queue limits, the slots they hand out, and moving a torrent", async ({
   const bar = page.getByRole("region", { name: "Unsaved changes" });
   await expect(bar).toContainText("queueing_enabled · max_active_downloads · count_slow_torrents");
   // The picture follows the draft before saving: two hold slots, one is over.
-  await expect(now).toContainText("2 of 1 used · 2 slow · 1 over");
+  await expect(now).toContainText("2 of 1 used · 1 over");
   await expectAccessible(page);
   await page.keyboard.press("Control+s");
   await expect(bar).toBeHidden();
@@ -49,21 +50,44 @@ test("queue limits, the slots they hand out, and moving a torrent", async ({
   });
 
   // The daemon queues the second.
-  await expect(now).toContainText("1 of 1 used · 1 slow · 1 waiting");
+  await expect(now).toContainText("1 of 1 used · 1 waiting");
   const second = page.getByRole("row", { name: /second-in-queue\.bin/ });
   await expect(second).toContainText("waiting for a download slot");
   await expect(second).toContainText("Queued");
 
-  // Up the queue it takes the slot, and the first waits.
-  await page.getByRole("button", { name: "Move second-in-queue.bin up" }).click();
+  // Dragged to the top it takes the slot, and the first waits.
+  expect(await page.getByRole("button", { name: /^Move / }).count()).toBe(0);
+  const grip = page.getByRole("button", { name: "Reorder second-in-queue.bin" });
+  const from = await grip.boundingBox();
+  const to = await page.getByRole("row", { name: /first-in-queue\.bin/ }).boundingBox();
+  if (!from || !to) throw new Error("the rows are not laid out");
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, to.y + to.height / 2, { steps: 8 });
+  await page.mouse.up();
   await expect(second).toContainText("download slot");
+  await expect(second).not.toContainText("waiting");
   await expect(page.getByRole("row", { name: /first-in-queue\.bin/ })).toContainText(
     "waiting for a download slot",
   );
-  const positions = await daemon.api.GET("/api/v1/torrents");
-  expect(Object.fromEntries((positions.data ?? []).map((t) => [t.name, t.queue_position]))).toEqual(
-    { "second-in-queue.bin": 0, "first-in-queue.bin": 1 },
-  );
+  const order = async () =>
+    Object.fromEntries(
+      ((await daemon.api.GET("/api/v1/torrents")).data ?? []).map((t) => [
+        t.name,
+        t.queue_position,
+      ]),
+    );
+  expect(await order()).toEqual({ "second-in-queue.bin": 0, "first-in-queue.bin": 1 });
+
+  // From the keyboard: pick up, move, drop.
+  await page.getByRole("button", { name: "Reorder first-in-queue.bin" }).focus();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Space");
+  await expect(page.getByText("first-in-queue.bin dropped at place 1 of 2.")).toBeAttached();
+  await expect.poll(order).toEqual({ "first-in-queue.bin": 0, "second-in-queue.bin": 1 });
+  await expect(second).toContainText("waiting for a download slot");
+  await expectAccessible(page);
 });
 
 test("share limits in the API's units, against the seeding torrents", async ({

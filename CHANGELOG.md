@@ -58,7 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   torrents, with the fetched list and "Fetch now".
 - Web UI: Settings › Queue & share limits as designed: the queue limits
   with the slots they hand out now (downloading, seeding, slow, waiting,
-  over the limit), the queue's order with moves up and down, and the
+  over the limit), the queue's order, reordered by dragging a row or from
+  the keyboard, and the
   default share limits in days, hours or minutes with the seeding torrents
   closest to a limit and when they get there.
   Screens for statistics, RSS, the log and the other settings sections say

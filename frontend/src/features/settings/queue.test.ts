@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { Schemas } from "~/api/client";
 
 import { diff, draftOf, parseTime, timeText } from "./queue-form";
-import { queueNow } from "./queue-now";
+import { moved, queueNow } from "./queue-now";
 import { closeness, effectiveLimits, outlook } from "./share";
 
 const GLOBAL = { mode: "global" } as const;
@@ -80,6 +80,7 @@ const row = (over: Partial<Schemas["TorrentSummary"]>) =>
     name: "t",
     state: "downloading",
     stalled: false,
+    slow: false,
     forced: false,
     complete: false,
     queue_position: 0,
@@ -93,14 +94,7 @@ describe("the queue now", () => {
   const rows = [
     row({ hash: "c", queue_position: 2, state: "queued" }),
     row({ hash: "a", queue_position: 0 }),
-    row({
-      hash: "s",
-      queue_position: 3,
-      state: "seeding",
-      complete: true,
-      download_rate: 0,
-      upload_rate: 500,
-    }),
+    row({ hash: "s", queue_position: 3, state: "seeding", complete: true, slow: true }),
     row({
       hash: "u",
       queue_position: 1,
@@ -120,6 +114,12 @@ describe("the queue now", () => {
     expect(q.entries.find((e) => e.row.hash === "s")).toMatchObject({ slow: true, holds: null });
     expect(q.waiting).toEqual({ download: 1, upload: 0 });
     expect(queueNow(rows, true).uploads.map((e) => e.row.hash)).toEqual(["u", "s"]);
+  });
+
+  it("previews a drag", () => {
+    expect(moved(["a", "b", "c", "d"], 3, 1)).toEqual(["a", "d", "b", "c"]);
+    expect(moved(["a", "b", "c", "d"], 0, 2)).toEqual(["b", "c", "a", "d"]);
+    expect(moved(["a", "b"], 1, 1)).toEqual(["a", "b"]);
   });
 });
 

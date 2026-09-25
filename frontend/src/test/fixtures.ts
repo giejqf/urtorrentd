@@ -14,6 +14,7 @@ export function torrent(overrides: Partial<TorrentSummary> = {}): TorrentSummary
     name: "ubuntu-24.04.3-desktop-amd64.iso",
     state: "seeding",
     stalled: false,
+    slow: false,
     forced: false,
     complete: true,
     error: null,
