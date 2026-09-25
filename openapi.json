@@ -10200,6 +10200,111 @@
         }
       }
     },
+    "/api/v1/torrents/{hash}/queue-position": {
+      "put": {
+        "tags": [
+          "torrent"
+        ],
+        "summary": "Put the torrent at a place in the queue: 0 is first, a place past the\nend is last, and the torrents in between shift by one. The queue decides\nagain at once which torrents run (`POST /torrents/queue` moves one step\nor to either end).",
+        "operationId": "set_queue_position",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "description": "Info-hash, 40 hex characters.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueuePositionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Moved."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/torrents/{hash}/torrent-file": {
       "get": {
         "tags": [
@@ -14444,6 +14549,22 @@
           "bottom"
         ]
       },
+      "QueuePositionRequest": {
+        "type": "object",
+        "description": "Put a torrent at a place in the queue.",
+        "required": [
+          "position"
+        ],
+        "properties": {
+          "position": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The place: 0 is first; past the end is last.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "QueueRequest": {
         "type": "object",
         "description": "Move torrents in the queue.",
@@ -17154,6 +17275,7 @@
           "name",
           "state",
           "stalled",
+          "slow",
           "forced",
           "complete",
           "error",
@@ -17229,6 +17351,10 @@
           "stalled": {
             "type": "boolean",
             "description": "Running but moving no payload: a download that gets no data, or a\nseed nobody downloads from (clients may call that idle)."
+          },
+          "slow": {
+            "type": "boolean",
+            "description": "Slow in the queue's sense: running for 60 s with both rates below\n2 KiB/s. An automatically queued torrent in this state holds no slot\nunless `count_slow_torrents` is on."
           },
           "forced": {
             "type": "boolean",

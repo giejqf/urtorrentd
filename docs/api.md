@@ -368,6 +368,7 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET | `/previews/{hash}/torrent-file` | A ready preview as a `.torrent` |
 | POST | `/torrents/start`, `/stop`, `/force-start`, `/recheck`, `/reannounce`, `/delete` | Bulk lifecycle |
 | POST | `/torrents/queue` | Move in the queue (top, up, down, bottom) |
+| PUT | `/torrents/{hash}/queue-position` | Put one torrent at a place in the queue (`{"position": 3}`: 0 first, past the end last; the others shift; one re-plan) |
 | POST | `/torrents/download-path` | Move incomplete torrents to a download path, or back |
 | POST | `/torrents/sequential`, `/first-last-piece-priority`, `/limits`, `/share-limits`, `/location`, `/category`, `/tags`, `/auto-management`, `/peers` | Bulk settings and peers |
 | GET, PATCH | `/torrents/{hash}` | Everything about one torrent; change its name or comment |

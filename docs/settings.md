@@ -262,7 +262,7 @@ an API daemon. **unsupported**: with the reason.
 | `disk_io_write_mode` | fixed | io_uring |
 | `disk_queue_size` | fixed | library |
 | `dl_limit` | setting | `download_limit` |
-| `dont_count_slow_torrents` | setting | `count_slow_torrents` (inverted) |
+| `dont_count_slow_torrents` | setting | `count_slow_torrents` (inverted); list rows say which running torrents are slow (`slow`) |
 | `dyndns_domain` | unsupported | dynamic DNS is out of scope |
 | `dyndns_enabled` | unsupported | as above |
 | `dyndns_password` | unsupported | as above |

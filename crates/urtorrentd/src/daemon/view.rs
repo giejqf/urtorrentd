@@ -163,6 +163,7 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
         name,
         state,
         stalled,
+        slow: s.slow,
         forced: running && !s.auto_managed,
         complete: s.complete,
         error: s.error.clone(),

@@ -15,7 +15,8 @@ use crate::daemon::Daemon;
 use crate::error::ApiResult;
 use crate::model::{
     AddTrackersRequest, EditUrlRequest, FileInfo, FilePriorityRequest, PeerInfo, PiecesResponse,
-    RenameRequest, TorrentDetail, TorrentPatch, TrackersResponse, UrlsRequest,
+    QueuePositionRequest, RenameRequest, TorrentDetail, TorrentPatch, TrackersResponse,
+    UrlsRequest,
 };
 
 /// Everything about one torrent.
@@ -37,6 +38,21 @@ pub(crate) async fn patch_torrent(
 ) -> ApiResult<StatusCode> {
     let (h, _) = d.resolve(&p.hash)?;
     d.patch_torrent(h, req).await?;
+    Ok(no_content())
+}
+
+/// Put the torrent at a place in the queue: 0 is first, a place past the
+/// end is last, and the torrents in between shift by one. The queue decides
+/// again at once which torrents run (`POST /torrents/queue` moves one step
+/// or to either end).
+#[utoipa::path(put, path = "/torrents/{hash}/queue-position", tag = "torrent", params(HashPath), responses((status = 204, description = "Moved.")))]
+pub(crate) async fn set_queue_position(
+    State(d): State<Arc<Daemon>>,
+    Path(p): Path<HashPath>,
+    Json(req): Json<QueuePositionRequest>,
+) -> ApiResult<StatusCode> {
+    let (_, id) = d.resolve(&p.hash)?;
+    d.set_queue_position(id, req.position).await?;
     Ok(no_content())
 }
 

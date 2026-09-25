@@ -199,7 +199,7 @@ docs/adr/               design decisions
 ```
 
 Depend on the facade only: `urtorrent = { path = "../urtorrent/crates/urtorrent", version =
-"0.13.4" }` during development (the version is the oldest library release the daemon is
+"0.13.5" }` during development (the version is the oldest library release the daemon is
 tested against; raise it when the daemon starts using something newer). CI checks both repos out side by side. Switch to a pinned git revision or a
 crates.io version once one is published. The library is `0.x`, so a minor bump is
 breaking: pin the minor. The facade re-exports what the daemon needs, including
@@ -577,7 +577,8 @@ rows: every item of the checklist is now done or unsupported with its reason. **
 adds search: the list by name, category, tag, tracker host or info-hash prefix, and
 file names across torrents; it requires urtorrent 0.13.4, which closed the last open gap
 (HTTP trackers and web seeds leave from the listen address). **0.13.0** adds first-run
-setup: the first client chooses the credentials (ADR 0007).
+setup: the first client chooses the credentials (ADR 0007). Unreleased: urtorrent 0.13.5 (the
+queue's slow flag in list rows, a queue position set in one call).
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage

@@ -88,12 +88,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   apply after a restart take effect without a shell on the machine.
 - `GET /app` has the daemon's system time zone (`time_zone`), the one the
   alternative-limits schedule uses when it names none.
+- `PUT /torrents/{hash}/queue-position` puts a torrent at a place in the
+  queue in one call (urtorrent 0.13.5), for clients that reorder by
+  dragging; the queue decides once which torrents run.
+- List rows carry `slow`: running for a minute below 2 KiB/s both ways,
+  the state in which a queued torrent holds no slot unless
+  `count_slow_torrents` (urtorrent 0.13.5).
 - `POST /app/fetched-trackers/refresh` fetches the `add_trackers_url` list
   at once instead of at its daily turn; `fetched_trackers.fetching` in
   `GET /app` says a fetch is under way.
 
 ### Changed
 
+- Requires urtorrent 0.13.5.
 - The session cookie has no `Max-Age`: it lasts for the browser session,
   and the daemon ends login sessions after `api_session_timeout` idle
   seconds. Before, the browser dropped it that long after sign-in even

@@ -176,6 +176,12 @@ impl Daemon {
         Ok(self.session.move_in_queue(id, to).await?)
     }
 
+    /// Put a torrent at a place in the queue (0 first, past the end last).
+    pub(crate) async fn set_queue_position(&self, id: TorrentId, position: u64) -> ApiResult<()> {
+        let at = usize::try_from(position).unwrap_or(usize::MAX);
+        Ok(self.session.set_queue_position(id, at).await?)
+    }
+
     /// Sequential download on or off.
     pub(crate) async fn set_sequential(
         &self,

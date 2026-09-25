@@ -102,6 +102,14 @@ pub enum QueueMoveTo {
     Bottom,
 }
 
+/// Put a torrent at a place in the queue.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct QueuePositionRequest {
+    /// The place: 0 is first; past the end is last.
+    pub position: u64,
+}
+
 /// Move torrents in the queue.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct QueueRequest {
@@ -519,6 +527,10 @@ pub struct TorrentSummary {
     /// Running but moving no payload: a download that gets no data, or a
     /// seed nobody downloads from (clients may call that idle).
     pub stalled: bool,
+    /// Slow in the queue's sense: running for 60 s with both rates below
+    /// 2 KiB/s. An automatically queued torrent in this state holds no slot
+    /// unless `count_slow_torrents` is on.
+    pub slow: bool,
     /// Started regardless of the queue limits.
     pub forced: bool,
     /// Every wanted piece is verified.

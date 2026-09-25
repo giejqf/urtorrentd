@@ -1,35 +1,22 @@
 # What the daemon needs from urtorrent
 
-Things the daemon wants from the library (the `urtorrent` facade, 0.13.4)
+Things the daemon wants from the library (the `urtorrent` facade, 0.13.5)
 that it does not offer or does not do right, with what the daemon does in
 the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 ## Open
 
-- **The queue's slow flag.** A running torrent below 2 KiB/s both ways for
-  60 s holds no queue slot unless `count_slow` (`engine/queue.rs`,
-  `Torrent::is_inactive`), but `TorrentStatus` does not say which torrents
-  are in that state, so no client can tell which running torrents hold a
-  slot. Meanwhile the web UI's queue picture (Settings › Queue & share
-  limits) reads slowness from `download_rate` / `upload_rate`, which can be
-  up to 60 s early, and says "below 2 KiB/s" rather than claiming the slot
-  was released. Wanted: the flag in `TorrentStatus`, then a `slow` field in
-  list rows.
-- **A queue position set in one call.** `Session::move_in_queue` takes
-  `QueueMove::{Top, Up, Down, Bottom}`: putting a torrent at a given place
-  (the web UI drags rows in Settings › Queue & share limits) would take one
-  call per step, each re-planning the queue, and other moves could land in
-  between. Wanted: a position set directly, for example
-  `Session::set_queue_position(id, position)` (0 = first, past the end =
-  last, the others shift; one re-plan; `needs_resume_save` on every torrent
-  whose position changed). `QueueMove` is not `#[non_exhaustive]`, so a new
-  method rather than a variant keeps it in a patch release. Then the daemon
-  takes a position in `POST /torrents/queue` and the UI replaces its ↑ / ↓
-  buttons with drag handles (maintainer decision, 2026-09-25). Meanwhile the
-  queue list keeps ↑ / ↓.
+Nothing.
 
 ## Resolved upstream
 
+- 0.13.5: `TorrentStatus::slow`, the queue's slow torrent (60 s below
+  2 KiB/s both ways, holding no slot unless `count_slow`): list rows carry
+  it as `slow`, and the web UI's queue picture uses it instead of reading
+  the rates. `Session::set_queue_position` puts a torrent at a place in one
+  call and re-plans once: `PUT /torrents/{hash}/queue-position`, and the
+  UI's queue list is reordered by dragging (maintainer decision,
+  2026-09-25) instead of ↑ / ↓ buttons.
 - 0.13.4: HTTP(S) tracker announces and web-seed downloads leave from the
   listen address of their family and fail when it is gone (no fallback to
   the default route), and peer dials follow `set_listen`: `listen_interface`

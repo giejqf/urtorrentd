@@ -264,6 +264,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(torrents::set_auto_management))
         .routes(routes!(torrents::add_peers))
         .routes(routes!(torrent::get_torrent, torrent::patch_torrent))
+        .routes(routes!(torrent::set_queue_position))
         .routes(routes!(torrent::list_files))
         .routes(routes!(torrent::set_file_priority))
         .routes(routes!(torrent::rename_file))

@@ -67,6 +67,43 @@ async fn graceful_restart_restores_everything() {
     assert_eq!(s, StatusCode::OK);
     let (s, _) = t.post("/api/v1/tags", json!({"tags": ["spare"]})).await;
     assert_eq!(s, StatusCode::NO_CONTENT);
+    // One call puts a torrent at a place: past the end is last, then the
+    // second place; the others shift.
+    let put_at = |hash: &str, position: u64| {
+        let path = format!("/api/v1/torrents/{hash}/queue-position");
+        let t = &t;
+        async move {
+            t.call(Method::PUT, &path, Some(json!({ "position": position })))
+                .await
+                .0
+        }
+    };
+    let n = t.get("/api/v1/torrents").await.as_array().unwrap().len();
+    assert_eq!(put_at(&h_seed, 99).await, StatusCode::NO_CONTENT);
+    assert_eq!(t.torrent(&h_seed).await["queue_position"], n - 1);
+    assert_eq!(put_at(&h_seed, 1).await, StatusCode::NO_CONTENT);
+    assert_eq!(t.torrent(&h_seed).await["queue_position"], 1);
+    let mut positions: Vec<u64> = t
+        .get("/api/v1/torrents")
+        .await
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["queue_position"].as_u64().unwrap())
+        .collect();
+    positions.sort_unstable();
+    assert_eq!(
+        positions,
+        (0..n as u64).collect::<Vec<_>>(),
+        "dense positions"
+    );
+    assert_eq!(
+        put_at(&"0".repeat(40), 0).await,
+        StatusCode::NOT_FOUND,
+        "an unknown torrent"
+    );
+    // Slow only after a minute below 2 KiB/s.
+    assert_eq!(t.torrent(&h_seed).await["slow"], false);
     let (s, _) = t
         .post(
             "/api/v1/torrents/queue",
