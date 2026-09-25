@@ -40,6 +40,10 @@ describe("coverage", () => {
       `new EventSource("/api/v1/events")`,
     ];
     expect(isCalled("POST /api/v1/torrents/start", src)).toBe(true);
+    // Another method's call of the same path is not a GET.
+    const post = [`api.POST("/api/v1/torrents", { body })`];
+    expect(isCalled("POST /api/v1/torrents", post)).toBe(true);
+    expect(isCalled("GET /api/v1/torrents", post)).toBe(false);
     expect(isCalled("GET /api/v1/torrents/{hash}/files", src)).toBe(true);
     expect(isCalled("GET /api/v1/events", src)).toBe(true);
     expect(isCalled("GET /api/v1/torrents", src)).toBe(false);

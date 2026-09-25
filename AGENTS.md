@@ -263,7 +263,7 @@ add, and `Profile` for identity.
   `trackers(id)` per torrent: urtorrent handles 10 000 torrents in a session, and the
   daemon must not be the bottleneck.
 - Three caches remain, all changed only by edits: tracker URLs (for list rows' magnet
-  links and the tracker-host search), the content path, and every torrent's file paths
+  links and `tracker_hosts`, the tracker filter and the tracker-host search), the content path, and every torrent's file paths
   (the file search, `filesearch.rs`; dropped on renames, layouts, the suffix and
   metadata arriving). Wanting a field in `statuses()` is a `docs/gaps.md` entry,
   not an N+1 loop.

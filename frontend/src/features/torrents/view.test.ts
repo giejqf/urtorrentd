@@ -13,7 +13,7 @@ import {
   NO_TRACKER,
   sortTorrents,
   TRACKER_DOWN,
-  trackerKey,
+  trackerKeys,
   viewTitle,
 } from "./view";
 
@@ -28,6 +28,7 @@ const a = torrent({
   tags: ["iso", "keep"],
   tracker: "https://bttracker.debian.org:6969/announce",
   trackers_count: 1,
+  tracker_hosts: ["bttracker.debian.org"],
   added_on: 300,
   eta: 192,
   ratio: 0.31,
@@ -42,6 +43,7 @@ const b = torrent({
   tags: [],
   tracker: null,
   trackers_count: 0,
+  tracker_hosts: [],
   added_on: 100,
   eta: null,
   ratio: 6.02,
@@ -56,6 +58,7 @@ const c = torrent({
   tags: ["iso"],
   tracker: null,
   trackers_count: 2,
+  tracker_hosts: ["tracker.archlinux.org", "bttracker.debian.org"],
   added_on: 200,
   eta: null,
   ratio: null,
@@ -71,16 +74,18 @@ const d = torrent({
   tags: [],
   tracker: "udp://tracker.example.org:1337",
   trackers_count: 1,
+  tracker_hosts: ["tracker.example.org"],
   added_on: 400,
 });
 const all = [a, b, c, d];
 
 describe("filters", () => {
   it("files torrents by tracker host, trackerless or not working", () => {
-    expect(trackerKey(a)).toBe("bttracker.debian.org");
-    expect(trackerKey(b)).toBe(NO_TRACKER);
-    expect(trackerKey(c)).toBe(TRACKER_DOWN);
-    expect(trackerKey(d)).toBe("tracker.example.org");
+    expect(trackerKeys(a)).toEqual(["bttracker.debian.org"]);
+    expect(trackerKeys(b)).toEqual([NO_TRACKER]);
+    // Every host of its trackers, and Not working while none works.
+    expect(trackerKeys(c)).toEqual(["tracker.archlinux.org", "bttracker.debian.org", TRACKER_DOWN]);
+    expect(trackerKeys(d)).toEqual(["tracker.example.org"]);
   });
 
   it("combines status, category, tag, tracker and search", () => {
@@ -90,6 +95,9 @@ describe("filters", () => {
     expect(pick({ status: "downloading" })).toEqual(["debian-13.iso", "archlinux.iso"]);
     expect(pick({ status: "queued" })).toEqual(["archlinux.iso"]);
     expect(pick({ status: "stalled" })).toEqual(["Tears of Steel"]);
+    expect(pick({ status: "stalled_seeding" })).toEqual(["Tears of Steel"]);
+    expect(pick({ status: "stalled_downloading" })).toEqual([]);
+    expect(pick({ tracker: "bttracker.debian.org" })).toEqual(["debian-13.iso", "archlinux.iso"]);
     expect(pick({ category: "movies" })).toEqual(["Sintel (2010) 1080p", "Tears of Steel"]);
     expect(pick({ category: "" })).toEqual(["archlinux.iso"]);
     expect(pick({ tag: "iso", status: "downloading" })).toEqual(["debian-13.iso", "archlinux.iso"]);
@@ -104,7 +112,9 @@ describe("filters", () => {
     expect(n.status.seeding).toBe(2);
     expect(n.status.completed).toBe(2);
     expect(n.status.active).toBe(2);
-    expect(n.status.stalled).toBe(1);
+    expect(n.status.stalled_seeding).toBe(1);
+    expect(n.status.stalled_downloading).toBe(0);
+    expect(n.trackers.get("bttracker.debian.org")).toBe(2);
     expect(n.status.queued).toBe(1);
     expect(n.status.errored).toBe(0);
     expect(n.categories.get("movies")).toBe(2);
@@ -132,7 +142,7 @@ describe("order and groups", () => {
   it("groups by state in the design's order, with summed rates", () => {
     const items = listItems(sortTorrents(all, { sort: "name", reverse: false }), true);
     const heads = items.flatMap((i) => (i.kind === "group" ? [i.group.key] : []));
-    expect(heads).toEqual(["downloading", "queued", "seeding", "stalled"]);
+    expect(heads).toEqual(["downloading", "queued", "seeding", "idle"]);
     const first = items[0];
     expect(first?.kind === "group" && [first.count, first.down, first.up]).toEqual([
       1, 8_100_000, 640_000,

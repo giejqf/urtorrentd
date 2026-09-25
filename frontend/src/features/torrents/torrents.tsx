@@ -142,12 +142,10 @@ export default function Torrents() {
   const q = () => search.q?.trim() ?? "";
   const found = createQuery(() => ({
     queryKey: ["torrents", "search", q()],
-    queryFn: async () => {
-      const rows = await unwrap(
-        api.GET("/api/v1/torrents", { params: { query: { search: q() } } }),
-      );
-      return new Set(rows.map((r) => r.hash));
-    },
+    queryFn: async () =>
+      new Set(
+        await unwrap(api.GET("/api/v1/torrents/hashes", { params: { query: { search: q() } } })),
+      ),
     enabled: q() !== "",
     refetchInterval: 5_000,
     placeholderData: keepPreviousData,

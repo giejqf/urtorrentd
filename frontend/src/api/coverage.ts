@@ -38,14 +38,15 @@ function escape(s: string): string {
 
 /**
  * Whether the sources call an operation: `api.POST("/api/v1/...")` for any
- * method, and for `GET` any quoted occurrence of the path (an `EventSource`
- * or `fetch` URL).
+ * method, and for `GET` any other quoted occurrence of the path too (an
+ * `EventSource` or `fetch` URL, a link), unless it is another method's call.
  */
 export function isCalled(op: string, sources: readonly string[]): boolean {
   const [method = "", path = ""] = op.split(" ");
   const quoted = `["'\`]${escape(path)}["'\`]`;
   const call = new RegExp(`\\b${method}\\(\\s*${quoted}`);
-  const any = new RegExp(quoted);
+  // A GET's path anywhere, but not as the path of another method's call.
+  const any = new RegExp(`(?<!\\b(?:POST|PUT|PATCH|DELETE)\\(\\s*)${quoted}`);
   return sources.some((s) => call.test(s) || (method === "GET" && any.test(s)));
 }
 

@@ -48,12 +48,15 @@ describe("stateLook", () => {
     }
   });
 
-  it("shows stalled downloads and seeds as Stalled", () => {
+  it("shows stalled downloads as Stalled and seeds nobody downloads as Idle", () => {
     expect(stateLook(t("downloading", { stalled: true }))).toMatchObject({
       group: "stalled",
       label: "Stalled",
     });
-    expect(stateLook(t("seeding", { stalled: true })).group).toBe("stalled");
+    expect(stateLook(t("seeding", { stalled: true }))).toMatchObject({
+      group: "idle",
+      label: "Idle",
+    });
     expect(stateLook(t("seeding")).group).toBe("seeding");
     expect(stateLook(t("checking_queued"))).toMatchObject({
       group: "checking",

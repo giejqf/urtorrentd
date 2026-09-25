@@ -32,11 +32,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tracker with counts, the daemon's search, keyboard selection and bulk
   actions, a detail panel (properties, category and tag editing, pieces and
   availability, transfer, trackers), adding by link or `.torrent` file,
-  and deleting with or without files. Live through the event stream.
+  and deleting with or without files. Live through the event stream. A
+  seed nobody downloads from shows as Idle; only a download that gets no
+  data shows as Stalled.
   Screens for statistics, RSS, the log and settings say they are still to
   come.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and
   `cargo xtask dist` (a release binary with the UI built in).
+
+- List rows (`GET /torrents`, the event stream) carry `tracker_hosts`: the
+  host of every configured tracker, working or not (never the URLs, which
+  can carry passkeys). `GET /torrents?tracker=<host>` filters by it (`""`:
+  torrents without trackers).
+- `GET /torrents/hashes`: the info-hashes of the list, with the same
+  filters, search, sorting and paging as `GET /torrents`, for clients that
+  keep the rows from the event stream.
+
+### Changed
+
+- The session cookie has no `Max-Age`: it lasts for the browser session,
+  and the daemon ends login sessions after `api_session_timeout` idle
+  seconds. Before, the browser dropped it that long after sign-in even
+  while the user was active.
+- An event stream opened with a login session keeps the session alive while
+  open, and ends when the session ends (sign-out, new credentials, expiry).
+  Before, a signed-out page kept receiving updates on a stream it had open.
 
 ### Security
 

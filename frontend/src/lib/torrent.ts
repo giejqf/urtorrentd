@@ -12,11 +12,12 @@ type TorrentFilter = Schemas["TorrentFilter"];
 type TorrentErrorKind = Schemas["TorrentErrorKind"];
 
 /** A state colour; `toneBg` / `toneText` hold its classes. */
-export type Tone = "brand" | "ok" | "warn" | "muted" | "subtle" | "danger";
+export type Tone = "brand" | "ok" | "idle" | "warn" | "muted" | "subtle" | "danger";
 
 export const toneBg: Record<Tone, string> = {
   brand: "bg-brand",
   ok: "bg-ok",
+  idle: "bg-ok/45",
   warn: "bg-warn",
   muted: "bg-muted-foreground",
   subtle: "bg-subtle",
@@ -26,6 +27,7 @@ export const toneBg: Record<Tone, string> = {
 export const toneText: Record<Tone, string> = {
   brand: "text-brand",
   ok: "text-ok",
+  idle: "text-muted-foreground",
   warn: "text-warn",
   muted: "text-muted-foreground",
   subtle: "text-subtle",
@@ -40,6 +42,7 @@ export type GroupKey =
   | "moving"
   | "queued"
   | "seeding"
+  | "idle"
   | "stalled"
   | "stopped"
   | "held"
@@ -59,6 +62,7 @@ export const GROUPS: readonly Group[] = [
   { key: "moving", label: "Moving", tone: "warn" },
   { key: "queued", label: "Queued", tone: "muted" },
   { key: "seeding", label: "Seeding", tone: "ok" },
+  { key: "idle", label: "Idle", tone: "idle" },
   { key: "stalled", label: "Stalled", tone: "muted" },
   { key: "stopped", label: "Stopped", tone: "subtle" },
   { key: "held", label: "Held", tone: "muted" },
@@ -88,10 +92,16 @@ const STATES: Record<TorrentState, StateLook> = {
 };
 
 const STALLED: StateLook = { group: "stalled", label: "Stalled", tone: "muted" };
+const IDLE: StateLook = { group: "idle", label: "Idle", tone: "idle" };
 
-/** A torrent's look: `stalled` turns a running download or seed into Stalled. */
+/**
+ * A torrent's look. The daemon's `stalled` means "running but moving no
+ * payload": for a download that is a problem (Stalled: no data arrives),
+ * for a seed it is normal (Idle: nobody is downloading from it).
+ */
 export function stateLook(t: Pick<TorrentSummary, "state" | "stalled">): StateLook {
-  if (t.stalled && (t.state === "downloading" || t.state === "seeding")) return STALLED;
+  if (t.stalled && t.state === "downloading") return STALLED;
+  if (t.stalled && t.state === "seeding") return IDLE;
   return STATES[t.state];
 }
 

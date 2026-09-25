@@ -6,7 +6,7 @@
 // live store in single passes. Pure functions, tested without a DOM.
 
 import type { Schemas } from "~/api/client";
-import { filterMatches, GROUPS, type Group, stateLook, trackerHost } from "~/lib/torrent";
+import { filterMatches, GROUPS, type Group, stateLook } from "~/lib/torrent";
 
 type TorrentSummary = Schemas["TorrentSummary"];
 type TorrentFilter = Schemas["TorrentFilter"];
@@ -37,10 +37,16 @@ export const NO_FILTER: ListFilter = {
   search: null,
 };
 
-/** The tracker a torrent is listed under: its working tracker's host. */
-export function trackerKey(t: Pick<TorrentSummary, "tracker" | "trackers_count">): string {
-  if (t.trackers_count === 0) return NO_TRACKER;
-  return trackerHost(t.tracker) ?? TRACKER_DOWN;
+/**
+ * The tracker entries a torrent is listed under: the host of each of its
+ * trackers, {@link NO_TRACKER} without any, and {@link TRACKER_DOWN} too
+ * while none of them works.
+ */
+export function trackerKeys(
+  t: Pick<TorrentSummary, "tracker" | "trackers_count" | "tracker_hosts">,
+): string[] {
+  if (t.trackers_count === 0) return [NO_TRACKER];
+  return t.tracker === null ? [...t.tracker_hosts, TRACKER_DOWN] : t.tracker_hosts;
 }
 
 function statusMatches(status: StatusFilter, t: TorrentSummary): boolean {
@@ -51,19 +57,24 @@ export function matches(t: TorrentSummary, f: ListFilter): boolean {
   if (!statusMatches(f.status, t)) return false;
   if (f.category !== null && (t.category ?? "") !== f.category) return false;
   if (f.tag !== null && !t.tags.includes(f.tag)) return false;
-  if (f.tracker !== null && trackerKey(t) !== f.tracker) return false;
+  if (f.tracker !== null && !trackerKeys(t).includes(f.tracker)) return false;
   if (f.search !== null && !f.search.has(t.hash)) return false;
   return true;
 }
 
-/** The sidebar's status filters, in the design's order. */
+/**
+ * The sidebar's status filters, in the design's order. The daemon's
+ * `stalled` filter covers two different things, so the sidebar splits it:
+ * Idle (`stalled_seeding`) and Stalled (`stalled_downloading`).
+ */
 export const STATUS_FILTERS: readonly StatusFilter[] = [
   "all",
   "downloading",
   "seeding",
   "completed",
   "active",
-  "stalled",
+  "stalled_seeding",
+  "stalled_downloading",
   "queued",
   "stopped",
   "checking",
@@ -76,7 +87,7 @@ export interface Counts {
   /** By category name; `""` counts torrents without one. */
   categories: Map<string, number>;
   tags: Map<string, number>;
-  /** By {@link trackerKey}. */
+  /** By {@link trackerKeys}. */
   trackers: Map<string, number>;
 }
 
@@ -95,7 +106,7 @@ export function countAll(torrents: readonly TorrentSummary[]): Counts {
     for (const s of STATUS_FILTERS) if (statusMatches(s, t)) status[s] += 1;
     bump(categories, t.category ?? "");
     for (const tag of t.tags) bump(tags, tag);
-    bump(trackers, trackerKey(t));
+    for (const key of trackerKeys(t)) bump(trackers, key);
   }
   return { status, categories, tags, trackers };
 }

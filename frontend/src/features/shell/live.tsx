@@ -38,7 +38,7 @@ export const LiveProvider: ParentComponent = (props) => {
     onUpdate: (u) => applySync(setState, u),
     onConnection: (c) => {
       setConnection(c);
-      if (c === "signed_out") void auth.refresh();
+      if (c === "signed_out") void auth.sessionEnded();
     },
   });
   onCleanup(() => stream.close());

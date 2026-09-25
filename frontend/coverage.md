@@ -8,13 +8,14 @@ row whose operation the UI calls.
 
 ## Served by the event stream instead
 
-| Operation                    | Why the UI does not call it                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------------------------- |
-| `GET /api/v1/sync`           | The UI reads the event stream (`GET /api/v1/events`); polling is for scripts.               |
-| `GET /api/v1/transfer`       | The event stream carries the transfer state (`SyncResponse.transfer`).                      |
-| `GET /api/v1/categories`     | The event stream carries the categories; editing them is W3.                                |
-| `GET /api/v1/tags`           | The event stream carries the tags.                                                          |
-| `GET /api/v1/torrents/count` | Counts come from the live store; the E2E suite checks them against `GET /torrents?filter=`. |
+| Operation                    | Why the UI does not call it                                                                           |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/torrents`       | The rows come from the event stream; a search asks `GET /api/v1/torrents/hashes` which of them match. |
+| `GET /api/v1/sync`           | The UI reads the event stream (`GET /api/v1/events`); polling is for scripts.                         |
+| `GET /api/v1/transfer`       | The event stream carries the transfer state (`SyncResponse.transfer`).                                |
+| `GET /api/v1/categories`     | The event stream carries the categories; editing them is W3.                                          |
+| `GET /api/v1/tags`           | The event stream carries the tags.                                                                    |
+| `GET /api/v1/torrents/count` | Counts come from the live store; the E2E suite checks them against `GET /torrents?filter=`.           |
 
 ## W2: adding torrents, the rest
 

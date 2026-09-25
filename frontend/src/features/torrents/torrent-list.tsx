@@ -24,6 +24,7 @@ type TorrentSummary = Schemas["TorrentSummary"];
 const toneStroke: Record<Tone, string> = {
   brand: "stroke-brand",
   ok: "stroke-ok",
+  idle: "stroke-ok/45",
   warn: "stroke-warn",
   muted: "stroke-muted-foreground",
   subtle: "stroke-subtle",

@@ -35,6 +35,8 @@ interface Auth {
   /** Ask the daemon again. */
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** The live stream says the session ended under the open page. */
+  sessionEnded: () => Promise<void>;
   /** The daemon is shutting down at the user's request. */
   stopped: () => void;
 }
@@ -80,6 +82,10 @@ export const AuthProvider: ParentComponent = (props) => {
     async signOut() {
       await unwrap(api.POST("/api/v1/auth/logout")).catch(() => undefined);
       setState({ kind: "signed-out", setupRequired: false, expired: false });
+    },
+    async sessionEnded() {
+      const s = await probe();
+      setState(s.kind === "signed-out" ? { ...s, expired: true } : s);
     },
     stopped() {
       setState({ kind: "unreachable", message: "The daemon is shutting down." });

@@ -85,14 +85,15 @@ test("a real download from a seeder, shown as the daemon reports it", async ({
   const details = page.getByRole("region", { name: "Details of sintel-e2e.bin" });
   await expect(details.getByText(/^100% · ratio/)).toBeVisible({ timeout: 30_000 });
   // Complete and seeding; with no leecher it moves no payload, which the
-  // daemon flags as stalled and the design shows as Stalled.
+  // daemon flags as stalled and the UI shows as Idle (a stalled download
+  // is Stalled).
   await expect(async () => {
     const { data } = await daemon.api.GET("/api/v1/torrents/{hash}", {
       params: { path: { hash: t.hash } },
     });
     expect(data?.state).toBe("seeding");
     await expect(
-      details.getByText(data?.stalled ? "Stalled" : "Seeding", { exact: true }),
+      details.getByText(data?.stalled ? "Idle" : "Seeding", { exact: true }),
     ).toBeVisible({
       timeout: 100,
     });
@@ -120,9 +121,18 @@ test("filters count as the daemon's do; search, keys and bulk actions", async ({
 }) => {
   const add = (hash: string, name: string, options: Record<string, unknown>) =>
     daemon.api.POST("/api/v1/torrents", { body: { urls: [magnet(hash, name)], options } });
-  await add("1".repeat(40), "debian-13.1.0-amd64-DVD-1.iso", { category: "linux", tags: ["iso"] });
+  // Trackers on loopback only (they refuse): the lab never leaves the machine.
+  const tr = (...urls: string[]) => urls.map((u) => `&tr=${encodeURIComponent(u)}`).join("");
+  await add("1".repeat(40), `debian-13.1.0-amd64-DVD-1.iso${tr("http://127.0.0.1:1/announce")}`, {
+    category: "linux",
+    tags: ["iso"],
+  });
   await add("2".repeat(40), "Big Buck Bunny (2008) 4K", { category: "movies", stopped: true });
-  await add("3".repeat(40), "archlinux-2026.09.01-x86_64.iso", { tags: ["iso", "keep"] });
+  await add(
+    "3".repeat(40),
+    `archlinux-2026.09.01-x86_64.iso${tr("http://127.0.0.1:1/announce", "udp://localhost:1/announce")}`,
+    { tags: ["iso", "keep"] },
+  );
   const list = page.getByRole("listbox", { name: "Torrents" });
   await expect(list.getByRole("option")).toHaveCount(3);
 
@@ -134,7 +144,8 @@ test("filters count as the daemon's do; search, keys and bulk actions", async ({
     ["seeding", "Seeding"],
     ["completed", "Completed"],
     ["active", "Active"],
-    ["stalled", "Stalled"],
+    ["stalled_seeding", "Idle"],
+    ["stalled_downloading", "Stalled"],
     ["stopped", "Stopped"],
     ["checking", "Checking"],
     ["errored", "Errored"],
@@ -149,8 +160,27 @@ test("filters count as the daemon's do; search, keys and bulk actions", async ({
     }
   }).toPass({ timeout: 15_000 });
 
-  // Filters narrow the list and name it.
+  // Every tracker host counts its torrents, as the daemon's filter does.
   const sidebar = page.getByRole("complementary", { name: "Sidebar" });
+  const trackers = sidebar.getByRole("region", { name: "Trackers" });
+  for (const [host, label] of [
+    ["127.0.0.1", "127.0.0.1"],
+    ["localhost", "localhost"],
+    ["", "No tracker"],
+  ] as const) {
+    const { data } = await daemon.api.GET("/api/v1/torrents", {
+      params: { query: { tracker: host } },
+    });
+    await expect(
+      trackers.getByRole("button", { name: new RegExp(`^${label}\\s*${data?.length ?? -1}$`) }),
+    ).toBeVisible();
+  }
+  await trackers.getByRole("button", { name: /^127\.0\.0\.1\s*2$/ }).click();
+  await expect(page.getByRole("heading", { name: "All torrents · 127.0.0.1" })).toBeVisible();
+  await expect(list.getByRole("option")).toHaveCount(2);
+  await trackers.getByRole("button", { name: /^127\.0\.0\.1\s*2$/ }).click();
+
+  // Filters narrow the list and name it.
   await sidebar.getByRole("button", { name: /^linux\s*1$/ }).click();
   await expect(page.getByRole("heading", { name: "All torrents · linux" })).toBeVisible();
   await expect(list.getByRole("option")).toHaveCount(1);

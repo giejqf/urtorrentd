@@ -64,6 +64,7 @@ export function torrent(overrides: Partial<TorrentSummary> = {}): TorrentSummary
     pieces_total: 3072,
     tracker: "https://torrent.ubuntu.com/announce",
     trackers_count: 1,
+    tracker_hosts: ["torrent.ubuntu.com"],
     magnet_uri: "magnet:?xt=urn:btih:4f6a1ad0b6a3e1e8b2c9f7d2a5e4b3c1d0f9e8a7",
     comment: null,
     created_by: null,

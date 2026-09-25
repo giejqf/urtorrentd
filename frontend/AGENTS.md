@@ -208,7 +208,7 @@ Unit tests sit next to their code (`format.test.ts`). The root `.gitignore` has
   | API state | Shown as | Colour |
   |---|---|---|
   | `downloading` | Downloading, or Stalled when `stalled` | `--brand` (stalled: `--muted-foreground`) |
-  | `seeding` | Seeding, or Stalled when `stalled` | `--ok` (stalled: `--muted-foreground`) |
+  | `seeding` | Seeding, or Idle when `stalled` (nobody downloads from it: normal, not a problem) | `--ok` (idle: `--ok` at 45 %) |
   | `metadata` | Fetching metadata | `--warn` |
   | `checking_queued`, `checking` | Queued for check, Checking | `--warn` |
   | `moving` | Moving | `--warn` |
@@ -218,16 +218,22 @@ Unit tests sit next to their code (`format.test.ts`). The root `.gitignore` has
   | `error` | Error, with the `error_kind` | `--danger` |
   | `unknown` | Unknown | `--subtle` |
 
-  `forced` adds a "Forced" badge.
+  `forced` adds a "Forced" badge. The daemon's `stalled` filter covers both cases, so the
+  sidebar offers Idle (`stalled_seeding`) and Stalled (`stalled_downloading`) instead; the
+  Filter menu keeps the combined one as "Stalled or idle".
 - **Filters.** The sidebar's status filters are the daemon's `TorrentFilter` values, with the
   daemon's meanings (`filter_matches` in `crates/urtorrentd/src/daemon/view.rs`). Some of these
   meanings are easy to get wrong: Downloading means *not complete*, whatever the state, and
   Stopped includes Held. The E2E suite checks every sidebar count against
   `GET /torrents?filter=`. Queued is a state, not a filter. If the UI offers it, it means
   `state == queued`.
-- **Search** uses the daemon's matching: `GET /torrents?search=` (name, category, tag, tracker
-  host, info-hash prefix) and `GET /torrents/files?search=` for files. Debounce the input, then
-  intersect the returned hashes with the live store. Don't reimplement the matching in the UI.
+- **Search** uses the daemon's matching: `GET /torrents/hashes?search=` (name, category, tag,
+  tracker host, info-hash prefix; the hashes only, since the rows are in the live store) and
+  `GET /torrents/files?search=` for files. Debounce the input, then intersect the returned
+  hashes with the live store. Don't reimplement the matching in the UI.
+- **Sessions.** The daemon ends the event stream when its login session ends, and an open
+  stream keeps the session alive; the live store reports `signed_out` and the page returns to
+  sign-in with "Your session ended".
 - **Sizes** are the wanted totals the daemon reports. File indexes are the daemon's (it never
   lists padding files).
 - **Deleting** always asks for confirmation. Deleting the files as well is a separate choice,
@@ -485,9 +491,9 @@ These are the known differences. Resolve each as noted, never by faking.
 | "Stay signed in on this device" | The session length is the `api_session_timeout` setting. There is no per-login choice. | Leave it out. |
 | No first-run screen | `setup_required` → `POST /auth/setup` (ADR 0007) | A setup card in the sign-in style: user name, and the password (8+ characters) twice. |
 | "seedbox-01 ▾" suggests switching between daemons | One daemon per origin, because the daemon serves the UI | An instance menu: name, version, sign out, shut down. |
-| Eight states | 11 `TorrentState` values plus the `stalled` and `forced` flags | The mapping in 4.4. |
+| Eight states, a finished torrent with no leecher among them as "Stalled" | 11 `TorrentState` values plus the `stalled` and `forced` flags | The mapping in 4.4: a seed nobody downloads from is Idle, only a download that gets no data is Stalled (maintainer decision, 2026-09-25). |
 | One tag per row | Many tags | Show the first tag, then "+n". |
-| Tracker filter by host, including "DHT only" | `TorrentSummary` has only the working tracker (`tracker`, `null` when none works) and `trackers_count`. It does not list every tracker host. | **Gap:** add the tracker hosts to the summary (the daemon already caches tracker URLs, charter 4.4). Until then, group by the working tracker's host, plus "No tracker" for `trackers_count == 0` and "Not working" for the rest. |
+| Tracker filter by host, including "DHT only" | `tracker_hosts` in every list row (added for the UI), `GET /torrents?tracker=` | A torrent counts under each of its trackers' hosts; "No tracker" for `trackers_count == 0`; "Not working" as well while none of its trackers works. |
 | Pieces chart ("terrain") drawn from random noise | `GET /torrents/{hash}/pieces` gives `states`, `availability` and `priorities` per piece | Bin the real data. "Rare" means a missing piece with availability ≤ 1, and the legend says so. |
 | Limits line "↓ ∞ · ↑ 5.0 MB/s · ratio 5.0" | `download_limit`, `upload_limit` (`null` = unlimited), `share_limits` | As shown. Use ∞ only for `null`. |
 | Links to Stats and Add torrent | Not designed yet | Wait for the designs, or build from the tokens (6.1). |

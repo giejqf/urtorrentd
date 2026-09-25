@@ -102,18 +102,17 @@ test("too many failures ban the address", async ({ page }, info) => {
   }
 });
 
-test("a session that ends sends the user back to sign-in", async ({ signedIn: page, daemon }) => {
-  await expect(page.getByRole("heading", { name: "All torrents" })).toBeVisible();
-  // New credentials end every session (PUT /auth/credentials).
+test("a session that ends elsewhere signs the page out, even one that only watches", async ({
+  signedIn: page,
+  daemon,
+}) => {
+  await expect(page.getByRole("status", { name: "Connected to the daemon" })).toBeVisible();
+  // New credentials end every session (PUT /auth/credentials); the daemon
+  // ends the page's event stream with it, and the page notices unprompted.
   const r = await daemon.api.PUT("/api/v1/auth/credentials", {
     body: { username: CREDENTIALS.username, password: CREDENTIALS.password },
   });
   expect(r.response.status).toBe(204);
-  // The next call the page makes finds the session gone.
-  await page.getByRole("button", { name: "Add", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Add torrents" });
-  await dialog.getByLabel("Links").fill("0123456789abcdef0123456789abcdef01234567");
-  await dialog.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page).toHaveURL(/\/sign-in\?next=/);
+  await expect(page).toHaveURL(/\/sign-in\?next=/, { timeout: 15_000 });
   await expect(page.getByText("Your session ended. Sign in again.")).toBeVisible();
 });
