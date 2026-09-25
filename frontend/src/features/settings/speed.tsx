@@ -34,7 +34,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
-import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
   Select,
@@ -289,12 +288,6 @@ function SpeedForm(props: { saved: Schemas["Settings"] }) {
             ? "Not in force now: the alternative limits are."
             : `Uploading at ${formatRate(transfer()?.upload_rate ?? 0)} now against this cap.`,
         )}
-        <SettingRow
-          label="Limits count µTP and protocol overhead"
-          description="Every byte a peer connection sends and receives counts, over TCP or µTP, protocol messages included. The engine always does; it is not a setting."
-        >
-          <Badge>always</Badge>
-        </SettingRow>
       </SettingsGroup>
 
       <SettingsGroup
