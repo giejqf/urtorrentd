@@ -2493,6 +2493,8 @@ pub struct FetchedTrackers {
     /// Why the last fetch failed; `null` = it did not.
     #[schema(required = true)]
     pub error: Option<String>,
+    /// A fetch is under way.
+    pub fetching: bool,
 }
 
 /// A network interface.

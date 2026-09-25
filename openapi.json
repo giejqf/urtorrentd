@@ -293,6 +293,90 @@
         }
       }
     },
+    "/api/v1/app/fetched-trackers/refresh": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Fetch the tracker list of `add_trackers_url` now instead of at its next\nturn (once a day). `GET /app` shows the fetch under way\n(`fetched_trackers.fetching`), then its result. 409 when\n`add_trackers_url` is not set.",
+        "operationId": "refresh_fetched_trackers",
+        "responses": {
+          "202": {
+            "description": "Fetching (or a fetch was under way)."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/app/interfaces": {
       "get": {
         "tags": [
@@ -12853,7 +12937,8 @@
           "url",
           "trackers",
           "fetched",
-          "error"
+          "error",
+          "fetching"
         ],
         "properties": {
           "url": {
@@ -12882,6 +12967,10 @@
               "null"
             ],
             "description": "Why the last fetch failed; `null` = it did not."
+          },
+          "fetching": {
+            "type": "boolean",
+            "description": "A fetch is under way."
           }
         }
       },

@@ -452,6 +452,16 @@ async fn cookies_and_trackers_from_a_url() {
         json!(["http://127.0.0.1:5/announce", "udp://127.0.0.1:6/announce"])
     );
     assert_eq!(hits.load(Ordering::SeqCst), 1);
+    assert_eq!(app["fetched_trackers"]["fetching"], false);
+    // Fetched again when asked, not only once a day.
+    let (s, _) = t
+        .call(Method::POST, "/api/v1/app/fetched-trackers/refresh", None)
+        .await;
+    assert_eq!(s, StatusCode::ACCEPTED);
+    wait_get(&t, "/api/v1/app", "the list again", |v| {
+        v["fetched_trackers"]["fetching"] == false && hits.load(Ordering::SeqCst) == 2
+    })
+    .await;
     let (s, v) = t
         .post(
             "/api/v1/torrents",
@@ -475,5 +485,9 @@ async fn cookies_and_trackers_from_a_url() {
     let (s, _) = patch(&t, json!({"add_trackers_url": null})).await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(t.get("/api/v1/app").await["fetched_trackers"], Value::Null);
+    let (s, v) = t
+        .call(Method::POST, "/api/v1/app/fetched-trackers/refresh", None)
+        .await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
     t.stop().await;
 }

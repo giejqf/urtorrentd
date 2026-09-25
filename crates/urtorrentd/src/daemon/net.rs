@@ -175,11 +175,26 @@ impl Daemon {
             trackers: l.map(|l| l.trackers.clone()).unwrap_or_default(),
             fetched: l.and_then(|l| l.fetched),
             error: l.and_then(|l| l.error.clone()),
+            fetching: l.is_some_and(|l| l.fetching),
         })
     }
 
     /// Fetch the tracker list when it is due (the tick).
     pub(crate) fn tracker_list_tick(self: &Arc<Self>) {
+        self.fetch_tracker_list_if_due(false);
+    }
+
+    /// Fetch the tracker list now, unless a fetch is under way
+    /// (`POST /app/fetched-trackers/refresh`).
+    pub(crate) fn refresh_tracker_list(self: &Arc<Self>) -> ApiResult<()> {
+        if self.settings().add_trackers_url.is_none() {
+            return Err(ApiError::conflict("add_trackers_url is not set"));
+        }
+        self.fetch_tracker_list_if_due(true);
+        Ok(())
+    }
+
+    fn fetch_tracker_list_if_due(self: &Arc<Self>, now_please: bool) {
         let Some(url) = self.settings().add_trackers_url else {
             return;
         };
@@ -192,7 +207,7 @@ impl Daemon {
                     } else {
                         TRACKERS_EVERY
                     };
-                    !l.fetching && l.tried.elapsed() >= every
+                    !l.fetching && (now_please || l.tried.elapsed() >= every)
                 }
                 _ => true,
             };

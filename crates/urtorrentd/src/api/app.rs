@@ -57,6 +57,23 @@ pub(crate) async fn restart(State(d): State<Arc<Daemon>>) -> StatusCode {
     StatusCode::ACCEPTED
 }
 
+/// Fetch the tracker list of `add_trackers_url` now instead of at its next
+/// turn (once a day). `GET /app` shows the fetch under way
+/// (`fetched_trackers.fetching`), then its result. 409 when
+/// `add_trackers_url` is not set.
+#[utoipa::path(
+    post,
+    path = "/app/fetched-trackers/refresh",
+    tag = "app",
+    responses((status = 202, description = "Fetching (or a fetch was under way)."))
+)]
+pub(crate) async fn refresh_fetched_trackers(
+    State(d): State<Arc<Daemon>>,
+) -> ApiResult<StatusCode> {
+    d.refresh_tracker_list()?;
+    Ok(StatusCode::ACCEPTED)
+}
+
 /// Shut the daemon down gracefully (trackers are told, state is saved).
 #[utoipa::path(post, path = "/app/shutdown", tag = "app", responses((status = 202, description = "Shutting down.")))]
 pub(crate) async fn shutdown(State(d): State<Arc<Daemon>>) -> StatusCode {

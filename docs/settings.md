@@ -217,7 +217,7 @@ an API daemon. **unsupported**: with the reason.
 | `add_trackers` | setting | `add_trackers` (never added to private torrents) |
 | `add_trackers_enabled` | setting | `add_trackers` non-empty |
 | `add_trackers_from_url_enabled` | setting | `add_trackers_url` not `null` |
-| `add_trackers_url` | setting | `add_trackers_url` (fetched at the start and every 24 hours; for new public torrents only) |
+| `add_trackers_url` | setting | `add_trackers_url` (fetched at the start, every 24 hours and on `POST /app/fetched-trackers/refresh`; for new public torrents only) |
 | `add_trackers_url_list` | done | `GET /app` → `fetched_trackers` (what was fetched, when, the last error) |
 | `alt_dl_limit` | setting | `alt_download_limit` |
 | `alt_up_limit` | setting | `alt_upload_limit` |

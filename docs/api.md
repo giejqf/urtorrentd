@@ -353,6 +353,7 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET | `/app` | Version, library, pid, start time, data dir, default save path, peer port, settings waiting for a restart, the system time zone |
 | POST | `/app/shutdown` | Graceful shutdown |
 | POST | `/app/restart` | Graceful shutdown, then the same binary starts again in the same process (settings in `restart_required` take effect) |
+| POST | `/app/fetched-trackers/refresh` | Fetch the `add_trackers_url` list now rather than at its daily turn (202; 409 when it is not set); `GET /app` → `fetched_trackers.fetching` while it runs |
 | GET, PATCH | `/settings` | All settings; change some ([settings.md](settings.md)) |
 | GET | `/fs/directory` | List a directory (for choosing paths) |
 | GET, PUT | `/app/cookies` | The cookie jar for the daemon's own HTTP requests |

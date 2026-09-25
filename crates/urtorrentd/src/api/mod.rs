@@ -233,6 +233,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(app::get_app_info))
         .routes(routes!(app::shutdown))
         .routes(routes!(app::restart))
+        .routes(routes!(app::refresh_fetched_trackers))
         .routes(routes!(app::get_settings, app::patch_settings))
         .routes(routes!(app::list_directory))
         .routes(routes!(app::get_cookies, app::set_cookies))

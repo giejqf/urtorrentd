@@ -77,6 +77,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   apply after a restart take effect without a shell on the machine.
 - `GET /app` has the daemon's system time zone (`time_zone`), the one the
   alternative-limits schedule uses when it names none.
+- `POST /app/fetched-trackers/refresh` fetches the `add_trackers_url` list
+  at once instead of at its daily turn; `fetched_trackers.fetching` in
+  `GET /app` says a fetch is under way.
 
 ### Changed
 
