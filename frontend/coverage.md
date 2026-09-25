@@ -17,16 +17,12 @@ row whose operation the UI calls.
 | `GET /api/v1/tags`           | The event stream carries the tags.                                                                    |
 | `GET /api/v1/torrents/count` | Counts come from the live store; the E2E suite checks them against `GET /torrents?filter=`.           |
 
-## W2: adding torrents, the rest
+## Adding torrents
 
-| Operation                                  | Why the UI does not call it                |
-| ------------------------------------------ | ------------------------------------------ |
-| `POST /api/v1/torrents/parse`              | W2: a `.torrent`'s files before adding it. |
-| `GET /api/v1/previews`                     | W2: magnet previews in the add dialog.     |
-| `POST /api/v1/previews`                    | W2: magnet previews in the add dialog.     |
-| `GET /api/v1/previews/{hash}`              | W2: magnet previews in the add dialog.     |
-| `DELETE /api/v1/previews/{hash}`           | W2: magnet previews in the add dialog.     |
-| `GET /api/v1/previews/{hash}/torrent-file` | W2: magnet previews in the add dialog.     |
+| Operation                                  | Why the UI does not call it                                                            |
+| ------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `GET /api/v1/previews`                     | The add dialog follows its own previews one by one; the list is for other clients.     |
+| `GET /api/v1/previews/{hash}/torrent-file` | The add dialog adds a previewed source by its hash, which uses the fetched `.torrent`. |
 
 ## W3: one torrent in depth
 
@@ -63,15 +59,12 @@ row whose operation the UI calls.
 
 | Operation                         | Why the UI does not call it        |
 | --------------------------------- | ---------------------------------- |
-| `GET /api/v1/settings`            | W4: the settings screen.           |
-| `PATCH /api/v1/settings`          | W4: the settings screen.           |
 | `PUT /api/v1/auth/credentials`    | W4: security settings.             |
 | `POST /api/v1/auth/api-key`       | W4: security settings.             |
 | `DELETE /api/v1/auth/api-key`     | W4: security settings.             |
 | `GET /api/v1/app/cookies`         | W4: the cookie jar for URL adds.   |
 | `PUT /api/v1/app/cookies`         | W4: the cookie jar for URL adds.   |
 | `GET /api/v1/app/interfaces`      | W4: the network settings.          |
-| `GET /api/v1/fs/directory`        | W4: choosing paths.                |
 | `GET /api/v1/webhooks`            | W4: webhooks.                      |
 | `POST /api/v1/webhooks`           | W4: webhooks.                      |
 | `GET /api/v1/webhooks/{id}`       | W4: webhooks.                      |

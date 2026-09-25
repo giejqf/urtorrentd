@@ -55,7 +55,7 @@ import { FILTERS } from "~/lib/torrent";
 import { usePref } from "~/lib/prefs";
 
 import { actions, copy, isRunning } from "./actions";
-import { AddDialog } from "./add-dialog";
+import { AddDialog } from "./add/add-dialog";
 import { DeleteDialog } from "./delete-dialog";
 import { DetailPanel } from "./detail-panel";
 import { type SelectMode, TorrentList } from "./torrent-list";

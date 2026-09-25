@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and deleting with or without files. Live through the event stream. A
   seed nobody downloads from shows as Idle; only a download that gets no
   data shows as Stalled.
+- Web UI: the add dialog as designed. Sources are magnet links, info-hashes
+  and URLs, `.torrent` files, or a folder to watch. The daemon previews
+  each source before it is added (files, size, pieces, swarm, trackers)
+  and each file can be skipped or prioritised. Every option is there: save
+  path with a browser of the daemon's folders, category, tags, content
+  layout, stop condition, automatic management, speed and ratio limits.
+  Duplicates and failures are shown with the daemon's reason, and previews
+  that are not used are dropped.
   Screens for statistics, RSS, the log and settings say they are still to
   come.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and

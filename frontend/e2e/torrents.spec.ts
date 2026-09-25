@@ -20,10 +20,14 @@ test("add a magnet, see it wait for metadata, delete it", async ({ signedIn: pag
   await page.getByRole("button", { name: "Add", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Add torrents" });
   await expectAccessible(page);
-  await dialog.getByLabel("Links").fill(magnet(hash, "tails-amd64-6.20.img"));
-  await dialog.getByLabel("Category").fill("linux");
+  await dialog.getByLabel("Sources").fill(magnet(hash, "tails-amd64-6.20.img"));
+  await dialog.getByRole("button", { name: /^Category/ }).click();
+  await page.getByRole("option", { name: "New category…" }).click();
+  const prompt = page.getByRole("dialog", { name: "New category" });
+  await prompt.getByLabel("Name").fill("linux");
+  await prompt.getByRole("button", { name: "Use it" }).click();
   await dialog.getByLabel("Tags").fill("iso, keep");
-  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  await dialog.getByRole("button", { name: "Add 1 torrent" }).click();
   await expect(dialog).toBeHidden();
 
   const row = page.getByRole("option", { name: /tails-amd64-6\.20\.img/ });
@@ -66,13 +70,16 @@ test("a real download from a seeder, shown as the daemon reports it", async ({
   // Add the .torrent file through the UI.
   await page.getByRole("button", { name: "Add", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Add torrents" });
+  await dialog.getByRole("tab", { name: ".torrent file" }).click();
   await dialog.getByLabel("Torrent files").setInputFiles({
     name: "sintel-e2e.torrent",
     mimeType: "application/x-bittorrent",
     buffer: t.bytes,
   });
-  await expect(dialog.getByText("sintel-e2e.torrent")).toBeVisible();
-  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  // The daemon reads the file before anything is added.
+  await expect(dialog.getByRole("heading", { name: "sintel-e2e.bin" })).toBeVisible();
+  await expect(dialog.getByText(`${t.pieces} × 64 KiB`)).toBeVisible();
+  await dialog.getByRole("button", { name: "Add 1 torrent" }).click();
   await expect(dialog).toBeHidden();
 
   // No DHT and no tracker in the lab: tell it where the seeder is.

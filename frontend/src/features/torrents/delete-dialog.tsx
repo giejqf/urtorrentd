@@ -58,7 +58,7 @@ export function DeleteDialog(props: {
           </CheckboxLabel>
         </Checkbox>
         <AlertDialogFooter>
-          <AlertDialogClose as={Button} variant="outline">
+          <AlertDialogClose as={Button} variant="outline" aria-label="Cancel">
             Cancel
           </AlertDialogClose>
           <Button variant="destructive" disabled={busy()} onClick={() => void confirm()}>

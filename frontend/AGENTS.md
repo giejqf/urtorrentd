@@ -4,9 +4,8 @@ Guide for coding agents working on `frontend/`, the web UI of urtorrentd. Read t
 [`AGENTS.md`](../AGENTS.md) first. It is the project charter, and its rules bind this directory
 too (section 1 restates them for the UI). This file adds what is specific to the UI.
 
-Status (2026-09-25): W0 and W1 are done, and W2 is done except magnet previews in the add
-dialog: sign-in, first-run setup, the shell and the torrents screen as the mockups have them.
-Section 10 has the milestones.
+Status (2026-09-25): W0, W1 and W2 are done: sign-in, first-run setup, the shell, the torrents
+screen and the add dialog as the mockups have them. Section 10 has the milestones.
 
 ## 1. What this is
 
@@ -128,7 +127,8 @@ frontend/
       shell/            the signed-in gate (protected.tsx), the live store (live.tsx), sidebar,
                         navigation, transfer footer, instance menu; screens still to come
       torrents/         the screen (torrents.tsx), the list, filters and sort (view.ts), the
-                        detail panel, pieces (pieces.ts), add, delete, actions; later files,
+                        detail panel, pieces (pieces.ts), add/ (the dialog, its sources and
+                        previews, form.ts), delete, actions; later files,
                         peers, trackers, web seeds, limits
       settings/         settings, security (credentials, API key), webhooks, watch folders, schedule
       rss/ log/ stats/
@@ -368,14 +368,15 @@ locally.
 
 - `Login-html.zip`: the sign-in screen.
 - `Torrents-html.zip`: the main screen.
+- `Add_torrent_dialog-html.zip`: the add dialog (`AddTorrent.dc.html`).
 
 They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
 view one, unzip it into a scratch directory outside the repository and serve it with
 `python3 -m http.server`. Replicate the values in our components and never copy the markup.
 
-The main screen links to Stats and Add torrent artboards that have not been exported yet, and
-more mockups may arrive in `.design/`. Build a screen that has no design from the same tokens
+The main screen links to a Stats artboard that has not been exported yet, and more mockups
+may arrive in `.design/`. Build a screen that has no design from the same tokens
 and primitives, at the same density. Never invent a new visual language.
 
 `.design/` is not in git, so section 6.2 records its values. Once `app.css` exists it becomes the
@@ -496,7 +497,12 @@ These are the known differences. Resolve each as noted, never by faking.
 | Tracker filter by host, including "DHT only" | `tracker_hosts` in every list row (added for the UI), `GET /torrents?tracker=` | A torrent counts under each of its trackers' hosts; "No tracker" for `trackers_count == 0`; "Not working" as well while none of its trackers works. |
 | Pieces chart ("terrain") drawn from random noise | `GET /torrents/{hash}/pieces` gives `states`, `availability` and `priorities` per piece | Bin the real data. "Rare" means a missing piece with availability ≤ 1, and the legend says so. |
 | Limits line "↓ ∞ · ↑ 5.0 MB/s · ratio 5.0" | `download_limit`, `upload_limit` (`null` = unlimited), `share_limits` | As shown. Use ∞ only for `null`. |
-| Links to Stats and Add torrent | Not designed yet | Wait for the designs, or build from the tokens (6.1). |
+| Link to Stats | Not designed yet | Wait for the design, or build from the tokens (6.1). |
+| Add dialog: "Skip hash check" | Never offered (charter rule 1: nothing may claim data it has not verified) | Left out. |
+| Add dialog: "Use category share limits" | Categories' `share_limits` (added for the UI): a torrent's `global` limits defer to its category's, then to the settings | The switch sends the torrent's limits as all `global`; off, the Ratio limit field is the torrent's own (empty: none) and it has no time limits. Without a category it reads "Use global share limits". |
+| Add dialog: "Swarm: 186 seeds · 24 peers" | `swarm_seeds` / `swarm_leechers` on previews (added for the UI), kept after the metadata arrives; `null` when no tracker answered | "186 seeds · 24 leechers", or the connected peers while fetching, or "—". |
+| Add dialog: tracker chips with ports | Tracker URLs can carry passkeys (rule 6) | Hosts only. |
+| Add dialog: "Watch folder" tab | The `watch_folders` setting (path, subfolders, what happens to an added file, add options) | The tab appends a watch folder with the dialog's options (`PATCH /settings`); the right column lists the files it will pick up. |
 
 ## 7. Testing
 
@@ -649,10 +655,10 @@ Each milestone ends with its end-to-end tests green.
     CI job and the xtask commands.
 - **W1 Sign-in and shell** (done). Setup, sign-in, sign-out, expiry and bans. The shell (sidebar,
   navigation, footer, instance menu). The live store with its connection states.
-- **W2 Torrents** (done but for previews). The virtualized, grouped list. Filters with counts
-  (status, category, tag, tracker). Search. Selection and bulk actions. The detail panel as
-  designed. Add (files, magnets, URLs, previews, options). Delete. Keyboard shortcuts. Left:
-  magnet and `.torrent` previews in the add dialog.
+- **W2 Torrents** (done). The virtualized, grouped list. Filters with counts (status,
+  category, tag, tracker). Search. Selection and bulk actions. The detail panel as designed.
+  The add dialog as designed: links, `.torrent` files or a watch folder, the daemon's preview
+  of each source with per-file choices, and every option. Delete. Keyboard shortcuts.
 - **W3 One torrent in depth.** Files (tree, priorities, rename). Peers (with GeoIP). Trackers
   and web seeds (edit). Pieces. Limits and share limits. Location and download path. Managing
   categories and tags.

@@ -92,8 +92,8 @@ test("behind a TLS-terminating proxy: Secure cookie, live updates", async ({
     // A state-changing call passes the CSRF check behind the proxy.
     await page.getByRole("button", { name: "Add", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Add torrents" });
-    await dialog.getByLabel("Links").fill("5".repeat(40));
-    await dialog.getByRole("button", { name: "Add", exact: true }).click();
+    await dialog.getByLabel("Sources").fill("5".repeat(40));
+    await dialog.getByRole("button", { name: "Add 1 torrent" }).click();
     await expect(page.getByRole("option")).toHaveCount(1);
   } finally {
     await proxy.close();

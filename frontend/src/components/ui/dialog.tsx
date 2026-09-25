@@ -3,7 +3,7 @@
 // Based on solid-ui (MIT): Copyright (c) 2023 shadcn, Copyright (c) 2023 Stefan E-K.
 
 import type { Component, ComponentProps, JSX, ValidComponent } from "solid-js";
-import { splitProps } from "solid-js";
+import { Show, splitProps } from "solid-js";
 
 import * as DialogPrimitive from "@kobalte/core/dialog";
 import type { PolymorphicProps } from "@kobalte/core/polymorphic";
@@ -26,24 +26,28 @@ type DialogContentProps<T extends ValidComponent = "div"> =
   DialogPrimitive.DialogContentProps<T> & {
     class?: string | undefined;
     children?: JSX.Element;
+    /** Leave out the corner close button (the content places its own). */
+    noClose?: boolean;
   };
 
 const DialogContent = <T extends ValidComponent = "div">(
   props: PolymorphicProps<T, DialogContentProps<T>>,
 ) => {
-  const [local, rest] = splitProps(props as DialogContentProps, ["class", "children"]);
+  const [local, rest] = splitProps(props as DialogContentProps, ["class", "children", "noClose"]);
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay class={dialogOverlay} />
       <div class={dialogPositioner}>
         <DialogPrimitive.Content class={cn(dialogContent, local.class)} {...rest}>
           {local.children}
-          <DialogPrimitive.CloseButton
-            class="absolute top-3 right-3 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:shadow-focus focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Close"
-          >
-            <X class="size-3.5" aria-hidden="true" />
-          </DialogPrimitive.CloseButton>
+          <Show when={!local.noClose}>
+            <DialogPrimitive.CloseButton
+              class="absolute top-3 right-3 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:shadow-focus focus-visible:ring-1 focus-visible:ring-ring"
+              aria-label="Close"
+            >
+              <X class="size-3.5" aria-hidden="true" />
+            </DialogPrimitive.CloseButton>
+          </Show>
         </DialogPrimitive.Content>
       </div>
     </DialogPrimitive.Portal>

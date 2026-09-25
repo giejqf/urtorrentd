@@ -263,7 +263,7 @@ function InstanceMenu() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose as={Button} variant="outline">
+            <AlertDialogClose as={Button} variant="outline" aria-label="Cancel">
               Cancel
             </AlertDialogClose>
             <Button variant="destructive" onClick={() => void shutdown()}>
