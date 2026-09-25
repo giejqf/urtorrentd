@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and removed in place; content layout, stop condition and the other add
   options; file names to skip; `.torrent` exports; trackers for new public
   torrents, with the fetched list and "Fetch now".
+- Web UI: Settings › Queue & share limits as designed: the queue limits
+  with the slots they hand out now (downloading, seeding, slow, waiting,
+  over the limit), the queue's order with moves up and down, and the
+  default share limits in days, hours or minutes with the seeding torrents
+  closest to a limit and when they get there.
   Screens for statistics, RSS, the log and the other settings sections say
   they are still to come.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and

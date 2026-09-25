@@ -10,6 +10,13 @@ import { createSignal, For, type JSX, Show } from "solid-js";
 import { Kbd } from "~/components/kbd";
 import { StatusDot } from "~/components/status-dot";
 import { Button } from "~/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { Switch, SwitchControl } from "~/components/ui/switch";
 import { cn } from "~/lib/utils";
 
@@ -151,6 +158,32 @@ export function UnitInput(props: {
   );
 }
 
+/** A unit chosen in a field's unit box (days, hours, minutes). */
+export function UnitSelect<T extends string>(props: {
+  label: string;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  const labelOf = (v: T | undefined) => props.options.find((o) => o.value === v)?.label ?? "";
+  return (
+    <Select<T>
+      options={props.options.map((o) => o.value)}
+      value={props.value}
+      onChange={(v) => v !== null && props.onChange(v)}
+      itemComponent={(p) => <SelectItem item={p.item}>{labelOf(p.item.rawValue)}</SelectItem>}
+    >
+      <SelectTrigger
+        aria-label={props.label}
+        class="h-full w-auto flex-none gap-1.5 rounded-none border-0 border-l border-border bg-card px-2.5 text-xs whitespace-nowrap text-subtle focus-visible:shadow-focus"
+      >
+        <SelectValue<T>>{(s) => labelOf(s.selectedOption())}</SelectValue>
+      </SelectTrigger>
+      <SelectContent />
+    </Select>
+  );
+}
+
 /** A switch named by its row's label (`SettingRow for="<id>-input"`: Kobalte's input id). */
 export function RowSwitch(props: {
   id: string;
@@ -172,7 +205,8 @@ export function RowSwitch(props: {
 /** One of a few choices (the design's `.seg`): a radio group of buttons. */
 export function Segmented<T extends string>(props: {
   label: string;
-  options: readonly { value: T; label: string }[];
+  /** `danger`: a choice that destroys something, red when chosen. */
+  options: readonly { value: T; label: string; danger?: boolean }[];
   value: T;
   onChange: (v: T) => void;
   changed?: boolean;
@@ -207,7 +241,11 @@ export function Segmented<T extends string>(props: {
               tabIndex={on() ? 0 : -1}
               class={cn(
                 "h-6 rounded-[5px] px-2.5 text-sm font-medium whitespace-nowrap transition-colors focus-visible:shadow-focus focus-visible:outline-none",
-                on() ? "bg-border text-foreground" : "text-muted-foreground hover:text-foreground",
+                on()
+                  ? o.danger
+                    ? "bg-danger/18 text-danger"
+                    : "bg-border text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
               onClick={() => props.onChange(o.value)}
               onKeyDown={(e) => {

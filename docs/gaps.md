@@ -6,7 +6,15 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 ## Open
 
-Nothing.
+- **The queue's slow flag.** A running torrent below 2 KiB/s both ways for
+  60 s holds no queue slot unless `count_slow` (`engine/queue.rs`,
+  `Torrent::is_inactive`), but `TorrentStatus` does not say which torrents
+  are in that state, so no client can tell which running torrents hold a
+  slot. Meanwhile the web UI's queue picture (Settings › Queue & share
+  limits) reads slowness from `download_rate` / `upload_rate`, which can be
+  up to 60 s early, and says "below 2 KiB/s" rather than claiming the slot
+  was released. Wanted: the flag in `TorrentStatus`, then a `slow` field in
+  list rows.
 
 ## Resolved upstream
 
