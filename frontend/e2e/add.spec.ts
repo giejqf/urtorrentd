@@ -60,6 +60,8 @@ test("a magnet's preview, file choices and options arrive as set", async ({
   await dialog.getByRole("button", { name: /^Category/ }).click();
   await page.getByRole("option", { name: "music" }).click();
   await dialog.getByLabel("Tags").fill("flac, keep");
+  await expect(dialog.getByLabel("Tags")).toHaveValue("");
+  await expect(dialog.getByRole("button", { name: "Remove tag keep" })).toBeVisible();
   await dialog.getByText("Start immediately", { exact: true }).click();
   await dialog.getByLabel("Upload limit").fill("5000");
   await expect(dialog.getByLabel("Ratio limit")).toBeDisabled();

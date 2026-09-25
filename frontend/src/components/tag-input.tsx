@@ -60,8 +60,11 @@ export function TagInput(props: {
         spellcheck={false}
         onInput={(e) => {
           const v = e.currentTarget.value;
-          if (v.includes(",")) add(v);
-          else setText(v);
+          if (v.includes(",")) {
+            add(v);
+            // The signal may have been empty already: clear the field itself.
+            e.currentTarget.value = "";
+          } else setText(v);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
