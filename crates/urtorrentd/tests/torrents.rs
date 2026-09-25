@@ -261,7 +261,7 @@ async fn leech_from_a_seeding_daemon() {
     let cats = leecher.get("/api/v1/categories").await;
     assert_eq!(
         cats["music"],
-        json!({"save_path": null, "download_path": null})
+        json!({"save_path": null, "download_path": null, "share_limits": {"ratio": {"mode": "global"}, "seeding_time": {"mode": "global"}, "inactive_seeding_time": {"mode": "global"}, "action": null}})
     );
     let (s, _) = leecher
         .post("/api/v1/tags/remove", json!({"tags": ["flac"]}))
@@ -1075,5 +1075,59 @@ async fn the_suffix_follows_completeness_and_the_setting() {
         )
         .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    t.stop().await;
+}
+
+#[tokio::test]
+async fn category_share_limits_apply_to_torrents_that_defer() {
+    let t = TestDaemon::start(89, |_| {}).await;
+    // A category that stops its seeds at once: a seeding time of 0.
+    let (s, v) = t
+        .post(
+            "/api/v1/categories",
+            json!({"name": "short", "save_path": null, "download_path": null, "share_limits": {"ratio": {"mode": "global"}, "seeding_time": {"mode": "limit", "value": 0}, "inactive_seeding_time": {"mode": "global"}, "action": "stop"}}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT, "{v}");
+    let cats = t.get("/api/v1/categories").await;
+    assert_eq!(
+        cats["short"]["share_limits"]["seeding_time"],
+        json!({"mode": "limit", "value": 0})
+    );
+    let defers = fixture(
+        "defers.bin",
+        &[("defers.bin", 40_000)],
+        16_384,
+        None,
+        false,
+        91,
+    );
+    let own = fixture("own.bin", &[("own.bin", 40_000)], 16_384, None, false, 92);
+    defers.write_to(&t.save_path());
+    own.write_to(&t.save_path());
+    let hd = t.add(&defers, json!({"category": "short"})).await;
+    let ho = t
+        .add(
+            &own,
+            json!({"category": "short", "share_limits": {"ratio": {"mode": "global"}, "seeding_time": {"mode": "unlimited"}, "inactive_seeding_time": {"mode": "global"}, "action": null}}),
+        )
+        .await;
+    t.wait_for(&hd, "stopped by its category's seeding time", 30, |x| {
+        x["state"] == "stopped" && x["complete"] == true
+    })
+    .await;
+    // The torrent's own `unlimited` wins over its category's limit.
+    t.wait_for(&ho, "seeding", 30, |x| x["state"] == "seeding")
+        .await;
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    assert_eq!(t.torrent(&ho).await["state"], "seeding");
+    let log = t.get("/api/v1/log").await;
+    assert!(
+        log.as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["message"].as_str().unwrap().contains("seeding time")),
+        "{log}"
+    );
     t.stop().await;
 }

@@ -181,3 +181,63 @@ async fn a_url_is_previewed_and_dropped() {
     assert_eq!(s, StatusCode::NOT_FOUND);
     t.stop().await;
 }
+
+/// A tracker for one swarm: every announce answers 3 seeds, 2 leechers and
+/// the one peer given (compact IPv4).
+async fn tracker(peer: &str) -> std::net::SocketAddr {
+    let peer: std::net::SocketAddrV4 = peer.parse().unwrap();
+    let mut body = b"d8:completei3e10:incompletei2e8:intervali1800e5:peers6:".to_vec();
+    body.extend(peer.ip().octets());
+    body.extend(peer.port().to_be_bytes());
+    body.push(b'e');
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = axum::Router::new().route(
+        "/announce",
+        axum::routing::get(move || {
+            let body = body.clone();
+            async move { body }
+        }),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    addr
+}
+
+#[tokio::test]
+async fn a_preview_keeps_what_the_trackers_said_of_the_swarm() {
+    let seeder = TestDaemon::start(96, |_| {}).await;
+    let client = TestDaemon::start(97, |_| {}).await;
+    let f = fixture(
+        "swarm.bin",
+        &[("swarm.bin", 50_000)],
+        16_384,
+        None,
+        false,
+        63,
+    );
+    f.write_to(&seeder.save_path());
+    let hash = seeder.add(&f, json!({})).await;
+    seeder
+        .wait_for(&hash, "seeding", 30, |x| x["state"] == "seeding")
+        .await;
+    // Only the tracker knows the seeder: its answer comes before the metadata.
+    let tr = tracker(&seeder.peer_addr()).await;
+    let magnet = format!("magnet:?xt=urn:btih:{hash}&dn=swarm&tr=http%3A%2F%2F{tr}%2Fannounce");
+    let (s, v) = client
+        .post("/api/v1/previews", json!({"source": magnet}))
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let path = format!("/api/v1/previews/{hash}");
+    let v = wait_get(&client, &path, "the metadata", |v| v["state"] == "ready").await;
+    // Kept once the metadata is here; the connected counts are not.
+    assert_eq!(v["swarm_seeds"], 3, "{v}");
+    assert_eq!(v["swarm_leechers"], 2, "{v}");
+    assert_eq!(v["peers"], Value::Null);
+    assert_eq!(v["seeds"], Value::Null);
+    let list = client.get("/api/v1/previews").await;
+    assert_eq!(list[0]["swarm_seeds"], 3, "{list}");
+    seeder.stop().await;
+    client.stop().await;
+}

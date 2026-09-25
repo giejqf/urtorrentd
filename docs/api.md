@@ -104,8 +104,8 @@ before adding it.
 ```sh
 POST /api/v1/previews {"source": "magnet:?xt=urn:btih:<hash>&dn=..."}   # or an info-hash, or a .torrent URL
 GET  /api/v1/previews/<hash>
-{"hash": "...", "state": "fetching", "peers": 3, "metadata": null, ...}
-{"hash": "...", "state": "ready", "name": "album", "metadata": {"files": [{"path": "album/01.flac", "size": 90000}, ...], ...}}
+{"hash": "...", "state": "fetching", "peers": 3, "seeds": 2, "swarm_seeds": 186, "swarm_leechers": 24, "metadata": null, ...}
+{"hash": "...", "state": "ready", "name": "album", "swarm_seeds": 186, "swarm_leechers": 24, "metadata": {"files": [{"path": "album/01.flac", "size": 90000}, ...], ...}}
 GET  /api/v1/previews/<hash>/torrent-file      # the .torrent
 POST /api/v1/torrents {"urls": ["<hash>"], "options": {...}}   # adds it with the fetched metadata
 ```
@@ -116,7 +116,27 @@ file, and a restart forgets it. A magnet is fetched from its trackers,
 engine lets go of it and the daemon keeps the `.torrent`. Adding the same
 info-hash (magnet or hash) uses that `.torrent`, so the files are known at
 once. A preview nobody reads for 15 minutes is dropped; 32 at most at once.
-The `add_trackers` setting is not applied to previews.
+The `add_trackers` setting is not applied to previews. While fetching,
+`peers` and `seeds` count the connected peers; `swarm_seeds` and
+`swarm_leechers` are the swarm as its trackers reported it, kept once the
+metadata is here (`null` when no tracker answered: a `.torrent` URL, or a
+magnet found through the DHT only).
+
+## Share limits
+
+A torrent's share limits (`share_limits`: a ratio, a seeding time, an
+inactive seeding time, and the action once one is reached) are each
+`global`, `unlimited` or a `limit`. `global` defers to the torrent's
+category, when its category sets that limit (`share_limits` on
+`POST`/`PUT /categories`), and otherwise to the settings (`max_ratio`,
+`max_seeding_time`, `max_inactive_seeding_time`, `share_limit_action`). A
+category whose limits are all `global` (the default) changes nothing.
+
+```sh
+POST /api/v1/categories {"name": "movies", "save_path": null, "download_path": null,
+  "share_limits": {"ratio": {"mode": "limit", "value": 2.0}, "seeding_time": {"mode": "global"},
+                   "inactive_seeding_time": {"mode": "global"}, "action": "stop"}}
+```
 
 ## RSS
 
@@ -358,7 +378,7 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET | `/torrents/{hash}/peers` | Connected peers, with country and network (GeoIP) |
 | GET | `/torrents/{hash}/pieces`, `/pieces/hashes` | Piece states, availability and priorities; piece hashes |
 | GET | `/torrents/{hash}/torrent-file` | The `.torrent` (current trackers and web seeds) |
-| GET, POST, PUT | `/categories` | Categories; create; edit |
+| GET, POST, PUT | `/categories` | Categories (save path, download path, share limits); create; edit |
 | POST | `/categories/remove` | Remove categories |
 | GET, POST | `/tags` | Tags; create |
 | POST | `/tags/remove` | Delete tags (also from torrents) |

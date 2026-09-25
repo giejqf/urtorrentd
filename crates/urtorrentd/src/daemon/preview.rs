@@ -15,7 +15,7 @@
 use std::time::{Duration, Instant};
 
 use axum::http::StatusCode;
-use urtorrent::{AddTorrent, InfoHash, TorrentId};
+use urtorrent::{AddTorrent, InfoHash, TorrentId, TorrentStatus};
 
 use super::Daemon;
 use super::add::{Parsed, Source, parse_metadata};
@@ -39,6 +39,27 @@ pub(crate) struct Preview {
     /// The `.torrent`, once here.
     metainfo: Option<Vec<u8>>,
     error: Option<String>,
+    /// The swarm as the trackers last reported it (seeds, leechers), kept
+    /// when the engine torrent goes.
+    swarm: (Option<u32>, Option<u32>),
+}
+
+/// What a fetching preview's engine torrent says about its swarm.
+#[derive(Debug, Clone, Copy, Default)]
+struct Live {
+    peers: Option<u32>,
+    seeds: Option<u32>,
+    swarm: (Option<u32>, Option<u32>),
+}
+
+impl Live {
+    fn of(s: &TorrentStatus) -> Live {
+        Live {
+            peers: Some(u32::try_from(s.peers).unwrap_or(u32::MAX)),
+            seeds: Some(u32::try_from(s.seeds).unwrap_or(u32::MAX)),
+            swarm: (s.swarm_seeders, s.swarm_leechers),
+        }
+    }
 }
 
 fn no_preview(hash: &str) -> ApiError {
@@ -98,6 +119,7 @@ impl Daemon {
                         touched: Instant::now(),
                         metainfo,
                         error: None,
+                        swarm: (None, None),
                     },
                 );
             }
@@ -105,7 +127,7 @@ impl Daemon {
         self.preview(&hex(&hash)).await
     }
 
-    fn preview_view(&self, hash: &InfoHash, p: &Preview, peers: Option<u32>) -> PreviewInfo {
+    fn preview_view(&self, hash: &InfoHash, p: &Preview, live: Option<Live>) -> PreviewInfo {
         let metadata = p.metainfo.as_deref().and_then(|b| parse_metadata(b).ok());
         let state = if p.error.is_some() {
             PreviewState::Failed
@@ -123,11 +145,14 @@ impl Daemon {
             state,
             created: p.created,
             expires: now() + left.as_secs(),
-            peers: if state == PreviewState::Fetching {
-                peers
-            } else {
-                None
-            },
+            peers: live
+                .filter(|_| state == PreviewState::Fetching)
+                .and_then(|l| l.peers),
+            seeds: live
+                .filter(|_| state == PreviewState::Fetching)
+                .and_then(|l| l.seeds),
+            swarm_seeds: live.map_or(p.swarm.0, |l| l.swarm.0.or(p.swarm.0)),
+            swarm_leechers: live.map_or(p.swarm.1, |l| l.swarm.1.or(p.swarm.1)),
             metadata,
             error: p.error.clone(),
         }
@@ -143,18 +168,13 @@ impl Daemon {
             p.touched = Instant::now();
             p.id
         };
-        let peers = match id {
-            Some(id) => self
-                .session
-                .status(id)
-                .await
-                .ok()
-                .map(|s| u32::try_from(s.peers).unwrap_or(u32::MAX)),
+        let live = match id {
+            Some(id) => self.session.status(id).await.ok().map(|s| Live::of(&s)),
             None => None,
         };
         let st = self.state();
         let p = st.previews.get(&h).ok_or_else(|| no_preview(hash))?;
-        Ok(self.preview_view(&h, p, peers))
+        Ok(self.preview_view(&h, p, live))
     }
 
     /// Every preview (reading them keeps them).
@@ -166,13 +186,9 @@ impl Daemon {
             .iter_mut()
             .map(|(h, p)| {
                 p.touched = Instant::now();
-                let peers = p.id.and_then(|id| {
-                    statuses
-                        .iter()
-                        .find(|s| s.id == id)
-                        .map(|s| u32::try_from(s.peers).unwrap_or(u32::MAX))
-                });
-                self.preview_view(h, p, peers)
+                let live =
+                    p.id.and_then(|id| statuses.iter().find(|s| s.id == id).map(Live::of));
+                self.preview_view(h, p, live)
             })
             .collect();
         out.sort_by(|a, b| a.created.cmp(&b.created).then(a.hash.cmp(&b.hash)));
@@ -229,10 +245,17 @@ impl Daemon {
             return false;
         };
         let file = self.session.torrent_file(id).await;
+        let swarm = self
+            .session
+            .status(id)
+            .await
+            .map(|s| (s.swarm_seeders, s.swarm_leechers))
+            .unwrap_or_default();
         self.drop_engine_preview(Some(id)).await;
         let mut st = self.state();
         if let Some(p) = st.previews.get_mut(&hash) {
             p.id = None;
+            p.swarm = swarm;
             match file {
                 Ok(Some(bytes)) => p.metainfo = Some(bytes),
                 Ok(None) => p.error = Some("the metadata could not be read".into()),

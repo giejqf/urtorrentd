@@ -10,11 +10,11 @@ use std::time::Duration;
 
 use urtorrent::{InfoHash, TorrentId, TorrentState as L, TorrentStatus};
 
-use super::{Daemon, Entry, ResumeSave};
+use super::{Daemon, ResumeSave};
 use crate::settings::{Settings, SettingsPatch, ShareLimitAction};
 use crate::stats::peers::{PEER_SAMPLE_EVERY, PeerSample};
 use crate::stats::{Flush, Sample};
-use crate::store::{RatioLimit, TimeLimit};
+use crate::store::{RatioLimit, ShareLimits, TimeLimit};
 use crate::util::now;
 
 const TICK: Duration = Duration::from_secs(2);
@@ -75,14 +75,37 @@ pub(crate) fn last_activity(s: &TorrentStatus) -> Option<u64> {
     s.last_download.max(s.last_upload)
 }
 
-/// Which share limit a seeding torrent has reached, if any.
+/// The share limits in force for a torrent: its own, where they say
+/// `global` its category's, and where those say `global` too, the settings.
+fn effective_limits(own: ShareLimits, category: Option<&ShareLimits>) -> ShareLimits {
+    let Some(c) = category else {
+        return own;
+    };
+    ShareLimits {
+        ratio: match own.ratio {
+            RatioLimit::Global => c.ratio,
+            other => other,
+        },
+        seeding_time: match own.seeding_time {
+            TimeLimit::Global => c.seeding_time,
+            other => other,
+        },
+        inactive_seeding_time: match own.inactive_seeding_time {
+            TimeLimit::Global => c.inactive_seeding_time,
+            other => other,
+        },
+        action: own.action.or(c.action),
+    }
+}
+
+/// Which share limit a seeding torrent has reached, if any, with `limits`
+/// in force (see [`effective_limits`]).
 fn share_limit_reached(
     s: &TorrentStatus,
-    e: &Entry,
+    limits: &ShareLimits,
     settings: &Settings,
     unix: u64,
 ) -> Option<&'static str> {
-    let limits = e.record.share_limits;
     let ratio_limit = match limits.ratio {
         RatioLimit::Global => settings.max_ratio,
         RatioLimit::Unlimited => None,
@@ -226,6 +249,7 @@ impl Daemon {
         {
             let mut st = self.state();
             let settings = st.settings.clone();
+            let categories = st.categories.clone();
             for s in &statuses {
                 let Some(e) = st.torrents.get_mut(&s.info_hash) else {
                     continue;
@@ -240,16 +264,20 @@ impl Daemon {
                     e.name = Some(s.name.clone());
                 }
                 e.has_trackers = s.trackers_count > 0;
+                let limits = effective_limits(
+                    e.record.share_limits,
+                    e.record
+                        .category
+                        .as_ref()
+                        .and_then(|c| categories.get(c))
+                        .map(|c| &c.share_limits),
+                );
                 if s.complete
                     && s.state == L::Seeding
                     && !e.moving
-                    && let Some(why) = share_limit_reached(s, e, &settings, unix)
+                    && let Some(why) = share_limit_reached(s, &limits, &settings, unix)
                 {
-                    let action = e
-                        .record
-                        .share_limits
-                        .action
-                        .unwrap_or(settings.share_limit_action);
+                    let action = limits.action.unwrap_or(settings.share_limit_action);
                     hits.push((s.info_hash, e.id, action, why));
                 }
             }
@@ -304,5 +332,40 @@ impl Daemon {
                 Err(e) => self.logs.warn(format!("share limit action on {name}: {e}")),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_torrent_defers_to_its_category_then_the_settings() {
+        let own = ShareLimits {
+            ratio: RatioLimit::Global,
+            seeding_time: TimeLimit::Unlimited,
+            inactive_seeding_time: TimeLimit::Global,
+            action: None,
+        };
+        let category = ShareLimits {
+            ratio: RatioLimit::Limit(2.0),
+            seeding_time: TimeLimit::Limit(60),
+            inactive_seeding_time: TimeLimit::Global,
+            action: Some(ShareLimitAction::Remove),
+        };
+        let e = effective_limits(own, Some(&category));
+        assert_eq!(e.ratio, RatioLimit::Limit(2.0));
+        assert_eq!(
+            e.seeding_time,
+            TimeLimit::Unlimited,
+            "the torrent's own wins"
+        );
+        assert_eq!(
+            e.inactive_seeding_time,
+            TimeLimit::Global,
+            "left to the settings"
+        );
+        assert_eq!(e.action, Some(ShareLimitAction::Remove));
+        assert_eq!(effective_limits(own, None), own);
     }
 }

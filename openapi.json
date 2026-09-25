@@ -12469,6 +12469,10 @@
               "null"
             ],
             "description": "Download path for its automatically managed torrents (absolute or\nrelative to the default download path); `null` = the global download path."
+          },
+          "share_limits": {
+            "$ref": "#/components/schemas/ShareLimits",
+            "description": "Share limits for its torrents whose own limits say `global`: what\nthis sets (`unlimited`, `limit`, an action) wins over the global\nsettings; `global` here defers to them. Absent: all `global`."
           }
         }
       },
@@ -14132,6 +14136,9 @@
           "created",
           "expires",
           "peers",
+          "seeds",
+          "swarm_seeds",
+          "swarm_leechers",
           "metadata",
           "error"
         ],
@@ -14167,6 +14174,33 @@
             ],
             "format": "int32",
             "description": "Peers connected while fetching; `null` otherwise.",
+            "minimum": 0
+          },
+          "seeds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Connected peers that are seeds while fetching; `null` otherwise.",
+            "minimum": 0
+          },
+          "swarm_seeds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Seeds in the swarm as its trackers reported them while fetching, kept\nonce the metadata is here; `null` when no tracker answered (a\n`.torrent`, or a magnet found through the DHT only).",
+            "minimum": 0
+          },
+          "swarm_leechers": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Leechers in the swarm as its trackers reported them, likewise.",
             "minimum": 0
           },
           "metadata": {
@@ -14251,7 +14285,7 @@
         "oneOf": [
           {
             "type": "object",
-            "description": "Use the global setting.",
+            "description": "Use the category's limit if its category sets one, else the global\nsetting (in a category's limits: the global setting).",
             "required": [
               "mode"
             ],
@@ -16050,7 +16084,7 @@
               },
               {
                 "$ref": "#/components/schemas/ShareLimitAction",
-                "description": "The action; `null` = the global `share_limit_action`."
+                "description": "The action; `null` = the category's, else the global\n`share_limit_action`."
               }
             ]
           }
@@ -16308,7 +16342,7 @@
         "oneOf": [
           {
             "type": "object",
-            "description": "Use the global setting.",
+            "description": "Use the category's limit if its category sets one, else the global\nsetting (in a category's limits: the global setting).",
             "required": [
               "mode"
             ],

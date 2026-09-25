@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! state        key -> value: settings, auth, totals (JSON), dht (library bytes)
-//! categories   name, save_path, download_path
+//! categories   name, save_path, download_path, share_limits (JSON)
 //! tags         name
 //! torrents     hash, record (JSON), metainfo (.torrent), resume (library
 //!              resume data, opaque), added (insertion order)
@@ -33,7 +33,7 @@ use crate::settings::ShareLimitAction;
 /// Current record format (inside the `record` JSON).
 pub const RECORD_FORMAT: u32 = 2;
 /// Current schema version (`PRAGMA user_version`).
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 /// The database file inside the data directory.
 pub const DB_FILE: &str = "urtorrentd.db";
 
@@ -41,7 +41,8 @@ pub const DB_FILE: &str = "urtorrentd.db";
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case", tag = "mode", content = "value")]
 pub enum RatioLimit {
-    /// Use the global setting.
+    /// Use the category's limit if its category sets one, else the global
+    /// setting (in a category's limits: the global setting).
     #[default]
     Global,
     /// No limit for this torrent.
@@ -54,7 +55,8 @@ pub enum RatioLimit {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case", tag = "mode", content = "value")]
 pub enum TimeLimit {
-    /// Use the global setting.
+    /// Use the category's limit if its category sets one, else the global
+    /// setting (in a category's limits: the global setting).
     #[default]
     Global,
     /// No limit for this torrent.
@@ -78,7 +80,8 @@ pub struct ShareLimits {
     #[serde(default)]
     #[schema(required = true)]
     pub inactive_seeding_time: TimeLimit,
-    /// The action; `null` = the global `share_limit_action`.
+    /// The action; `null` = the category's, else the global
+    /// `share_limit_action`.
     #[serde(default)]
     #[schema(required = true)]
     pub action: Option<ShareLimitAction>,
@@ -157,7 +160,7 @@ pub struct TorrentRecord {
 }
 
 /// A category.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, ToSchema)]
 pub struct Category {
     /// Save path for its automatically managed torrents: absolute, or relative
     /// to the default save path; `null` = `<default save path>/<category name>`.
@@ -169,6 +172,11 @@ pub struct Category {
     #[serde(default)]
     #[schema(required = true)]
     pub download_path: Option<String>,
+    /// Share limits for its torrents whose own limits say `global`: what
+    /// this sets (`unlimited`, `limit`, an action) wins over the global
+    /// settings; `global` here defers to them. Absent: all `global`.
+    #[serde(default)]
+    pub share_limits: ShareLimits,
 }
 
 /// All-time transfer counters.
@@ -313,15 +321,19 @@ impl Store {
     pub fn categories(&self) -> io::Result<Categories> {
         let conn = self.conn();
         let mut stmt = conn
-            .prepare("SELECT name, save_path, download_path FROM categories")
+            .prepare("SELECT name, save_path, download_path, share_limits FROM categories")
             .map_err(db_err)?;
         let rows = stmt
             .query_map([], |r| {
+                let limits: Option<String> = r.get(3)?;
                 Ok((
                     r.get::<_, String>(0)?,
                     Category {
                         save_path: r.get(1)?,
                         download_path: r.get(2)?,
+                        share_limits: limits
+                            .and_then(|j| serde_json::from_str(&j).ok())
+                            .unwrap_or_default(),
                     },
                 ))
             })
@@ -335,9 +347,10 @@ impl Store {
         let tx = conn.transaction().map_err(db_err)?;
         tx.execute("DELETE FROM categories", []).map_err(db_err)?;
         for (name, c) in cats {
+            let limits = serde_json::to_string(&c.share_limits).map_err(json_err)?;
             tx.execute(
-                "INSERT INTO categories (name, save_path, download_path) VALUES (?1, ?2, ?3)",
-                params![name, c.save_path, c.download_path],
+                "INSERT INTO categories (name, save_path, download_path, share_limits) VALUES (?1, ?2, ?3, ?4)",
+                params![name, c.save_path, c.download_path, limits],
             )
             .map_err(db_err)?;
         }
@@ -622,6 +635,11 @@ fn migrate(conn: &mut Connection) -> io::Result<()> {
         )
         .map_err(db_err)?;
     }
+    if version < 3 {
+        // 0.14.0: categories' share limits (NULL = all global).
+        tx.execute_batch("ALTER TABLE categories ADD COLUMN share_limits TEXT;")
+            .map_err(db_err)?;
+    }
     tx.pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(db_err)?;
     tx.commit().map_err(db_err)
@@ -755,6 +773,31 @@ mod legacy {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn categories_gain_share_limits_from_schema_2() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let conn = Connection::open(dir.path().join(DB_FILE)).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE categories (name TEXT PRIMARY KEY, save_path TEXT, download_path TEXT);
+                 INSERT INTO categories VALUES ('tv', '/srv/tv', NULL);
+                 PRAGMA user_version = 2;",
+            )
+            .unwrap();
+        }
+        let store = Store::open(dir.path().to_path_buf()).unwrap();
+        let mut cats = store.categories().unwrap();
+        let tv = cats.get_mut("tv").unwrap();
+        assert_eq!(tv.save_path.as_deref(), Some("/srv/tv"));
+        assert_eq!(tv.share_limits, ShareLimits::default());
+        tv.share_limits.ratio = RatioLimit::Limit(2.0);
+        tv.share_limits.action = Some(ShareLimitAction::Remove);
+        store.save_categories(&cats).unwrap();
+        let back = &store.categories().unwrap()["tv"];
+        assert_eq!(back.share_limits.ratio, RatioLimit::Limit(2.0));
+        assert_eq!(back.share_limits.action, Some(ShareLimitAction::Remove));
+    }
 
     fn record(hash: &str) -> TorrentRecord {
         TorrentRecord {

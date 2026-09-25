@@ -2034,6 +2034,17 @@ pub struct PreviewInfo {
     /// Peers connected while fetching; `null` otherwise.
     #[schema(required = true)]
     pub peers: Option<u32>,
+    /// Connected peers that are seeds while fetching; `null` otherwise.
+    #[schema(required = true)]
+    pub seeds: Option<u32>,
+    /// Seeds in the swarm as its trackers reported them while fetching, kept
+    /// once the metadata is here; `null` when no tracker answered (a
+    /// `.torrent`, or a magnet found through the DHT only).
+    #[schema(required = true)]
+    pub swarm_seeds: Option<u32>,
+    /// Leechers in the swarm as its trackers reported them, likewise.
+    #[schema(required = true)]
+    pub swarm_leechers: Option<u32>,
     /// The metadata (`ready`).
     #[schema(required = true)]
     pub metadata: Option<TorrentMetadata>,

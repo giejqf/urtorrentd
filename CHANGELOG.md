@@ -48,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   filters, search, sorting and paging as `GET /torrents`, for clients that
   keep the rows from the event stream.
 
+- Categories carry share limits (`share_limits`, as a torrent's): a
+  torrent's `global` limits defer to its category's where the category
+  sets them, then to the settings. Stored in a new column (schema version
+  3); existing categories keep all-`global` limits, so nothing changes
+  until one is set.
+- Previews keep the swarm the trackers reported (`swarm_seeds`,
+  `swarm_leechers`) once the metadata is here, and count connected seeds
+  (`seeds`) while fetching.
+
 ### Changed
 
 - The session cookie has no `Max-Age`: it lasts for the browser session,

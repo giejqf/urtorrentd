@@ -488,7 +488,8 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
 ### 4.14 RSS and client data
 
 - **RSS** (`src/rss/`, `/rss`): folders, feeds and articles live in `urtorrentd.db`
-  (schema version 2); the newest `rss_max_articles` articles per feed are kept. The tick
+  (schema version 2; version 3 added categories' share limits); the newest `rss_max_articles`
+  articles per feed are kept. The tick
   starts due refreshes (4 at once, `rss_fetch_delay` between requests to one host,
   conditional requests with ETag / Last-Modified); a refresh asked for runs with
   `rss_enabled` off too. Documents are parsed with `quick-xml` (RSS 2.0, Atom, enclosures,
