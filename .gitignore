@@ -1,6 +1,11 @@
 /target
 /sdk/typescript/node_modules
 /sdk/typescript/schema.d.ts
+/frontend/node_modules
+/frontend/dist
+/frontend/src/api/schema.d.ts
+/frontend/test-results
+/frontend/playwright-report
 
 # Design references (local only; frontend/AGENTS.md section 6.1)
 /.design/

@@ -544,6 +544,13 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
    and on `POST /app/shutdown`. No torrent may claim data it does not have (the library
    guarantees this, and the daemon must not undo it).
 
+8. **Web UI** (`frontend/`, `cargo xtask web`; `frontend/AGENTS.md` section 7). Unit tests,
+   a check that the UI calls every API operation or says why not, and Playwright end-to-end
+   tests against real daemons started from the debug build with `--initial-settings` (offline)
+   and `--web-ui`: sign-in and setup, a real download from a seeder daemon, sidebar counts
+   against the daemon's filters, CORS, and a Caddy-like proxy in front. Every page is scanned
+   with axe; a request off loopback or a CSP violation fails the test.
+
 Every test runs offline (rule 4). Environment needs are the library's: io_uring, and for
 the lab passwordless `sudo`, `opentracker` and the cached oracle (run
 `cargo xtask doctor` in `../urtorrent`).
@@ -590,9 +597,10 @@ setup: the first client chooses the credentials (ADR 0007).
   0.6.0 geolocation (country and ASN on live peers and in history; done); 0.7.0 breakdowns,
   tracker reliability, idle-seed report, opt-in scrape for completed-download counts (done).
   Later: data-usage caps (needs wire-level counters upstream), Prometheus `/metrics`.
-- **Web UI** (the plan of 2026-09-24): milestones W0 to W7 in `frontend/AGENTS.md`. W0
-  changes the daemon too: `--initial-settings` (for offline end-to-end tests), serving the
-  UI, and a CORS allowlist.
+- **Web UI** (the plan of 2026-09-24): milestones W0 to W7 in `frontend/AGENTS.md`. W0 (done)
+  changed the daemon too: `--initial-settings` (for offline end-to-end tests), serving the
+  UI, and a CORS allowlist. W1 (sign-in, setup) and W2 (the torrents screen) are done but for
+  previews in the add dialog.
 - **Not planned** (maintainer decision, 2026-09-24): e-mail notifications (webhooks
   notify) and HTTPS in the daemon (TLS belongs to a reverse proxy). What else the
   checklist marks unsupported stays so for the reasons given there.
@@ -627,8 +635,12 @@ setup: the first client chooses the credentials (ADR 0007).
   - `cargo xtask openapi`: regenerate `openapi.json`
   - `cargo xtask sdk`: generate TypeScript types from `openapi.json` and type-check
     `sdk/typescript/check.ts` (Node.js)
+  - `cargo xtask web`: the web UI's checks and its end-to-end tests against real daemons
+    (Node.js, Playwright's Chromium; `frontend/AGENTS.md` section 9)
+  - `cargo xtask dist`: build the web UI, then a release binary with it built in
   - `cargo xtask it [scenario]`: lab scenarios against the oracle (not built yet, 5.4)
-- Definition of done for any change: `xtask check` and `xtask sdk` green. `openapi.json`
+- Definition of done for any change: `xtask check` and `xtask sdk` green, and `xtask web`
+  green when the change touches `frontend/`, `openapi.json` or how the UI is served. `openapi.json`
   regenerated and committed. `docs/api.md` and `docs/settings.md` are current. A new
   library gap has a `docs/gaps.md` entry. Design-level decisions get an ADR.
 - **Versioning.** SemVer, first release `0.1.0`, `CHANGELOG.md` in Keep-a-Changelog

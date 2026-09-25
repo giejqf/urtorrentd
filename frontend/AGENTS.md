@@ -4,8 +4,9 @@ Guide for coding agents working on `frontend/`, the web UI of urtorrentd. Read t
 [`AGENTS.md`](../AGENTS.md) first. It is the project charter, and its rules bind this directory
 too (section 1 restates them for the UI). This file adds what is specific to the UI.
 
-Status (2026-09-24): planned. Nothing is built yet besides this file. Section 10 has the
-milestones.
+Status (2026-09-25): W0 and W1 are done, and W2 is done except magnet previews in the add
+dialog: sign-in, first-run setup, the shell and the torrents screen as the mockups have them.
+Section 10 has the milestones.
 
 ## 1. What this is
 
@@ -123,22 +124,25 @@ frontend/
       ui/               shadcn primitives from solid-ui, restyled to the tokens; our code now
       *.tsx             shared pieces: progress ring, status dot, kbd, empty state, pieces chart
     features/           one folder per area, following the API's groups
-      auth/             first-run setup, sign-in, session expiry
-      shell/            sidebar, navigation, transfer footer, instance menu, ⌘K
-      torrents/         list, filters, detail, add (with previews), bulk actions, files, peers,
-                        trackers, web seeds, pieces, limits, categories and tags
+      auth/             the session (auth.tsx), first-run setup, sign-in
+      shell/            the signed-in gate (protected.tsx), the live store (live.tsx), sidebar,
+                        navigation, transfer footer, instance menu; screens still to come
+      torrents/         the screen (torrents.tsx), the list, filters and sort (view.ts), the
+                        detail panel, pieces (pieces.ts), add, delete, actions; later files,
+                        peers, trackers, web seeds, limits
       settings/         settings, security (credentials, API key), webhooks, watch folders, schedule
       rss/ log/ stats/
   e2e/
-    daemon.ts           starts and stops real daemons for a test worker (7.4)
+    daemon.ts           starts and stops real daemons, one per test that asks (7.4)
     torrent.ts          makes .torrent files for tests (bencode, SHA-1)
-    fixtures.ts         Playwright fixtures: daemons, a signed-in page, the offline guard
+    servers.ts          a page on another origin (CORS), a Caddy-like forwarding proxy
+    fixtures.ts         Playwright fixtures: daemons, a signed-in page, the offline and CSP guard
     *.spec.ts
 ```
 
-Unit tests sit next to their code (`format.test.ts`). When the package is created, the root
-`.gitignore` gets `/frontend/node_modules`, `/frontend/dist`, `/frontend/src/api/schema.d.ts`,
-`/frontend/test-results` and `/frontend/playwright-report`, next to the `sdk/typescript` entries.
+Unit tests sit next to their code (`format.test.ts`). The root `.gitignore` has
+`/frontend/node_modules`, `/frontend/dist`, `/frontend/src/api/schema.d.ts`,
+`/frontend/test-results` and `/frontend/playwright-report`.
 
 ## 4. Architecture
 
@@ -241,8 +245,8 @@ The maintainer decided this on 2026-09-24: the daemon serves the UI with axum, a
 (Caddy) terminates TLS, and the daemon handles CORS. The UI is at `/` and the API at `/api/v1`,
 on the same host and port. Release builds embed the UI, and `--web-ui <dir>` can serve a
 directory instead (5.1). The serving code is daemon code
-(`crates/urtorrentd/src/web.rs`, planned) and falls under the charter. It comes with ADR 0008,
-Rust integration tests, and `docs/api.md` / `docs/settings.md` rows.
+(`crates/urtorrentd/src/web.rs`, `api/cors.rs`, `build.rs`) and falls under the charter:
+ADR 0008, Rust integration tests (`tests/web.rs`), and `docs/api.md` / `docs/settings.md` rows.
 
 ### 5.1 Routes and files
 
@@ -288,15 +292,16 @@ the serving code lands.
   "::1"]`). The daemon then sees the real client through `X-Forwarded-For` and
   `X-Forwarded-Host`, for bans, `api_auth_whitelist` and the `Host` check. **Without this
   setting, every client appears to come from the proxy's loopback address, and turning on
-  `api_bypass_local_auth` would let the whole internet in.** Planned: the daemon warns about
-  this combination.
+  `api_bypass_local_auth` would let the whole internet in.** So the daemon never exempts a
+  request that carries forwarding headers from a peer that is not trusted, and logs a warning
+  the first time it sees one.
 - **`api_allowed_hosts`** includes the public name (`torrents.example.com`). The default is
   `localhost` only. IP addresses always pass.
 - **CSRF protection keeps working.** It compares the authority of `Origin`
   (`torrents.example.com`) with the forwarded `Host`, not the scheme, so TLS termination does
   not affect it. Caddy passes `Host` through by default. A proxy that rewrites `Host` must send
   `X-Forwarded-Host` and be trusted.
-- **Secure cookie** (planned). When a trusted proxy sends `X-Forwarded-Proto: https`, the
+- **Secure cookie.** When a trusted proxy sends `X-Forwarded-Proto: https`, the
   session cookie gets `Secure`. This is qBittorrent's `web_ui_secure_cookie_enabled`, automatic
   here.
 - **The event stream** passes through Caddy unbuffered, because Caddy flushes
@@ -317,11 +322,11 @@ break and how each case is handled.
 | Situation | What happens today | Handling |
 |---|---|---|
 | The Vite dev proxy with `changeOrigin: true` | `Host` becomes the daemon's but `Origin` stays `localhost:5173`, so every POST gets `403 cross_origin`. | The dev proxy keeps `Host` (`changeOrigin: false`, Vite's default). `localhost` is in `api_allowed_hosts` by default. |
-| A browser app on another origin (a second UI, a dashboard, the dev server without its proxy) | The daemon sends no CORS headers, so the browser hides every response. Preflights get `401` because they carry no credentials. | The opt-in setting `api_cors_origins` (planned, below). |
+| A browser app on another origin (a second UI, a dashboard, the dev server without its proxy) | The daemon sends no CORS headers, so the browser hides every response. Preflights get `401` because they carry no credentials. | The opt-in setting `api_cors_origins` (below). |
 | A proxy that rewrites `Host` | `403 cross_origin` or `host_not_allowed`. | Trust the proxy so the daemon reads `X-Forwarded-Host` (5.2). |
 | TLS at the proxy | `Origin` is `https://x` and `Host` is `x`. | Nothing to do: the check compares authorities, not schemes. |
 
-`api_cors_origins` (daemon, planned):
+`api_cors_origins` (daemon):
 
 - It is a list of exact origins (`scheme://host[:port]`), empty by default. There is no
   wildcard, because credentials are allowed.
@@ -389,7 +394,7 @@ one fits:
 | `--foreground` | `#fafafa` | Text |
 | `--foreground-2` | `#d4d4d8` | Button text, group headers |
 | `--muted-foreground` | `#a1a1aa` | Secondary text, idle nav items |
-| `--subtle` | `#71717a` | Labels, counts, section headings |
+| `--subtle` | `#808089` (the design's `#71717a`, lifted to pass AA 4.5:1 on the page, card, muted and hover surfaces) | Labels, counts, section headings |
 | `--faint` | `#52525b` | Placeholders and chart axes only. It fails AA contrast for text. |
 | `--primary`, `--primary-foreground` | `#fafafa`, `#09090b` (hover `#e4e4e7`) | The one primary button per view |
 | `--ring` | `#71717a`, plus `0 0 0 3px rgb(250 250 250 / .08)` | Focus |
@@ -515,25 +520,24 @@ the UI uses the event stream instead. This is the UI's version of charter rule 3
 Playwright, in `e2e/`.
 
 - **Real daemons.** `npm run e2e` first runs `cargo build -p urtorrentd` and `vite build`; the
-  harness (`e2e/daemon.ts`) builds nothing itself. Each Playwright worker then starts its own
+  harness (`e2e/daemon.ts`) builds nothing itself. Each test that asks for one gets its own
   `urtorrentd` from `target/debug/`, with:
   - a temporary data directory;
   - `--api-listen 127.0.0.1:<free port>`;
   - `--web-ui dist`;
   - first-start settings (next bullet).
 
-  The harness waits for `GET /auth/status` to answer, and at the end stops the daemon with
-  `POST /app/shutdown` (SIGKILL if it hangs). The browser opens the daemon's own origin, so it
-  gets the same files, headers, CSP and fallback as production.
+  The harness waits for `GET /auth/status` to answer, sets the credentials with
+  `POST /auth/setup` and talks to the API with an API key; at the end it stops the daemon with
+  SIGTERM (the shutdown endpoint's path; SIGKILL if it hangs). The browser opens the daemon's
+  own origin, so it gets the same files, headers, CSP and fallback as production.
 - **Offline.** The first-start settings listen on `127.0.0.<n>`, turn DHT and LSD off with no
   bootstrap nodes, and save into the temporary directory, as `crates/urtorrentd/tests/common`
   does. A fixture routes every browser request and fails the test on any host that is not
   loopback.
-- **Daemon prerequisite.** Today the binary always starts a new data directory with the default
-  settings (`initial_settings: None` in `main.rs`), and the defaults turn DHT on with public
-  bootstrap nodes. Milestone W0 adds `urtorrentd --initial-settings <file.json>`: settings for
-  the first start of a data directory (`DaemonConfig::initial_settings`), ignored once settings
-  are stored. Until that flag exists, no E2E test may start a daemon.
+- **First-start settings.** The defaults turn the DHT on with public bootstrap nodes, so every
+  daemon starts with `--initial-settings <file.json>` (W0): settings for the first start of a
+  data directory, ignored once settings are stored. Never start a test daemon without it.
 - **Real transfers.** A second daemon (the seeder, on `127.0.0.<n+1>`) is driven only through
   its API. The UI's daemon downloads from it, with the seeder's address given through
   `POST /torrents/peers`, since there is no DHT or tracker. The assertions go through the UI:
@@ -548,7 +552,7 @@ Playwright, in `e2e/`.
   where nothing accessible fits, and never select on Tailwind classes. Use web-first assertions
   and `expect.poll` with timeouts that fit the work, never a fixed sleep.
 - **Accessibility.** `@axe-core/playwright` runs on every screen. A violation fails the test.
-- **Scale** (tagged `@slow`). The test adds 10 000 magnets through the API: random info-hashes,
+- **Scale** (tagged `@slow`, W7). The test adds 10 000 magnets through the API: random info-hashes,
   no trackers, DHT off, so they all wait in `metadata`. The list must render, scroll, filter and
   search within set time budgets.
 - **Serving.** Specs cover:
@@ -557,7 +561,10 @@ Playwright, in `e2e/`.
     `X-Forwarded-*`);
   - CORS from a second loopback origin (5.3).
 - **Browsers.** Chromium runs on every CI run. Firefox and WebKit run in the full suite
-  (`npm run e2e -- --project=all`) before a release.
+  (`npm run e2e:all`) before a release.
+- **Menus hand focus back.** A Kobalte menu returns focus to its trigger when its closing
+  animation ends. Before typing into something else, wait for the menu to be gone
+  (`expect(page.getByRole("menu")).toHaveCount(0)`), or the keys land on the trigger.
 - **Needs.** io_uring (like the daemon's own tests), Rust, and Playwright's browsers, installed
   once with `npx playwright install chromium`. That download happens at install time, never
   during a test.
@@ -603,15 +610,16 @@ like every other daemon feature.
   `http://127.0.0.1:8080`) and keeps `Host` (5.3).
 - `npm run generate`: generate the types from `../openapi.json`.
 - `npm run check`: generate, then `tsc`, eslint, `prettier --check`, vitest and `vite build`.
-- `npm run e2e`: `cargo build -p urtorrentd`, `vite build`, then Playwright (Chromium;
-  `--project=all` for every browser).
-- From the repository root (planned):
-  - `cargo xtask web`: `npm ci`, then check and e2e.
+- `npm run e2e`: `vite build`, `cargo build -p urtorrentd`, then Playwright in Chromium.
+  `npm run e2e:all` runs Firefox and WebKit too. Install the browsers once with
+  `npx playwright install chromium` (add `--with-deps` on a fresh machine).
+- From the repository root:
+  - `cargo xtask web`: `npm ci` if needed, then check and e2e.
   - `cargo xtask dist`: build the UI, then `cargo build --release --features web-ui`.
 
   `cargo xtask check` stays free of Node.
-- CI (planned): a `web` job with Node 22, the Rust toolchain, both repositories side by side
-  (the daemon needs `../urtorrent`) and Playwright's Chromium. It runs `cargo xtask web`.
+- CI: the `web` job (Node 22, the Rust toolchain, both repositories side by side because the
+  daemon needs `../urtorrent`, Playwright's Chromium) runs `cargo xtask web`.
 
 **Definition of done** for a UI change:
 
@@ -625,7 +633,7 @@ like every other daemon feature.
 
 Each milestone ends with its end-to-end tests green.
 
-- **W0 Foundations.**
+- **W0 Foundations** (done).
   - Daemon: `--initial-settings`; serving the UI (5.1: `--web-ui`, the `web-ui` feature,
     headers, fallback) with ADR 0008; `api_cors_origins`, and the `Secure` cookie behind a
     trusted HTTPS proxy (5.2, 5.3); the settings rows updated; README deployment notes with a
@@ -633,11 +641,12 @@ Each milestone ends with its end-to-end tests green.
   - UI: the package, tokens, fonts, solid-ui primitives, generated types, the client, lint and
     unit tests; the E2E harness with a first spec (the app loads from the daemon, offline); the
     CI job and the xtask commands.
-- **W1 Sign-in and shell.** Setup, sign-in, sign-out, expiry and bans. The shell (sidebar,
+- **W1 Sign-in and shell** (done). Setup, sign-in, sign-out, expiry and bans. The shell (sidebar,
   navigation, footer, instance menu). The live store with its connection states.
-- **W2 Torrents.** The virtualized, grouped list. Filters with counts (status, category, tag,
-  tracker). Search. Selection and bulk actions. The detail panel as designed. Add (files,
-  magnets, URLs, previews, options). Delete. Keyboard shortcuts.
+- **W2 Torrents** (done but for previews). The virtualized, grouped list. Filters with counts
+  (status, category, tag, tracker). Search. Selection and bulk actions. The detail panel as
+  designed. Add (files, magnets, URLs, previews, options). Delete. Keyboard shortcuts. Left:
+  magnet and `.torrent` previews in the add dialog.
 - **W3 One torrent in depth.** Files (tree, priorities, rename). Peers (with GeoIP). Trackers
   and web seeds (edit). Pieces. Limits and share limits. Location and download path. Managing
   categories and tags.

@@ -84,10 +84,14 @@ npm install openapi-fetch   # createClient<paths>({ baseUrl })
 cargo xtask check     # fmt, clippy -D warnings, tests, docs, cargo-deny
 cargo xtask openapi   # regenerate openapi.json after an API change
 cargo xtask sdk       # generate TypeScript types and type-check a client (needs Node.js)
+cargo xtask web       # the web UI's checks and end-to-end tests (Node.js, Playwright's Chromium)
+cargo xtask dist      # a release binary with the web UI built in
 ```
 
 The tests start real engines on loopback addresses (`127.0.0.x`) and never
-touch the public internet.
+touch the public internet. The web UI lives in [`frontend/`](frontend/AGENTS.md)
+(SolidJS, Vite): `npm run dev` there serves it on `localhost:5173` against a
+daemon on `127.0.0.1:8080`.
 
 ## Licence
 

@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passed). Empty by default: nothing changes until an origin is listed.
 - Behind a trusted proxy that says `X-Forwarded-Proto: https`, the session
   cookie is `Secure`.
+- Web UI (`frontend/`, SolidJS): first-run setup and sign-in, with session
+  expiry and bans explained; the torrents screen as designed: a virtualized
+  list grouped by state, sidebar filters by status, category, tag and
+  tracker with counts, the daemon's search, keyboard selection and bulk
+  actions, a detail panel (properties, category and tag editing, pieces and
+  availability, transfer, trackers), adding by link or `.torrent` file,
+  and deleting with or without files. Live through the event stream.
+  Screens for statistics, RSS, the log and settings say they are still to
+  come.
+- `cargo xtask web` (the UI's checks and end-to-end tests) and
+  `cargo xtask dist` (a release binary with the UI built in).
 
 ### Security
 
