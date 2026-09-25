@@ -11,6 +11,7 @@ import {
   createSignal,
   Match,
   type ParentComponent,
+  Show,
   Switch,
   useContext,
 } from "solid-js";
@@ -19,6 +20,7 @@ import { LogoMark } from "~/components/logo";
 import { Button } from "~/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "~/components/ui/sheet";
 import { useAuth } from "~/features/auth/auth";
+import { SettingsNav } from "~/features/settings/nav";
 
 import { LiveProvider } from "./live";
 import { Sidebar } from "./sidebar";
@@ -60,14 +62,26 @@ function Unreachable() {
 
 const ShellLayout: ParentComponent = (props) => {
   const [navOpen, setNavOpen] = createSignal(false);
+  const location = useLocation();
+  const inSettings = () => location.pathname.startsWith("/settings");
   return (
     <ShellContext.Provider value={{ openNav: () => setNavOpen(true) }}>
       <div class="flex h-full overflow-hidden bg-background">
-        <Sidebar class="hidden w-56 flex-none border-r border-divider lg:flex" />
+        <Show
+          when={inSettings()}
+          fallback={<Sidebar class="hidden w-56 flex-none border-r border-divider lg:flex" />}
+        >
+          <SettingsNav class="hidden w-56 flex-none border-r border-divider lg:flex" />
+        </Show>
         <Sheet open={navOpen()} onOpenChange={setNavOpen}>
           <SheetContent position="left" class="w-60 p-0">
             <SheetTitle class="sr-only">Navigation</SheetTitle>
-            <Sidebar class="flex h-full" onNavigate={() => setNavOpen(false)} />
+            <Show
+              when={inSettings()}
+              fallback={<Sidebar class="flex h-full" onNavigate={() => setNavOpen(false)} />}
+            >
+              <SettingsNav class="flex h-full" onNavigate={() => setNavOpen(false)} />
+            </Show>
           </SheetContent>
         </Sheet>
         <div class="flex min-w-0 flex-1">{props.children}</div>

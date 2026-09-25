@@ -57,24 +57,23 @@ row whose operation the UI calls.
 
 ## W4: settings, security, logs
 
-| Operation                         | Why the UI does not call it        |
-| --------------------------------- | ---------------------------------- |
-| `PUT /api/v1/auth/credentials`    | W4: security settings.             |
-| `POST /api/v1/auth/api-key`       | W4: security settings.             |
-| `DELETE /api/v1/auth/api-key`     | W4: security settings.             |
-| `GET /api/v1/app/cookies`         | W4: the cookie jar for URL adds.   |
-| `PUT /api/v1/app/cookies`         | W4: the cookie jar for URL adds.   |
-| `GET /api/v1/app/interfaces`      | W4: the network settings.          |
-| `GET /api/v1/webhooks`            | W4: webhooks.                      |
-| `POST /api/v1/webhooks`           | W4: webhooks.                      |
-| `GET /api/v1/webhooks/{id}`       | W4: webhooks.                      |
-| `PATCH /api/v1/webhooks/{id}`     | W4: webhooks.                      |
-| `DELETE /api/v1/webhooks/{id}`    | W4: webhooks.                      |
-| `POST /api/v1/webhooks/{id}/test` | W4: webhooks.                      |
-| `PUT /api/v1/transfer/alt-speed`  | W4: the alternative-limits switch. |
-| `POST /api/v1/transfer/bans`      | W4: banning peers.                 |
-| `GET /api/v1/log`                 | W4: the log screen.                |
-| `GET /api/v1/log/peers`           | W4: the log screen.                |
+| Operation                         | Why the UI does not call it      |
+| --------------------------------- | -------------------------------- |
+| `PUT /api/v1/auth/credentials`    | W4: security settings.           |
+| `POST /api/v1/auth/api-key`       | W4: security settings.           |
+| `DELETE /api/v1/auth/api-key`     | W4: security settings.           |
+| `GET /api/v1/app/cookies`         | W4: the cookie jar for URL adds. |
+| `PUT /api/v1/app/cookies`         | W4: the cookie jar for URL adds. |
+| `GET /api/v1/app/interfaces`      | W4: the network settings.        |
+| `GET /api/v1/webhooks`            | W4: webhooks.                    |
+| `POST /api/v1/webhooks`           | W4: webhooks.                    |
+| `GET /api/v1/webhooks/{id}`       | W4: webhooks.                    |
+| `PATCH /api/v1/webhooks/{id}`     | W4: webhooks.                    |
+| `DELETE /api/v1/webhooks/{id}`    | W4: webhooks.                    |
+| `POST /api/v1/webhooks/{id}/test` | W4: webhooks.                    |
+| `POST /api/v1/transfer/bans`      | W4: banning peers.               |
+| `GET /api/v1/log`                 | W4: the log screen.              |
+| `GET /api/v1/log/peers`           | W4: the log screen.              |
 
 ## W5: RSS
 

@@ -43,8 +43,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   layout, stop condition, automatic management, speed and ratio limits.
   Duplicates and failures are shown with the daemon's reason, and previews
   that are not used are dropped.
-  Screens for statistics, RSS, the log and settings say they are still to
-  come.
+- Web UI: Settings, starting with Speed as designed: global and
+  alternative limits in kB/s next to the rates now, the switch to the
+  alternative limits, the schedule (window, time zone, days) with a chart
+  of the week and when it switches next, and the connection budget. Changes
+  are a draft, saved together (Ctrl/⌘ S) or discarded, and leaving asks
+  first. A banner offers to restart the daemon when engine settings wait
+  for one.
+  Screens for statistics, RSS, the log and the other settings sections say
+  they are still to come.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and
   `cargo xtask dist` (a release binary with the UI built in).
 

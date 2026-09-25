@@ -5,7 +5,8 @@ Guide for coding agents working on `frontend/`, the web UI of urtorrentd. Read t
 too (section 1 restates them for the UI). This file adds what is specific to the UI.
 
 Status (2026-09-25): W0, W1 and W2 are done: sign-in, first-run setup, the shell, the torrents
-screen and the add dialog as the mockups have them. Section 10 has the milestones.
+screen and the add dialog as the mockups have them. W4 has started with Settings › Speed.
+Section 10 has the milestones.
 
 ## 1. What this is
 
@@ -130,7 +131,11 @@ frontend/
                         detail panel, pieces (pieces.ts), add/ (the dialog, its sources and
                         previews, form.ts), delete, actions; later files,
                         peers, trackers, web seeds, limits
-      settings/         settings, security (credentials, API key), webhooks, watch folders, schedule
+      settings/         the settings screens: navigation (nav.tsx), the page frame with the
+                        restart banner (frame.tsx, restart.tsx), rows, fields and the save bar
+                        (controls.tsx), Speed (speed.tsx; its draft in speed-form.ts, the
+                        schedule in schedule.ts, the week chart); later the other sections,
+                        security (credentials, API key), webhooks, watch folders
       rss/ log/ stats/
   e2e/
     daemon.ts           starts and stops real daemons, one per test that asks (7.4)
@@ -369,6 +374,8 @@ locally.
 - `Login-html.zip`: the sign-in screen.
 - `Torrents-html.zip`: the main screen.
 - `Add_torrent_dialog-html.zip`: the add dialog (`AddTorrent.dc.html`).
+- `Settings_Speed-html.zip`: Settings › Speed (`Settings.dc.html`). Its navigation, header,
+  restart banner, rows and save bar are the pattern for every settings section.
 
 They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
@@ -502,6 +509,11 @@ These are the known differences. Resolve each as noted, never by faking.
 | Add dialog: "Use category share limits" | Categories' `share_limits` (added for the UI): a torrent's `global` limits defer to its category's, then to the settings | The switch sends the torrent's limits as all `global`; off, the Ratio limit field is the torrent's own (empty: none) and it has no time limits. Without a category it reads "Use global share limits". |
 | Add dialog: "Swarm: 186 seeds · 24 peers" | `swarm_seeds` / `swarm_leechers` on previews (added for the UI), kept after the metadata arrives; `null` when no tracker answered | "186 seeds · 24 leechers", or the connected peers while fetching, or "—". |
 | Add dialog: tracker chips with ports | Tracker URLs can carry passkeys (rule 6) | Hosts only. |
+| Settings: "Apply limits to µTP and overhead" switch | The engine always counts every byte of a peer connection, µTP and protocol messages included (`limit_utp_rate` and `limit_tcp_overhead` are fixed rows in `docs/settings.md`) | A read-only row marked "always", not a switch (rule 3). |
+| Settings: "2 engine settings apply after a restart · Restart daemon" | `restart_required` in `GET /app`; `POST /app/restart` (added for the UI) shuts down gracefully and starts the same binary again | The banner and the button, after a confirmation. Sessions live in the daemon's memory, so a restart signs everyone out: the UI waits for the daemon, then shows sign-in. |
+| Settings › Speed: the window "local to the daemon unless a time zone is set" | `alt_speed_schedule.time_zone` (`null` = the daemon's); `time_zone` in `GET /app` (added for the UI) | The zone picker's first entry is the daemon's zone by name. The status line, the week chart and "now" use the saved schedule in that zone. |
+| Settings › Speed: "Also toggled from the toolbar" | `PUT /transfer/alt-speed`; the torrents screen has no such toolbar button | "Also switched by the schedule and `PUT /transfer/alt-speed`". |
+| Settings footer: "libtorrent 2.0.11" | `library` in `GET /app` is urtorrent's version | Show the library we run on. |
 | Add dialog: "Watch folder" tab | The `watch_folders` setting (path, subfolders, what happens to an added file, add options) | The tab appends a watch folder with the dialog's options (`PATCH /settings`); the right column lists the files it will pick up. |
 
 ## 7. Testing
@@ -664,7 +676,10 @@ Each milestone ends with its end-to-end tests green.
   categories and tags.
 - **W4 Settings.** Every settings group, security (credentials, API key), webhooks, watch
   folders and the alternative-limits schedule. Transfer limits and the alternative-limits
-  switch. The main and peer logs.
+  switch. The main and peer logs. Done so far: the settings navigation and frame, the restart
+  banner (`POST /app/restart`), and Speed (global and alternative limits, the switch, the
+  schedule with its week chart, the connection budget) as designed. The other sections show
+  that they are not built yet.
 - **W5 RSS.** Folders, feeds, articles, and rules with their matches.
 - **W6 Statistics.** Traffic over time, seeding days, rankings, the timeline, places,
   breakdowns and idle seeds (uPlot).

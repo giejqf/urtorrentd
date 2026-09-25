@@ -176,7 +176,7 @@ function Section(props: { title: string; children: JSX.Element }) {
   );
 }
 
-function ConnectionDot() {
+export function ConnectionDot() {
   const live = useLive();
   const look = () => {
     switch (live.connection()) {
@@ -207,7 +207,7 @@ function ConnectionDot() {
   );
 }
 
-function InstanceMenu() {
+export function InstanceMenu() {
   const auth = useAuth();
   const [confirm, setConfirm] = createSignal(false);
   const app = () => {
