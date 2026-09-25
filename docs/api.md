@@ -89,6 +89,13 @@ resumes where it left off (or gets everything, if that revision is too old).
 Browsers cannot set headers on `EventSource`: use the login cookie; other
 clients can send the API key. Polling `GET /sync` stays for scripts.
 
+A stream opened with a login session is use of that session, so a page that
+only watches stays signed in; and it ends when the session does (sign-out,
+new credentials, or `api_session_timeout` idle seconds with nothing open),
+so a signed-out page stops receiving. The session cookie itself has no
+`Max-Age`: it lasts as long as the browser session, and the daemon decides
+when the login session ends.
+
 ## Metadata preview
 
 qBittorrent's `fetchMetadata` / `saveMetadata`: see what a magnet link holds
@@ -156,7 +163,11 @@ any text, `?` one character, everything else literal).
   name (a display-name override if set), the category, a tag or the host of
   any of its trackers (working or not); a word of 6 or more hex digits also
   matches the start of the info-hash. It combines with `filter`, `category`,
-  `tag` and the rest, then `sort` and paging apply.
+  `tag`, `tracker` (a host, as the rows' `tracker_hosts` list them; `""` for
+  torrents without trackers) and the rest, then `sort` and paging apply.
+  `GET /torrents/hashes` takes the same parameters and answers only the
+  info-hashes: a client that keeps the rows from the event stream (the web
+  UI) asks it which ones match, instead of fetching every matching row.
 - `GET /torrents/files?search=s01e0?%20mkv` searches file paths (with their
   torrent's folder) across every torrent, or one (`hash`). Torrents come by
   name, files in their order; `total` counts every match, `limit` (1 to
@@ -325,8 +336,9 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET | `/fs/directory` | List a directory (for choosing paths) |
 | GET, PUT | `/app/cookies` | The cookie jar for the daemon's own HTTP requests |
 | GET | `/app/interfaces` | Network interfaces and their addresses |
-| GET, POST | `/torrents` | The list (filter, category, tag, hashes, private, search, sort, paging); add torrents |
+| GET, POST | `/torrents` | The list (filter, category, tag, tracker, hashes, private, search, sort, paging); add torrents |
 | GET | `/torrents/count` | How many torrents |
+| GET | `/torrents/hashes` | The info-hashes of the list, filtered, sorted and paged as `GET /torrents` ([Search](#search)) |
 | GET | `/torrents/files` | Search file names across torrents ([Search](#search)) |
 | POST | `/torrents/parse` | Describe a `.torrent` without adding it |
 | GET, POST | `/previews` | Metadata previews; fetch a magnet's (or URL's) metadata without adding the torrent |
@@ -449,7 +461,7 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `transfer/toggleSpeedLimitsMode` | done | `PUT /transfer/alt-speed` |
 | `transfer/banPeers` | done | `POST /transfer/bans` (ranges: the `banned_ip_ranges` setting) |
 | `torrents/count` | done | `GET /torrents/count` |
-| `torrents/info` | done | `GET /torrents` (also `search`: name, category, tags, tracker host, info-hash prefix); `includeFiles`: `GET /torrents/files` (every torrent's files, paged); `includeTrackers`: `GET /torrents/{hash}/trackers` |
+| `torrents/info` | done | `GET /torrents` (also `search`: name, category, tags, tracker host, info-hash prefix; `tracker`: a tracker host; `GET /torrents/hashes`: only the info-hashes); `includeFiles`: `GET /torrents/files` (every torrent's files, paged); `includeTrackers`: `GET /torrents/{hash}/trackers` |
 | `torrents/properties` | done | `GET /torrents/{hash}` |
 | `torrents/trackers` | done | `GET /torrents/{hash}/trackers` |
 | `torrents/webseeds` | done | `GET /torrents/{hash}/webseeds` |

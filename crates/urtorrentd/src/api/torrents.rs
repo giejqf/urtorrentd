@@ -37,6 +37,19 @@ pub(crate) async fn add_torrents(
     Ok(Json(d.add_torrents(req).await?))
 }
 
+/// The info-hashes of the torrent list, filtered, sorted and paged as
+/// `GET /torrents` does: what a client that keeps the rows from the event
+/// stream needs from a search, without the rows.
+#[utoipa::path(get, path = "/torrents/hashes", tag = "torrents", params(TorrentListQuery), responses((status = 200, body = Vec<String>)))]
+pub(crate) async fn list_torrent_hashes(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<TorrentListQuery>,
+) -> ApiResult<Json<Vec<String>>> {
+    Ok(Json(
+        d.list(&q).await?.into_iter().map(|t| t.hash).collect(),
+    ))
+}
+
 /// How many torrents there are.
 #[utoipa::path(get, path = "/torrents/count", tag = "torrents", responses((status = 200, body = CountResponse)))]
 pub(crate) async fn count_torrents(State(d): State<Arc<Daemon>>) -> Json<CountResponse> {

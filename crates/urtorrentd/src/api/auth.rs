@@ -33,12 +33,11 @@ pub(crate) async fn login(
     client: Option<Extension<Client>>,
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<Response> {
-    let (max, ban, timeout) = {
+    let (max, ban) = {
         let st = d.state();
         (
             st.settings.api_max_auth_failures,
             st.settings.api_ban_duration,
-            st.settings.api_session_timeout,
         )
     };
     let checker = d.clone();
@@ -64,7 +63,7 @@ pub(crate) async fn login(
     if let Some(ip) = ip {
         d.auth.clear_failures(ip);
     }
-    logged_in(&d, timeout, https(client.as_ref()))
+    logged_in(&d, https(client.as_ref()))
 }
 
 /// Whether a trusted proxy says the client used HTTPS.
@@ -82,13 +81,13 @@ fn cookie_attributes(secure: bool) -> &'static str {
     }
 }
 
-/// A new login session, as a `204` that sets its cookie.
-fn logged_in(d: &Daemon, timeout: u64, secure: bool) -> ApiResult<Response> {
+/// A new login session, as a `204` that sets its cookie. The cookie has no
+/// `Max-Age`: it lasts as long as the browser session, and the daemon ends
+/// the login session after `api_session_timeout` idle seconds. A fixed
+/// lifetime would sign an active user out at a set time after login.
+fn logged_in(d: &Daemon, secure: bool) -> ApiResult<Response> {
     let sid = d.auth.new_session()?;
-    let cookie = format!(
-        "{SESSION_COOKIE}={sid}; {}; Max-Age={timeout}",
-        cookie_attributes(secure)
-    );
+    let cookie = format!("{SESSION_COOKIE}={sid}; {}", cookie_attributes(secure));
     Ok((StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response())
 }
 
@@ -116,11 +115,10 @@ pub(crate) async fn setup_credentials(
     headers: HeaderMap,
     Json(req): Json<CredentialsRequest>,
 ) -> ApiResult<Response> {
-    let (csrf, timeout, cors) = {
+    let (csrf, cors) = {
         let st = d.state();
         (
             st.settings.api_csrf_protection,
-            st.settings.api_session_timeout,
             st.settings.api_cors_origins.clone(),
         )
     };
@@ -161,7 +159,7 @@ pub(crate) async fn setup_credentials(
         )),
         None => d.logs.info("API credentials created by first-run setup"),
     }
-    logged_in(&d, timeout, secure)
+    logged_in(&d, secure)
 }
 
 fn check_credentials(req: &CredentialsRequest) -> ApiResult<()> {

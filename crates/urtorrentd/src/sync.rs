@@ -197,16 +197,23 @@ struct StreamState {
     last_transfer: Option<TransferInfo>,
     interval: Interval,
     shutdown: watch::Receiver<bool>,
+    /// The login session the stream was opened with, if any: the stream
+    /// ends with it, and keeps it alive while it is open.
+    session: Option<String>,
 }
 
 /// Server-sent events: a `sync` event (id = the revision, data = a
 /// [`SyncResponse`]) at once, then whenever something changed, checked every
 /// [`PUSH_INTERVAL`]. Nothing is queued: each event is computed when the
 /// connection can take it, so a slow client gets the latest diff, not a
-/// backlog. The stream ends when the daemon shuts down.
+/// backlog. The stream ends when the daemon shuts down, and when the login
+/// session it was opened with ends (sign-out, new credentials, expiry); an
+/// open stream is use of its session, so a page that only watches is not
+/// signed out.
 pub(crate) fn event_stream(
     daemon: Arc<Daemon>,
     rev: Option<u64>,
+    session: Option<String>,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
     let mut interval = tokio::time::interval(PUSH_INTERVAL);
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -217,6 +224,7 @@ pub(crate) fn event_stream(
         last_transfer: None,
         interval,
         shutdown,
+        session,
     };
     futures_util::stream::unfold(state, |mut s| async move {
         loop {
@@ -227,6 +235,16 @@ pub(crate) fn event_stream(
             }
             if s.daemon.is_closed() {
                 return None;
+            }
+            if let Some(sid) = &s.session {
+                let timeout = s.daemon.state().settings.api_session_timeout;
+                if !s
+                    .daemon
+                    .auth
+                    .touch_session(sid, Duration::from_secs(timeout))
+                {
+                    return None;
+                }
             }
             let Ok(resp) = s.daemon.sync(s.rev).await else {
                 continue;

@@ -7,7 +7,6 @@
 //! urtorrent 0.12), plus two caches that only change on edits: tracker URLs
 //! for magnet links and the content path (AGENTS.md 4.4).
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use urtorrent::{InfoHash, TorrentId, TorrentStatus};
@@ -142,6 +141,15 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
     let active_secs = s.active_time.as_secs();
     let name = r.name.clone().unwrap_or_else(|| s.name.clone());
     let urls = e.tracker_urls.clone().unwrap_or_default();
+    let mut tracker_hosts: Vec<String> = Vec::new();
+    for host in urls
+        .iter()
+        .filter_map(|u| crate::stats::db::tracker_host(u))
+    {
+        if !tracker_hosts.contains(&host) {
+            tracker_hosts.push(host);
+        }
+    }
     let (content_path, root_path) = match &e.content {
         Some(c) => (
             Some(join(&s.save_path, &c.content)),
@@ -211,6 +219,7 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
         pieces_total: s.pieces_total,
         tracker: s.working_tracker.clone(),
         trackers_count: s.trackers_count,
+        tracker_hosts,
         comment: r.comment.clone().or_else(|| s.comment.clone()),
         created_by: s.created_by.clone(),
         creation_date: s.creation_date,
@@ -340,23 +349,6 @@ impl Daemon {
                 .collect()
         });
         let rows = self.summaries().await?;
-        // Every tracker's host, not only the working one's.
-        let hosts: HashMap<String, Vec<String>> = if words.is_empty() {
-            HashMap::new()
-        } else {
-            let st = self.state();
-            st.torrents
-                .iter()
-                .map(|(h, e)| {
-                    let urls = e.tracker_urls.as_deref().unwrap_or_default();
-                    let hosts = urls
-                        .iter()
-                        .filter_map(|u| crate::stats::db::tracker_host(u))
-                        .collect();
-                    (hex(h), hosts)
-                })
-                .collect()
-        };
         let mut rows: Vec<TorrentSummary> = rows
             .into_iter()
             .filter(|t| filter_matches(q.filter.unwrap_or_default(), t))
@@ -370,12 +362,15 @@ impl Daemon {
                 Some("") => t.tags.is_empty(),
                 Some(tag) => t.tags.iter().any(|x| x == tag),
             })
+            .filter(|t| match q.tracker.as_deref() {
+                None => true,
+                Some("") => t.trackers_count == 0,
+                Some(host) => t.tracker_hosts.iter().any(|h| h.eq_ignore_ascii_case(host)),
+            })
             .filter(|t| hashes.as_ref().is_none_or(|h| h.contains(&t.hash)))
             .filter(|t| q.private.is_none_or(|p| t.private == p))
-            .filter(|t| {
-                let hosts = hosts.get(&t.hash).map_or(&[][..], Vec::as_slice);
-                words.iter().all(|w| search_matches(w, t, hosts))
-            })
+            // Every tracker's host, not only the working one's.
+            .filter(|t| words.iter().all(|w| search_matches(w, t, &t.tracker_hosts)))
             .collect();
         if let Some(key) = q.sort {
             sort_rows(&mut rows, key);

@@ -7,12 +7,14 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::Extension;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::Stream;
 
 use super::Query;
+use super::guard::Principal;
 use crate::daemon::Daemon;
 use crate::model::{EventsQuery, SyncResponse};
 
@@ -25,7 +27,9 @@ const KEEP_ALIVE: Duration = Duration::from_secs(15);
 /// the first is everything (or the changes since `rev`), the next ones only
 /// what changed, at most once a second and only when something did. On
 /// reconnect a browser's `EventSource` sends the last id as `Last-Event-ID`,
-/// which resumes from there. Idle streams get a comment every 15 s.
+/// which resumes from there. Idle streams get a comment every 15 s. A
+/// stream opened with a login session ends when the session does, and
+/// keeps it alive while open.
 #[utoipa::path(
     get, path = "/events", tag = "sync",
     params(
@@ -42,6 +46,7 @@ const KEEP_ALIVE: Duration = Duration::from_secs(15);
 pub(crate) async fn stream_events(
     State(d): State<Arc<Daemon>>,
     Query(q): Query<EventsQuery>,
+    principal: Option<Extension<Principal>>,
     headers: HeaderMap,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let resume = headers
@@ -49,5 +54,10 @@ pub(crate) async fn stream_events(
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.trim().parse::<u64>().ok())
         .or(q.rev);
-    Sse::new(crate::sync::event_stream(d, resume)).keep_alive(KeepAlive::new().interval(KEEP_ALIVE))
+    let session = match principal {
+        Some(Extension(Principal::Session(sid))) => Some(sid),
+        _ => None,
+    };
+    Sse::new(crate::sync::event_stream(d, resume, session))
+        .keep_alive(KeepAlive::new().interval(KEEP_ALIVE))
 }

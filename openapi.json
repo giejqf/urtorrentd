@@ -1708,7 +1708,7 @@
         "tags": [
           "sync"
         ],
-        "summary": "Live updates as server-sent events (`text/event-stream`). Every event is\nnamed `sync`, its `id` is the revision and its `data` a `SyncResponse`:\nthe first is everything (or the changes since `rev`), the next ones only\nwhat changed, at most once a second and only when something did. On\nreconnect a browser's `EventSource` sends the last id as `Last-Event-ID`,\nwhich resumes from there. Idle streams get a comment every 15 s.",
+        "summary": "Live updates as server-sent events (`text/event-stream`). Every event is\nnamed `sync`, its `id` is the revision and its `data` a `SyncResponse`:\nthe first is everything (or the changes since `rev`), the next ones only\nwhat changed, at most once a second and only when something did. On\nreconnect a browser's `EventSource` sends the last id as `Last-Event-ID`,\nwhich resumes from there. Idle streams get a comment every 15 s. A\nstream opened with a login session ends when the session does, and\nkeeps it alive while open.",
         "operationId": "stream_events",
         "parameters": [
           {
@@ -6598,6 +6598,15 @@
             }
           },
           {
+            "name": "tracker",
+            "in": "query",
+            "description": "Only torrents with a tracker on this host (`\"\"` = torrents without\ntrackers); hosts as `tracker_hosts` has them.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "hashes",
             "in": "query",
             "description": "Only these info-hashes, `|`-separated.",
@@ -7600,6 +7609,203 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/torrents/hashes": {
+      "get": {
+        "tags": [
+          "torrents"
+        ],
+        "summary": "The info-hashes of the torrent list, filtered, sorted and paged as\n`GET /torrents` does: what a client that keeps the rows from the event\nstream needs from a search, without the rows.",
+        "operationId": "list_torrent_hashes",
+        "parameters": [
+          {
+            "name": "filter",
+            "in": "query",
+            "description": "State filter.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TorrentFilter"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "Only this category (`\"\"` = torrents without one).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "Only torrents with this tag (`\"\"` = torrents without tags).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tracker",
+            "in": "query",
+            "description": "Only torrents with a tracker on this host (`\"\"` = torrents without\ntrackers); hosts as `tracker_hosts` has them.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hashes",
+            "in": "query",
+            "description": "Only these info-hashes, `|`-separated.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "private",
+            "in": "query",
+            "description": "Only private (`true`) or public (`false`) torrents.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words that must all match (case ignored; `*` any text, `?` any\ncharacter), each in the name, the category, a tag or a tracker's\nhost (any tracker, working or not); a word of 6 or more hex digits\nalso matches an info-hash that starts with it.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Sort key.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TorrentSort"
+            }
+          },
+          {
+            "name": "reverse",
+            "in": "query",
+            "description": "Sort descending.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Page start.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -15175,7 +15381,7 @@
           "api_session_timeout": {
             "type": "integer",
             "format": "int64",
-            "description": "Idle seconds after which an API login session expires.",
+            "description": "Idle seconds after which an API login session expires. Every request\nwith the session is use of it, and so is an open event stream.",
             "default": 3600,
             "minimum": 0
           },
@@ -15698,7 +15904,7 @@
           "api_session_timeout": {
             "type": "integer",
             "format": "int64",
-            "description": "Idle seconds after which an API login session expires.",
+            "description": "Idle seconds after which an API login session expires. Every request\nwith the session is use of it, and so is an open event stream.",
             "minimum": 0
           },
           "api_max_auth_failures": {
@@ -16783,6 +16989,7 @@
           "pieces_total",
           "tracker",
           "trackers_count",
+          "tracker_hosts",
           "magnet_uri",
           "comment",
           "created_by",
@@ -16806,7 +17013,7 @@
           },
           "stalled": {
             "type": "boolean",
-            "description": "Running but moving no payload."
+            "description": "Running but moving no payload: a download that gets no data, or a\nseed nobody downloads from (clients may call that idle)."
           },
           "forced": {
             "type": "boolean",
@@ -17125,6 +17332,13 @@
             "type": "integer",
             "description": "Trackers configured.",
             "minimum": 0
+          },
+          "tracker_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The hosts of every configured tracker, working or not: lowercase,\neach once, in tier order. Never the URLs, which can carry passkeys."
           },
           "magnet_uri": {
             "type": "string",

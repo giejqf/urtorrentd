@@ -220,7 +220,8 @@ settings! {
     disk_thread: bool = true, nullable = false;
     /// Zero-copy sends for piece payloads. Applies after a restart.
     zero_copy_send: bool = false, nullable = false;
-    /// Idle seconds after which an API login session expires.
+    /// Idle seconds after which an API login session expires. Every request
+    /// with the session is use of it, and so is an open event stream.
     api_session_timeout: u64 = 3600, nullable = false;
     /// Failed logins from one address before it is banned.
     api_max_auth_failures: u32 = 5, nullable = false;

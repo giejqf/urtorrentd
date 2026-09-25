@@ -238,6 +238,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(app::list_interfaces))
         .routes(routes!(torrents::list_torrents, torrents::add_torrents))
         .routes(routes!(torrents::count_torrents))
+        .routes(routes!(torrents::list_torrent_hashes))
         .routes(routes!(torrents::search_files))
         .routes(routes!(torrents::parse_torrent))
         .routes(routes!(previews::list_previews, previews::create_preview))

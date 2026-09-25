@@ -382,7 +382,8 @@ pub enum TorrentFilter {
     Inactive,
     /// Running but moving no payload.
     Stalled,
-    /// Stalled while seeding.
+    /// Stalled while seeding: complete, running, and nobody downloading
+    /// from it (idle).
     StalledSeeding,
     /// Stalled while downloading.
     StalledDownloading,
@@ -438,6 +439,9 @@ pub struct TorrentListQuery {
     pub category: Option<String>,
     /// Only torrents with this tag (`""` = torrents without tags).
     pub tag: Option<String>,
+    /// Only torrents with a tracker on this host (`""` = torrents without
+    /// trackers); hosts as `tracker_hosts` has them.
+    pub tracker: Option<String>,
     /// Only these info-hashes, `|`-separated.
     pub hashes: Option<String>,
     /// Only private (`true`) or public (`false`) torrents.
@@ -512,7 +516,8 @@ pub struct TorrentSummary {
     pub name: String,
     /// State.
     pub state: TorrentState,
-    /// Running but moving no payload.
+    /// Running but moving no payload: a download that gets no data, or a
+    /// seed nobody downloads from (clients may call that idle).
     pub stalled: bool,
     /// Started regardless of the queue limits.
     pub forced: bool,
@@ -635,6 +640,9 @@ pub struct TorrentSummary {
     pub tracker: Option<String>,
     /// Trackers configured.
     pub trackers_count: usize,
+    /// The hosts of every configured tracker, working or not: lowercase,
+    /// each once, in tier order. Never the URLs, which can carry passkeys.
+    pub tracker_hosts: Vec<String>,
     /// Magnet link.
     pub magnet_uri: String,
     /// Comment.

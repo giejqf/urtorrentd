@@ -190,3 +190,83 @@ async fn changes_are_pushed_and_streams_resume() {
     assert!(end.is_ok(), "the stream did not end at shutdown");
     t.stop().await;
 }
+
+#[tokio::test]
+async fn a_stream_keeps_its_session_and_ends_with_it() {
+    let t = TestDaemon::start(58, |s| {
+        s.api_bypass_local_auth = false;
+        s.api_session_timeout = 2;
+    })
+    .await;
+    let addr = serve(&t).await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}/api/v1");
+    let setup = client
+        .post(format!("{base}/auth/setup"))
+        .json(&json!({"username": "admin", "password": "correct horse"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(setup.status().as_u16(), 204);
+    let cookie = setup.headers()["set-cookie"].to_str().unwrap().to_string();
+    // A browser-session cookie: the daemon, not the browser, ends sessions.
+    assert!(!cookie.contains("Max-Age"), "{cookie}");
+    let sid = cookie.split(';').next().unwrap().to_string();
+
+    let resp = client
+        .get(format!("{base}/events"))
+        .header("cookie", &sid)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let mut r = Reader {
+        resp,
+        buf: String::new(),
+    };
+    r.until("the first event", |_| true).await;
+
+    // Twice the idle timeout with only the stream open: still signed in.
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    let app = client
+        .get(format!("{base}/app"))
+        .header("cookie", &sid)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(app.status().as_u16(), 200);
+
+    // Signing out ends the stream.
+    let out = client
+        .post(format!("{base}/auth/logout"))
+        .header("cookie", &sid)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(out.status().as_u16(), 204);
+    assert!(r.next(5).await.is_none(), "the stream outlived its session");
+
+    // Without a stream, the session expires after the timeout.
+    let login = client
+        .post(format!("{base}/auth/login"))
+        .json(&json!({"username": "admin", "password": "correct horse"}))
+        .send()
+        .await
+        .unwrap();
+    let sid = login.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let late = client
+        .get(format!("{base}/app"))
+        .header("cookie", &sid)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(late.status().as_u16(), 401);
+    t.stop().await;
+}

@@ -137,6 +137,31 @@ async fn list_search() {
     let row = &t.get("/api/v1/torrents?search=localhost").await[0];
     assert_eq!(row["name"], UBUNTU);
     assert_eq!(row["tracker"], Value::Null);
+    // List rows carry every tracker's host (never the URL), and the list
+    // filters by host (`""`: torrents without trackers).
+    assert_eq!(row["tracker_hosts"], json!(["localhost"]));
+    let show_row = t.torrent(&lib.show).await;
+    assert_eq!(show_row["tracker_hosts"], json!(["127.0.0.1"]));
+    assert_eq!(t.torrent(&lib.notes).await["tracker_hosts"], json!([]));
+    assert_eq!(names(&t, "tracker=localhost").await, [UBUNTU]);
+    assert_eq!(names(&t, "tracker=LOCALHOST").await, [UBUNTU]);
+    assert_eq!(names(&t, "tracker=127.0.0.1").await, [SHOW]);
+    assert_eq!(names(&t, "tracker=").await, [NOTES]);
+    assert_eq!(names(&t, "tracker=example.org").await, NONE);
+    // Only the info-hashes, filtered as the list is.
+    let hashes = t.get("/api/v1/torrents/hashes?search=s01%20tv").await;
+    assert_eq!(hashes, json!([lib.show]));
+    let mut all: Vec<String> =
+        serde_json::from_value(t.get("/api/v1/torrents/hashes").await).unwrap();
+    all.sort();
+    let mut expected = vec![lib.ubuntu.clone(), lib.show.clone(), lib.notes.clone()];
+    expected.sort();
+    assert_eq!(all, expected);
+    assert_eq!(
+        t.get("/api/v1/torrents/hashes?tracker=&filter=seeding")
+            .await,
+        json!([lib.notes])
+    );
     // The start of an info-hash (6 hex digits or more).
     assert_eq!(
         names(&t, &format!("search={}", &lib.show[..8])).await,
