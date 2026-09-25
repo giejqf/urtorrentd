@@ -7,6 +7,7 @@
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use axum::extract::connect_info::MockConnectInfo;
@@ -47,12 +48,23 @@ fn peer_ip(ext: &axum::http::Extensions) -> Option<IpAddr> {
 pub(crate) struct Client {
     pub ip: Option<IpAddr>,
     pub host: Option<String>,
+    /// A trusted proxy says the client used HTTPS (`X-Forwarded-Proto`):
+    /// the session cookie gets `Secure`.
+    pub https: bool,
+    /// The request carries forwarding headers from a peer that is not a
+    /// trusted proxy: the real client is unknown, so no address-based
+    /// exemption from authentication applies.
+    pub forwarded_by_untrusted: bool,
 }
+
+/// Headers a reverse proxy adds to name the client.
+const FORWARDING_HEADERS: [&str; 3] = ["x-forwarded-for", "x-real-ip", "forwarded"];
 
 /// The client of a request coming from `peer`: when `peer` is a trusted
 /// proxy, `X-Forwarded-For` names the client (the last address that is not
-/// a trusted proxy, reading from the right) and `X-Forwarded-Host` the
-/// host; otherwise the connection and `Host` do.
+/// a trusted proxy, reading from the right), `X-Forwarded-Host` the host
+/// and `X-Forwarded-Proto` the scheme; otherwise the connection and `Host`
+/// do.
 pub(crate) fn forwarded(headers: &HeaderMap, peer: Option<IpAddr>, trusted: &[Cidr]) -> Client {
     let host = headers
         .get(header::HOST)
@@ -60,7 +72,12 @@ pub(crate) fn forwarded(headers: &HeaderMap, peer: Option<IpAddr>, trusted: &[Ci
         .map(str::to_string);
     let is_trusted = |ip: IpAddr| trusted.iter().any(|c| c.contains(ip));
     if !peer.is_some_and(is_trusted) {
-        return Client { ip: peer, host };
+        return Client {
+            ip: peer,
+            host,
+            https: false,
+            forwarded_by_untrusted: FORWARDING_HEADERS.iter().any(|h| headers.contains_key(*h)),
+        };
     }
     // Read from the right: those entries were added by the trusted proxies;
     // anything left of the first address that is not theirs (or of an entry
@@ -89,7 +106,17 @@ pub(crate) fn forwarded(headers: &HeaderMap, peer: Option<IpAddr>, trusted: &[Ci
         .map(|h| h.trim().to_string())
         .filter(|h| !h.is_empty())
         .or(host);
-    Client { ip, host }
+    let https = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .is_some_and(|p| p.trim().eq_ignore_ascii_case("https"));
+    Client {
+        ip,
+        host,
+        https,
+        forwarded_by_untrusted: false,
+    }
 }
 
 pub(crate) fn client_ip(req: &Request) -> Option<IpAddr> {
@@ -147,8 +174,12 @@ fn authority_of(url: &str) -> Option<&str> {
 }
 
 /// Whether a browser request comes from another origin than the one it is
-/// sent to (only judged when the browser says where it comes from).
-pub(crate) fn cross_origin(headers: &HeaderMap, host: Option<&str>) -> bool {
+/// sent to (only judged when the browser says where it comes from), and
+/// that origin is not one of `allowed` (`api_cors_origins`).
+pub(crate) fn cross_origin(headers: &HeaderMap, host: Option<&str>, allowed: &[String]) -> bool {
+    if super::cors::listed_origin(headers, allowed).is_some() {
+        return false;
+    }
     let origin = headers
         .get(header::ORIGIN)
         .or_else(|| headers.get(header::REFERER))
@@ -159,6 +190,9 @@ pub(crate) fn cross_origin(headers: &HeaderMap, host: Option<&str>) -> bool {
         _ => false,
     }
 }
+
+/// Whether the one-time warning about a proxy that is not trusted was logged.
+static UNTRUSTED_PROXY_WARNED: AtomicBool = AtomicBool::new(false);
 
 fn session_cookie(headers: &HeaderMap) -> Option<String> {
     headers
@@ -225,7 +259,7 @@ pub(crate) async fn authenticate(
     mut req: Request,
     next: Next,
 ) -> Response {
-    let (bypass_local, whitelist, csrf, timeout) = {
+    let (bypass_local, whitelist, csrf, timeout, cors) = {
         let st = d.state();
         let s = &st.settings;
         (
@@ -233,16 +267,32 @@ pub(crate) async fn authenticate(
             s.api_auth_whitelist.clone(),
             s.api_csrf_protection,
             s.api_session_timeout,
+            s.api_cors_origins.clone(),
         )
     };
     let ip = client_ip(&req);
-    let bypass = ip.is_some_and(|ip| {
+    let exempt = ip.is_some_and(|ip| {
         (bypass_local && ip.is_loopback())
             || whitelist
                 .iter()
                 .filter_map(|c| Cidr::parse(c))
                 .any(|c| c.contains(ip))
     });
+    // A reverse proxy that is not in `api_trusted_proxies` makes every
+    // client look like the proxy (often loopback): never exempt those.
+    let relayed = req
+        .extensions()
+        .get::<Client>()
+        .is_some_and(|c| c.forwarded_by_untrusted);
+    if exempt && relayed && !UNTRUSTED_PROXY_WARNED.swap(true, Ordering::Relaxed) {
+        d.logs.warn(format!(
+            "a request relayed by {} carries forwarding headers but that address is not in \
+             api_trusted_proxies: its clients are not exempt from authentication; add the \
+             proxy to api_trusted_proxies",
+            ip.map_or_else(|| "an unknown address".to_string(), |ip| ip.to_string())
+        ));
+    }
+    let bypass = exempt && !relayed;
     let principal = if bypass {
         Principal::Bypass
     } else if let Some(key) = bearer(req.headers()) {
@@ -267,7 +317,7 @@ pub(crate) async fn authenticate(
             .extensions()
             .get::<Client>()
             .and_then(|c| c.host.clone());
-        if csrf && unsafe_method && cross_origin(req.headers(), host.as_deref()) {
+        if csrf && unsafe_method && cross_origin(req.headers(), host.as_deref(), &cors) {
             return refuse(
                 StatusCode::FORBIDDEN,
                 ErrorCode::CrossOrigin,
@@ -308,15 +358,51 @@ mod tests {
     fn origins() {
         let mut h = HeaderMap::new();
         let host = Some("localhost:8080");
-        assert!(!cross_origin(&h, host));
+        assert!(!cross_origin(&h, host, &[]));
         h.insert(
             header::ORIGIN,
             HeaderValue::from_static("http://localhost:8080"),
         );
-        assert!(!cross_origin(&h, host));
+        assert!(!cross_origin(&h, host, &[]));
+        // Behind a TLS-terminating proxy: the authority is compared, not the scheme.
+        h.insert(
+            header::ORIGIN,
+            HeaderValue::from_static("https://localhost:8080"),
+        );
+        assert!(!cross_origin(&h, host, &[]));
         h.insert(header::ORIGIN, HeaderValue::from_static("http://evil.test"));
-        assert!(cross_origin(&h, host));
-        assert!(cross_origin(&h, None));
+        assert!(cross_origin(&h, host, &[]));
+        assert!(cross_origin(&h, None, &[]));
+        // A listed CORS origin is not cross-origin for the CSRF check.
+        let listed = vec!["http://ui.test:3000".to_string()];
+        assert!(cross_origin(&h, host, &listed));
+        h.insert(
+            header::ORIGIN,
+            HeaderValue::from_static("http://UI.test:3000"),
+        );
+        assert!(!cross_origin(&h, host, &listed));
+    }
+
+    #[test]
+    fn forwarded_scheme_and_untrusted_relays() {
+        let ip = |s: &str| s.parse::<IpAddr>().ok();
+        let proxy = Cidr::parse("127.0.0.1").into_iter().collect::<Vec<_>>();
+        let mut h = HeaderMap::new();
+        h.insert("x-forwarded-proto", HeaderValue::from_static("https"));
+        h.insert("x-forwarded-for", HeaderValue::from_static("203.0.113.9"));
+        let c = forwarded(&h, ip("127.0.0.1"), &proxy);
+        assert!(c.https && !c.forwarded_by_untrusted);
+        assert_eq!(c.ip, ip("203.0.113.9"));
+        // The same headers from a peer that is not trusted: not believed,
+        // and flagged.
+        let c = forwarded(&h, ip("127.0.0.1"), &[]);
+        assert!(!c.https && c.forwarded_by_untrusted);
+        assert_eq!(c.ip, ip("127.0.0.1"));
+        // A direct client.
+        let c = forwarded(&HeaderMap::new(), ip("127.0.0.1"), &[]);
+        assert!(!c.https && !c.forwarded_by_untrusted);
+        h.insert("x-forwarded-proto", HeaderValue::from_static("http"));
+        assert!(!forwarded(&h, ip("127.0.0.1"), &proxy).https);
     }
 
     #[test]

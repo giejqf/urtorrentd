@@ -11,6 +11,12 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Embed the web UI's build (frontend/dist) in the binary (ADR 0008);
+# `cargo xtask dist` builds the UI and turns this on. Without it the binary
+# serves the API only, or a build from `--web-ui <dir>`.
+web-ui = []
+
 [dependencies]
 # The library, through its facade only (AGENTS.md rule 5).
 urtorrent = { path = "../../../urtorrent/crates/urtorrent", version = "0.13.4" }

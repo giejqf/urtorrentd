@@ -16,6 +16,10 @@ The daemon's own start-up options are not settings: the data directory
 (`--data-dir`, `URTORRENTD_DATA_DIR`) and the API address (`--api-listen`,
 `URTORRENTD_API_LISTEN`, default `127.0.0.1:8080`).
 
+The web UI is a start-up option too: the build in the binary, `--web-ui
+<dir>` (`URTORRENTD_WEB_UI`) for another one, `--no-web-ui` for none (see
+[below](#the-web-ui-and-reverse-proxies)).
+
 `--initial-settings <file>` (`URTORRENTD_INITIAL_SETTINGS`) gives a new data
 directory its first settings: a JSON object of the fields above, applied over
 the defaults, so the daemon never starts once with the defaults (the DHT
@@ -152,6 +156,51 @@ The file is re-read when it changes, so a monthly update is a replace
 read keeps the database loaded before. `GET /app` → `geoip` shows each
 file's `database_type`, build time and last error.
 
+## The web UI and reverse proxies
+
+The daemon serves the web UI ([`frontend/`](../frontend/AGENTS.md),
+[ADR 0008](adr/0008-web-ui.md)) at `/` on the API's address; the API stays
+at `/api/v1`. Release builds (`cargo xtask dist`) have the UI built in; a
+plain `cargo build` has none, and `--web-ui frontend/dist` serves a build
+from a directory. The UI's files are public; everything they show needs a
+session.
+
+For HTTPS, put a reverse proxy in front and give it a whole host (the UI
+does not work under a sub-path). With [Caddy](https://caddyserver.com):
+
+```
+torrents.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+and these settings:
+
+- `api_trusted_proxies`: the proxy's address (`["127.0.0.1", "::1"]` for
+  one on the same machine). The daemon then takes the client's address from
+  `X-Forwarded-For` (for bans and the auth exemptions), the host from
+  `X-Forwarded-Host` and the scheme from `X-Forwarded-Proto`: behind HTTPS
+  the session cookie is `Secure`. A request that carries forwarding headers
+  from an address that is not trusted comes from someone unknown: it is
+  never exempt from authentication (`api_bypass_local_auth`,
+  `api_auth_whitelist`), and the daemon logs a warning once.
+- `api_allowed_hosts`: the public name (`["torrents.example.com"]`).
+- `api_csrf_protection` needs nothing: it compares the `Origin`'s host and
+  port with the request's, not the scheme, so TLS at the proxy is fine.
+
+Caddy streams `GET /api/v1/events` as it comes (the daemon sends a comment
+every 15 s on an idle stream, so proxy timeouts do not end it); nginx needs
+`proxy_buffering off` there.
+
+**CORS.** The UI is same-origin with the API and needs no CORS. A page on
+another origin (another UI, a dashboard) can call the API once its origin
+is in `api_cors_origins` (`["https://dash.example.com"]`: exact origins, no
+wildcard): the daemon answers its preflights and marks every response to it
+with `Access-Control-Allow-Origin` and `-Credentials`, errors included, and
+its requests pass the CSRF check. Browsers send the session cookie only to
+the same site (`SameSite=Strict`), so a page on another site authenticates
+with an API key.
+
 ## Coverage of qBittorrent 5.2.3's preferences
 
 Every key of the reference (`docs/reference/qbittorrent-5.2.3-preferences.txt`)
@@ -171,8 +220,8 @@ an API daemon. **unsupported**: with the reason.
 | `add_trackers_url_list` | done | `GET /app` → `fetched_trackers` (what was fetched, when, the last error) |
 | `alt_dl_limit` | setting | `alt_download_limit` |
 | `alt_up_limit` | setting | `alt_upload_limit` |
-| `alternative_webui_enabled` | n/a | no web UI is served |
-| `alternative_webui_path` | n/a | as above |
+| `alternative_webui_enabled` | done | `--web-ui <dir>` serves a build from a directory instead of the built-in UI (`--no-web-ui`: none); a start-up option, never an API setting ([ADR 0008](adr/0008-web-ui.md)) |
+| `alternative_webui_path` | done | `--web-ui <dir>` |
 | `announce_ip` | unsupported | not offered by the library (urtorrent quirks Q22) |
 | `announce_port` | unsupported | not offered by the library |
 | `announce_to_all_tiers` | fixed | all tiers, first working tracker per tier (urtorrent Q9) |
@@ -362,26 +411,26 @@ an API daemon. **unsupported**: with the reason.
 | `upnp` | unsupported | port mapping is on the library roadmap |
 | `upnp_lease_duration` | unsupported | as above |
 | `use_category_paths_in_manual_mode` | setting | `category_paths_in_manual_mode` |
-| `use_https` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
+| `use_https` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy; the session cookie is `Secure` behind it |
 | `use_unwanted_folder` | unsupported | skipped files' shared pieces go to the library's parts file |
 | `utp_tcp_mixed_mode` | fixed | the `transports` policy decides |
 | `validate_https_tracker_certificate` | fixed | always validated |
 | `web_ui_address` | setting | `--api-listen` |
 | `web_ui_api_key` | setting | `POST` / `DELETE /auth/api-key` |
 | `web_ui_ban_duration` | setting | `api_ban_duration` |
-| `web_ui_clickjacking_protection_enabled` | n/a | no HTML is served |
+| `web_ui_clickjacking_protection_enabled` | fixed | always on: the UI's pages send `frame-ancestors 'none'` and `X-Frame-Options: DENY` |
 | `web_ui_csrf_protection_enabled` | setting | `api_csrf_protection` |
-| `web_ui_custom_http_headers` | unsupported | no web UI is served |
+| `web_ui_custom_http_headers` | unsupported | CORS has its own setting (`api_cors_origins`); other headers belong in the reverse proxy |
 | `web_ui_domain_list` | setting | `api_allowed_hosts` |
 | `web_ui_host_header_validation_enabled` | setting | `api_allowed_hosts` (`["*"]` turns it off) |
-| `web_ui_https_cert_path` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
-| `web_ui_https_key_path` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
+| `web_ui_https_cert_path` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy; the session cookie is `Secure` behind it |
+| `web_ui_https_key_path` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy; the session cookie is `Secure` behind it |
 | `web_ui_max_auth_fail_count` | setting | `api_max_auth_failures` |
 | `web_ui_port` | setting | `--api-listen` |
 | `web_ui_reverse_proxies_list` | setting | `api_trusted_proxies` (addresses or blocks) |
-| `web_ui_reverse_proxy_enabled` | setting | `api_trusted_proxies` not empty (`X-Forwarded-For`, `X-Forwarded-Host`) |
-| `web_ui_secure_cookie_enabled` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy, which can also mark the session cookie `Secure` |
+| `web_ui_reverse_proxy_enabled` | setting | `api_trusted_proxies` not empty (`X-Forwarded-For`, `X-Forwarded-Host`, `X-Forwarded-Proto`) |
+| `web_ui_secure_cookie_enabled` | fixed | automatic: the session cookie is `Secure` when a trusted proxy says the client used HTTPS (`X-Forwarded-Proto: https`) |
 | `web_ui_session_timeout` | setting | `api_session_timeout` |
 | `web_ui_upnp` | unsupported | no port mapping |
-| `web_ui_use_custom_http_headers_enabled` | unsupported | no web UI is served |
+| `web_ui_use_custom_http_headers_enabled` | unsupported | as `web_ui_custom_http_headers` |
 | `web_ui_username` | setting | `PUT /auth/credentials` (first run: `POST /auth/setup`) |

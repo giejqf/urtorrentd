@@ -14,6 +14,13 @@ Read [AGENTS.md](AGENTS.md) first: it is the project charter.
 cargo run --release -p urtorrentd -- --data-dir ~/.local/share/urtorrentd --api-listen 127.0.0.1:8080
 ```
 
+The web UI is at `http://127.0.0.1:8080/` when the binary has it built in
+(`cargo xtask dist` builds the UI and then a release binary with it); a
+plain `cargo build` serves the API only, or a build of the UI with
+`--web-ui frontend/dist`. For HTTPS, put a reverse proxy such as Caddy in
+front (`reverse_proxy 127.0.0.1:8080`) and set `api_trusted_proxies` and
+`api_allowed_hosts` ([docs/settings.md](docs/settings.md#the-web-ui-and-reverse-proxies)).
+
 All state is in one SQLite database, `<data dir>/urtorrentd.db`; back it up
 with `sqlite3 urtorrentd.db ".backup copy.db"`, even while the daemon runs.
 Recorded history (statistics) is in `<data dir>/stats.db`: disposable,

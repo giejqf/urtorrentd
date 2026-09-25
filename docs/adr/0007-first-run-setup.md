@@ -1,6 +1,6 @@
 # ADR 0007: First-run setup of the credentials
 
-Status: accepted (2026-09-24, maintainer decision).
+Status: accepted (2026-09-24, maintainer decision). Amended by [ADR 0008](0008-web-ui.md): origins listed in `api_cors_origins` get their preflights granted.
 
 ## Context
 

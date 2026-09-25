@@ -264,6 +264,38 @@ settings! {
     api_allowed_hosts: Vec<String> = vec!["localhost".to_string()], nullable = false;
     /// Reject state-changing requests from browsers on other origins.
     api_csrf_protection: bool = true, nullable = false;
+    /// Browser origins (`https://ui.example.com`, `http://localhost:5173`)
+    /// allowed to call the API from their pages (CORS, with credentials):
+    /// they get answers to preflights, `Access-Control-Allow-*` headers on
+    /// every response, and pass `api_csrf_protection`. Exact origins only,
+    /// no wildcard; empty = none. The web UI the daemon serves is
+    /// same-origin and needs none.
+    api_cors_origins: Vec<String> = Vec::new(), nullable = false;
+}
+
+/// Whether `s` is a web origin as a browser sends it in `Origin`:
+/// `http://` or `https://`, a host, an optional port, nothing else.
+fn is_origin(s: &str) -> bool {
+    let Some((scheme, rest)) = s.split_once("://") else {
+        return false;
+    };
+    let (host, port) = match rest.strip_prefix('[') {
+        Some(v6) => match v6.split_once(']') {
+            Some((h, p)) => (h, p.strip_prefix(':')),
+            None => return false,
+        },
+        None => match rest.rsplit_once(':') {
+            Some((h, p)) => (h, Some(p)),
+            None => (rest, None),
+        },
+    };
+    matches!(scheme, "http" | "https")
+        && !host.is_empty()
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | ':'))
+        && port
+            .is_none_or(|p| !p.is_empty() && p.len() <= 5 && p.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// Fields that only take effect when the engine is rebuilt at the next start.
@@ -550,6 +582,16 @@ impl Settings {
                 ));
             }
         }
+        if self.api_cors_origins.len() > 64 {
+            return Err("api_cors_origins: 64 at most".into());
+        }
+        for o in &self.api_cors_origins {
+            if !is_origin(o) {
+                return Err(format!(
+                    "api_cors_origins: {o:?} is not an origin (http(s)://host[:port], no path, no wildcard)"
+                ));
+            }
+        }
         if let Some(s) = &self.alt_speed_schedule {
             s.bounds()?;
             s.zone()?;
@@ -830,6 +872,33 @@ pub fn valid_tracker_url(url: &str) -> bool {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn origins() {
+        for ok in [
+            "http://localhost:5173",
+            "https://ui.example.com",
+            "http://127.0.0.1:8080",
+            "http://[::1]:3000",
+            "https://[fd00::1]",
+        ] {
+            assert!(is_origin(ok), "{ok}");
+        }
+        for bad in [
+            "*",
+            "localhost:5173",
+            "ftp://x",
+            "https://x/",
+            "https://x/app",
+            "https://*.example.com",
+            "https://x:",
+            "https://x:123456",
+            "https://",
+            "http://[::1",
+        ] {
+            assert!(!is_origin(bad), "{bad}");
+        }
+    }
 
     #[test]
     fn patch_distinguishes_absent_and_null() {

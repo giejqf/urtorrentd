@@ -174,7 +174,10 @@ crates/urtorrentd/src/
     tick.rs             activity tracking, share limits, periodic flushes
   rss/                  RSS: feeds, articles, rules (mod.rs), SQL (db.rs), documents (parse.rs),
                         rule matching (rules.rs)
-  api/                  axum handlers, one module per feature group; guard.rs = auth
+  api/                  axum handlers, one module per feature group; guard.rs = auth,
+                        cors.rs = CORS for api_cors_origins
+  web.rs                the web UI's files at / (ADR 0008): built in (feature web-ui,
+                        build.rs embeds frontend/dist) or --web-ui <dir>
   model.rs              every request / response type (ToSchema)
   settings.rs           Settings / SettingsPatch from one field list, live apply
   store.rs              the SQLite database: schema, migrations, 0.1.0 import (ADR 0004)
@@ -418,6 +421,11 @@ webhooks to any URL. Treat it as a security boundary. The daemon never runs a pr
 - Bound everything a request can make us allocate: body size, multipart parts, `.torrent`
   size, list lengths. No panics on request input (the lints in section 7 enforce
   `unwrap` / `expect` / `panic`).
+- The web UI's files (ADR 0008) are public and pass the same bans and `Host` check. They
+  come from the binary or from `--web-ui <dir>`, never from an API setting (anyone could
+  then publish a directory). Other browser origins get CORS only when listed in
+  `api_cors_origins`. A request with forwarding headers from a peer that is not in
+  `api_trusted_proxies` is never exempt from authentication (its client is unknown).
 - Paths from requests are untrusted even when authenticated. Content paths are sanitised
   by the library. The daemon validates its own (save and download paths, export
   directories): no NULs, and normalise before use.

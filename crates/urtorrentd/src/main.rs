@@ -13,6 +13,7 @@ use urtorrentd::auth::{Credentials, hash_password};
 use urtorrentd::daemon::first_start_settings;
 use urtorrentd::settings::{Settings, SettingsPatch};
 use urtorrentd::store::{self, Store};
+use urtorrentd::web::WebUi;
 use urtorrentd::{Daemon, DaemonConfig, api};
 
 /// A BitTorrent daemon on urtorrent with a typed HTTP API.
@@ -31,6 +32,13 @@ struct Cli {
     /// that does not parse stops the start either way.
     #[arg(long, env = "URTORRENTD_INITIAL_SETTINGS", value_name = "FILE")]
     initial_settings: Option<PathBuf>,
+    /// Serve the web UI from this directory (a build of `frontend/`)
+    /// instead of the one built into the binary.
+    #[arg(long, env = "URTORRENTD_WEB_UI", value_name = "DIR")]
+    web_ui: Option<PathBuf>,
+    /// Serve no web UI: the API only.
+    #[arg(long, conflicts_with = "web_ui")]
+    no_web_ui: bool,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -90,10 +98,22 @@ fn initial_settings(path: &Path) -> Result<Settings, String> {
     Ok(first_start_settings().patched(patch))
 }
 
+/// The web UI to serve: `--no-web-ui`, `--web-ui <dir>`, or the one built in.
+fn web_ui(cli: &Cli) -> Result<Option<WebUi>, String> {
+    if cli.no_web_ui {
+        return Ok(None);
+    }
+    match &cli.web_ui {
+        Some(dir) => WebUi::dir(dir).map(Some).map_err(|e| e.to_string()),
+        None => Ok(WebUi::embedded()),
+    }
+}
+
 async fn run(
     data_dir: PathBuf,
     api_listen: SocketAddr,
     initial_settings: Option<Settings>,
+    ui: Option<WebUi>,
 ) -> Result<(), String> {
     let daemon = Daemon::start(DaemonConfig {
         data_dir,
@@ -112,7 +132,11 @@ async fn run(
         .await
         .map_err(|e| format!("cannot listen on {api_listen}: {e}"))?;
     tracing::info!("API listening on http://{api_listen}{}", api::BASE);
-    let app = api::router(daemon.clone());
+    match &ui {
+        Some(ui) => tracing::info!("web UI on http://{api_listen}/ ({})", ui.describe()),
+        None => tracing::info!("no web UI: the API only"),
+    }
+    let app = api::router_with_ui(daemon.clone(), ui);
     let served = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -144,7 +168,7 @@ fn passwd(data_dir: PathBuf, username: String) -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -152,27 +176,27 @@ fn main() -> ExitCode {
         )
         .with_writer(std::io::stderr)
         .init();
-    let data_dir = cli.data_dir.unwrap_or_else(default_data_dir);
-    let result = match cli.command.unwrap_or(Command::Run) {
+    let data_dir = cli.data_dir.take().unwrap_or_else(default_data_dir);
+    let result = match cli.command.take().unwrap_or(Command::Run) {
         Command::Openapi => {
             print!("{}", api::openapi_json());
             Ok(())
         }
         Command::Passwd { username } => passwd(data_dir, username),
-        Command::Run => cli
-            .initial_settings
-            .as_deref()
-            .map(initial_settings)
-            .transpose()
-            .and_then(|initial| {
-                match tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(rt) => rt.block_on(run(data_dir, cli.api_listen, initial)),
-                    Err(e) => Err(format!("cannot start the async runtime: {e}")),
-                }
-            }),
+        Command::Run => web_ui(&cli).and_then(|ui| {
+            let initial = cli
+                .initial_settings
+                .as_deref()
+                .map(initial_settings)
+                .transpose()?;
+            match tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt.block_on(run(data_dir, cli.api_listen, initial, ui)),
+                Err(e) => Err(format!("cannot start the async runtime: {e}")),
+            }
+        }),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

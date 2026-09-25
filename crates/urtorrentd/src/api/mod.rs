@@ -10,6 +10,7 @@ mod app;
 mod auth;
 mod categories;
 mod clientdata;
+mod cors;
 mod events;
 mod guard;
 mod logs;
@@ -26,7 +27,7 @@ use std::sync::Arc;
 
 use axum::extract::rejection::{JsonRejection, PathRejection, QueryRejection};
 use axum::extract::{DefaultBodyLimit, FromRequest, FromRequestParts};
-use axum::http::StatusCode;
+use axum::http::{Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
@@ -41,6 +42,7 @@ use crate::model::{
     DirectoryMode, GeoDimension, GroupKind, PeerDimension, StatsStep, TopMetric, TorrentFilter,
     TorrentSort, WebhookPayload,
 };
+use crate::web::{self, WebUi, is_api_path};
 
 /// The API base path.
 pub const BASE: &str = "/api/v1";
@@ -354,9 +356,16 @@ pub fn openapi_json() -> String {
     s
 }
 
-/// The complete router: routes, authentication, host checks, body limit, and
-/// `GET /api/v1/openapi.json` (public).
+/// The complete router: routes, authentication, host checks, CORS, body
+/// limit, and `GET /api/v1/openapi.json` (public). No web UI.
 pub fn router(daemon: Arc<Daemon>) -> axum::Router {
+    router_with_ui(daemon, None)
+}
+
+/// [`router`], with the web UI's files at `/` (every path outside `/api/`;
+/// ADR 0008). They pass the same host checks and bans as the API, but need
+/// no authentication.
+pub fn router_with_ui(daemon: Arc<Daemon>, ui: Option<WebUi>) -> axum::Router {
     let (public, protected) = routes();
     let protected = protected.route_layer(axum::middleware::from_fn_with_state(
         daemon.clone(),
@@ -377,16 +386,27 @@ pub fn router(daemon: Arc<Daemon>) -> axum::Router {
                 }
             }),
         )
-        .fallback(|| async {
-            ApiError::new(
-                StatusCode::NOT_FOUND,
-                ErrorCode::NotFound,
-                "no such endpoint",
-            )
+        .fallback(move |method: Method, uri: Uri| {
+            let ui = ui.clone();
+            async move {
+                match ui {
+                    Some(ui) if !is_api_path(uri.path()) => web::serve(&ui, &method, &uri).await,
+                    _ => ApiError::new(
+                        StatusCode::NOT_FOUND,
+                        ErrorCode::NotFound,
+                        "no such endpoint",
+                    )
+                    .into_response(),
+                }
+            }
         })
         .layer(axum::middleware::from_fn_with_state(
             daemon.clone(),
             guard::gate,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            daemon.clone(),
+            cors::cors,
         ))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .with_state(daemon)

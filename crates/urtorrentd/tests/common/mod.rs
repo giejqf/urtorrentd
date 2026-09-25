@@ -458,7 +458,7 @@ impl TestDaemon {
     }
 }
 
-fn operation_exists(method: &Method, path: &str) -> bool {
+pub fn operation_exists(method: &Method, path: &str) -> bool {
     let path = path.split('?').next().unwrap_or(path);
     doc()["paths"].as_object().unwrap().iter().any(|(t, item)| {
         path_matches(t, path) && item.get(method.as_str().to_ascii_lowercase()).is_some()

@@ -49,6 +49,22 @@ npx openapi-typescript openapi.json -o schema.d.ts   # types
 `operationId`s (SDK method names) are unique and stable: they are the
 handler names (`list_torrents`, `add_torrents`, `get_torrent`, ...).
 
+## The web UI and other browser clients ([ADR 0008](adr/0008-web-ui.md))
+
+The daemon serves the web UI ([`frontend/`](../frontend/AGENTS.md)) at `/`
+on the same address: every path outside `/api/` is the UI's (its files, or
+`index.html` for its routes), and the API's unknown paths stay JSON 404s.
+The UI's files are public; the API behind them needs a session. The UI is a
+client of this API like any other and uses nothing else.
+
+Browser clients on other origins need their origin in the
+`api_cors_origins` setting (exact origins): the daemon then answers their
+preflights, marks every response to them (errors included) with
+`Access-Control-Allow-Origin` / `-Credentials`, and lets their requests
+through the CSRF check. Session cookies are `SameSite=Strict`, so a page on
+another site authenticates with an API key. Behind a TLS-terminating
+reverse proxy, see [settings.md](settings.md#the-web-ui-and-reverse-proxies).
+
 ## Live updates
 
 `GET /api/v1/events` is a server-sent event stream (`text/event-stream`) of

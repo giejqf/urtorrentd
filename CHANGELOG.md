@@ -14,6 +14,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   over the defaults, so a daemon can start offline from its first second
   (no DHT bootstrap). Ignored once settings are stored; unknown fields are
   errors.
+- The daemon serves the web UI at `/` next to the API
+  ([ADR 0008](docs/adr/0008-web-ui.md)): built in with the `web-ui` cargo
+  feature, from a directory with `--web-ui <dir>` (`URTORRENTD_WEB_UI`),
+  or not at all (`--no-web-ui`, and builds without the feature). Paths
+  without a file of their own get `index.html`; the pages carry a strict
+  Content-Security-Policy and refuse framing; hashed assets are cached for
+  good. Unknown `/api/...` paths stay JSON 404s.
+- `api_cors_origins`: browser origins allowed to call the API (CORS with
+  credentials; preflights answered, errors readable, the CSRF check
+  passed). Empty by default: nothing changes until an origin is listed.
+- Behind a trusted proxy that says `X-Forwarded-Proto: https`, the session
+  cookie is `Secure`.
+
+### Security
+
+- A request carrying forwarding headers (`X-Forwarded-For`, `X-Real-IP`,
+  `Forwarded`) from an address that is not in `api_trusted_proxies` is no
+  longer exempt from authentication by `api_bypass_local_auth` or
+  `api_auth_whitelist`: its real client is unknown. Before, a reverse proxy
+  on loopback that was not listed as trusted exempted every client it
+  relayed while `api_bypass_local_auth` was on. The daemon logs a warning
+  the first time.
 
 ## [0.13.0] - 2026-09-24
 

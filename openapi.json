@@ -14688,7 +14688,8 @@
           "api_auth_whitelist",
           "api_trusted_proxies",
           "api_allowed_hosts",
-          "api_csrf_protection"
+          "api_csrf_protection",
+          "api_cors_origins"
         ],
         "properties": {
           "listen_port": {
@@ -15288,6 +15289,14 @@
             "type": "boolean",
             "description": "Reject state-changing requests from browsers on other origins.",
             "default": true
+          },
+          "api_cors_origins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Browser origins (`https://ui.example.com`, `http://localhost:5173`)\nallowed to call the API from their pages (CORS, with credentials):\nthey get answers to preflights, `Access-Control-Allow-*` headers on\nevery response, and pass `api_csrf_protection`. Exact origins only,\nno wildcard; empty = none. The web UI the daemon serves is\nsame-origin and needs none.",
+            "default": []
           }
         }
       },
@@ -15786,6 +15795,13 @@
           "api_csrf_protection": {
             "type": "boolean",
             "description": "Reject state-changing requests from browsers on other origins."
+          },
+          "api_cors_origins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Browser origins (`https://ui.example.com`, `http://localhost:5173`)\nallowed to call the API from their pages (CORS, with credentials):\nthey get answers to preflights, `Access-Control-Allow-*` headers on\nevery response, and pass `api_csrf_protection`. Exact origins only,\nno wildcard; empty = none. The web UI the daemon serves is\nsame-origin and needs none."
           }
         },
         "additionalProperties": false

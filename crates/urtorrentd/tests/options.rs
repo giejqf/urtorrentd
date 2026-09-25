@@ -273,8 +273,15 @@ async fn trusted_proxies_forward_the_client_address_and_host() {
         }
         b.body(Body::empty()).unwrap()
     };
-    // Not trusted: the header is ignored, the loopback client passes.
-    assert_eq!(t.request(get("203.0.113.9", None)).await.0, StatusCode::OK);
+    // Not trusted: the header is not believed, and a relayed request's
+    // client is unknown, so the loopback exemption does not apply (ADR
+    // 0008); without the header the loopback client passes.
+    assert_eq!(
+        t.request(get("203.0.113.9", None)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let direct = Request::get("/api/v1/app").body(Body::empty()).unwrap();
+    assert_eq!(t.request(direct).await.0, StatusCode::OK);
     let (s, _) = patch(&t, json!({"api_trusted_proxies": ["127.0.0.1"]})).await;
     assert_eq!(s, StatusCode::OK);
     // Trusted: the forwarded client is not local and must log in.

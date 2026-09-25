@@ -30,6 +30,7 @@ use crate::util::blocking;
 pub(crate) async fn login(
     State(d): State<Arc<Daemon>>,
     ClientIp(ip): ClientIp,
+    client: Option<Extension<Client>>,
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<Response> {
     let (max, ban, timeout) = {
@@ -63,14 +64,31 @@ pub(crate) async fn login(
     if let Some(ip) = ip {
         d.auth.clear_failures(ip);
     }
-    logged_in(&d, timeout)
+    logged_in(&d, timeout, https(client.as_ref()))
+}
+
+/// Whether a trusted proxy says the client used HTTPS.
+fn https(client: Option<&Extension<Client>>) -> bool {
+    client.is_some_and(|Extension(c)| c.https)
+}
+
+/// The session cookie's attributes: `Secure` when the client used HTTPS
+/// (through a trusted TLS-terminating proxy).
+fn cookie_attributes(secure: bool) -> &'static str {
+    if secure {
+        "HttpOnly; Secure; SameSite=Strict; Path=/"
+    } else {
+        "HttpOnly; SameSite=Strict; Path=/"
+    }
 }
 
 /// A new login session, as a `204` that sets its cookie.
-fn logged_in(d: &Daemon, timeout: u64) -> ApiResult<Response> {
+fn logged_in(d: &Daemon, timeout: u64, secure: bool) -> ApiResult<Response> {
     let sid = d.auth.new_session()?;
-    let cookie =
-        format!("{SESSION_COOKIE}={sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age={timeout}");
+    let cookie = format!(
+        "{SESSION_COOKIE}={sid}; {}; Max-Age={timeout}",
+        cookie_attributes(secure)
+    );
     Ok((StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response())
 }
 
@@ -98,16 +116,19 @@ pub(crate) async fn setup_credentials(
     headers: HeaderMap,
     Json(req): Json<CredentialsRequest>,
 ) -> ApiResult<Response> {
-    let (csrf, timeout) = {
+    let (csrf, timeout, cors) = {
         let st = d.state();
         (
             st.settings.api_csrf_protection,
             st.settings.api_session_timeout,
+            st.settings.api_cors_origins.clone(),
         )
     };
-    // No web page may claim the daemon for its visitor's browser.
+    let secure = https(client.as_ref());
+    // No web page may claim the daemon for its visitor's browser (unless
+    // its origin is listed in `api_cors_origins`).
     let host = client.and_then(|Extension(c)| c.host);
-    if csrf && cross_origin(&headers, host.as_deref()) {
+    if csrf && cross_origin(&headers, host.as_deref(), &cors) {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             ErrorCode::CrossOrigin,
@@ -140,7 +161,7 @@ pub(crate) async fn setup_credentials(
         )),
         None => d.logs.info("API credentials created by first-run setup"),
     }
-    logged_in(&d, timeout)
+    logged_in(&d, timeout, secure)
 }
 
 fn check_credentials(req: &CredentialsRequest) -> ApiResult<()> {
@@ -163,11 +184,15 @@ fn check_credentials(req: &CredentialsRequest) -> ApiResult<()> {
 pub(crate) async fn logout(
     State(d): State<Arc<Daemon>>,
     principal: Option<Extension<Principal>>,
+    client: Option<Extension<Client>>,
 ) -> Response {
     if let Some(Extension(Principal::Session(sid))) = principal {
         d.auth.end_session(&sid);
     }
-    let expired = format!("{SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");
+    let expired = format!(
+        "{SESSION_COOKIE}=; {}; Max-Age=0",
+        cookie_attributes(https(client.as_ref()))
+    );
     (StatusCode::NO_CONTENT, [(header::SET_COOKIE, expired)]).into_response()
 }
 
