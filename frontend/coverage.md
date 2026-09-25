@@ -13,7 +13,6 @@ row whose operation the UI calls.
 | `GET /api/v1/torrents`       | The rows come from the event stream; a search asks `GET /api/v1/torrents/hashes` which of them match. |
 | `GET /api/v1/sync`           | The UI reads the event stream (`GET /api/v1/events`); polling is for scripts.                         |
 | `GET /api/v1/transfer`       | The event stream carries the transfer state (`SyncResponse.transfer`).                                |
-| `GET /api/v1/categories`     | The event stream carries the categories; editing them is W3.                                          |
 | `GET /api/v1/tags`           | The event stream carries the tags.                                                                    |
 | `GET /api/v1/torrents/count` | Counts come from the live store; the E2E suite checks them against `GET /torrents?filter=`.           |
 
@@ -26,34 +25,31 @@ row whose operation the UI calls.
 
 ## W3: one torrent in depth
 
-| Operation                                      | Why the UI does not call it                                                                |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `GET /api/v1/torrents/{hash}`                  | W3: the fields beyond the list row (web seeds, known peers, source URL).                   |
-| `PATCH /api/v1/torrents/{hash}`                | W3: rename, comment.                                                                       |
-| `GET /api/v1/torrents/{hash}/files`            | W3: the files tab.                                                                         |
-| `POST /api/v1/torrents/{hash}/files/priority`  | W3: the files tab.                                                                         |
-| `POST /api/v1/torrents/{hash}/files/rename`    | W3: the files tab.                                                                         |
-| `POST /api/v1/torrents/{hash}/folders/rename`  | W3: the files tab.                                                                         |
-| `GET /api/v1/torrents/{hash}/peers`            | W3: the peers tab.                                                                         |
-| `POST /api/v1/torrents/peers`                  | W3: adding peers by hand.                                                                  |
-| `GET /api/v1/torrents/{hash}/pieces/hashes`    | W3: the pieces tab.                                                                        |
-| `POST /api/v1/torrents/{hash}/trackers`        | W3: editing trackers.                                                                      |
-| `POST /api/v1/torrents/{hash}/trackers/edit`   | W3: editing trackers.                                                                      |
-| `POST /api/v1/torrents/{hash}/trackers/remove` | W3: editing trackers.                                                                      |
-| `GET /api/v1/torrents/{hash}/webseeds`         | W3: web seeds.                                                                             |
-| `POST /api/v1/torrents/{hash}/webseeds`        | W3: web seeds.                                                                             |
-| `POST /api/v1/torrents/{hash}/webseeds/edit`   | W3: web seeds.                                                                             |
-| `POST /api/v1/torrents/{hash}/webseeds/remove` | W3: web seeds.                                                                             |
-| `POST /api/v1/torrents/limits`                 | W3: speed limits.                                                                          |
-| `POST /api/v1/torrents/share-limits`           | W3: share limits.                                                                          |
-| `POST /api/v1/torrents/location`               | W3: moving the content.                                                                    |
-| `POST /api/v1/torrents/download-path`          | W3: the download path.                                                                     |
-| `POST /api/v1/torrents/auto-management`        | W3: automatic management.                                                                  |
-| `PUT /api/v1/categories`                       | W3: managing categories.                                                                   |
-| `POST /api/v1/categories`                      | W3: managing categories (the detail panel creates them through `POST /torrents/category`). |
-| `POST /api/v1/categories/remove`               | W3: managing categories.                                                                   |
-| `POST /api/v1/tags`                            | W3: managing tags (the detail panel creates them through `POST /torrents/tags`).           |
-| `POST /api/v1/tags/remove`                     | W3: managing tags.                                                                         |
+| Operation                                      | Why the UI does not call it                                                      |
+| ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| `GET /api/v1/torrents/{hash}`                  | W3: the fields beyond the list row (web seeds, known peers, source URL).         |
+| `PATCH /api/v1/torrents/{hash}`                | W3: rename, comment.                                                             |
+| `GET /api/v1/torrents/{hash}/files`            | W3: the files tab.                                                               |
+| `POST /api/v1/torrents/{hash}/files/priority`  | W3: the files tab.                                                               |
+| `POST /api/v1/torrents/{hash}/files/rename`    | W3: the files tab.                                                               |
+| `POST /api/v1/torrents/{hash}/folders/rename`  | W3: the files tab.                                                               |
+| `GET /api/v1/torrents/{hash}/peers`            | W3: the peers tab.                                                               |
+| `POST /api/v1/torrents/peers`                  | W3: adding peers by hand.                                                        |
+| `GET /api/v1/torrents/{hash}/pieces/hashes`    | W3: the pieces tab.                                                              |
+| `POST /api/v1/torrents/{hash}/trackers`        | W3: editing trackers.                                                            |
+| `POST /api/v1/torrents/{hash}/trackers/edit`   | W3: editing trackers.                                                            |
+| `POST /api/v1/torrents/{hash}/trackers/remove` | W3: editing trackers.                                                            |
+| `GET /api/v1/torrents/{hash}/webseeds`         | W3: web seeds.                                                                   |
+| `POST /api/v1/torrents/{hash}/webseeds`        | W3: web seeds.                                                                   |
+| `POST /api/v1/torrents/{hash}/webseeds/edit`   | W3: web seeds.                                                                   |
+| `POST /api/v1/torrents/{hash}/webseeds/remove` | W3: web seeds.                                                                   |
+| `POST /api/v1/torrents/limits`                 | W3: speed limits.                                                                |
+| `POST /api/v1/torrents/share-limits`           | W3: share limits.                                                                |
+| `POST /api/v1/torrents/location`               | W3: moving the content.                                                          |
+| `POST /api/v1/torrents/download-path`          | W3: the download path.                                                           |
+| `POST /api/v1/torrents/auto-management`        | W3: automatic management.                                                        |
+| `POST /api/v1/tags`                            | W3: managing tags (the detail panel creates them through `POST /torrents/tags`). |
+| `POST /api/v1/tags/remove`                     | W3: managing tags.                                                               |
 
 ## W4: settings, security, logs
 

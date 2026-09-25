@@ -8,33 +8,10 @@
 // What the page says about now (rates, peers, the next switch) is the
 // daemon's.
 
-import { useBeforeLeave } from "@solidjs/router";
-import { createQuery, useQueryClient } from "@tanstack/solid-query";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  type JSX,
-  on,
-  onCleanup,
-  onMount,
-  Show,
-  untrack,
-} from "solid-js";
-import { createStore, reconcile } from "solid-js/store";
+import { createMemo, createSignal, type JSX, onCleanup, Show } from "solid-js";
 import { toast } from "solid-sonner";
 
 import { api, ApiError, type Schemas, unwrap } from "~/api/client";
-import { keys } from "~/api/keys";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "~/components/ui/alert-dialog";
-import { Button } from "~/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -42,13 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
-import { Switch, SwitchControl } from "~/components/ui/switch";
 import { useLive } from "~/features/shell/live";
 import { formatCount, formatRate } from "~/lib/format";
 
 import { useAppInfo } from "./app-info";
-import { Chips, SaveBar, SettingRow, SettingsGroup, UnitInput } from "./controls";
-import { SettingsFrame } from "./frame";
+import { Chips, RowSwitch, SettingRow, SettingsGroup, UnitInput } from "./controls";
+import { createSettingsForm, SettingsPage, WithSettings } from "./form";
 import {
   clock,
   DAY_LABELS,
@@ -73,50 +49,11 @@ function zones(): string[] {
   }
 }
 
-// A switch named by its row's label: Kobalte's input id is `<id>-input`.
-function Toggle(props: { id: string; checked: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <Switch id={props.id} checked={props.checked} onChange={props.onChange}>
-      <SwitchControl />
-    </Switch>
-  );
-}
-
-function Loading() {
-  return (
-    <div class="h-40 animate-pulse rounded-tile bg-muted" role="status" aria-label="Loading" />
-  );
-}
-
 function SpeedForm(props: { saved: Schemas["Settings"] }) {
   const live = useLive();
   const app = useAppInfo();
-  const client = useQueryClient();
-  // Starts from the saved settings; the effect below follows later ones.
-  const [draft, setDraft] = createStore<SpeedDraft>(untrack(() => draftOf(props.saved)));
-  const [busy, setBusy] = createSignal(false);
-  const [saveError, setSaveError] = createSignal<string | null>(null);
-  const [leaving, setLeaving] = createSignal<(() => void) | null>(null);
-
-  // A save (or another client) brings new settings: start over from them.
-  createEffect(
-    on(
-      () => props.saved,
-      (s) => setDraft(reconcile(draftOf(s))),
-      { defer: true },
-    ),
-  );
-
-  const d = createMemo(() => diff(props.saved, draft));
-  const changed = (f: DraftField) => d().changed.has(f);
-  const error = (f: DraftField) => d().errors[f];
-  const firstError = () => Object.values(d().errors)[0] ?? null;
-  const dirty = () => d().changed.size > 0;
-  const set = <K extends DraftField>(f: K, v: SpeedDraft[K]) => {
-    setSaveError(null);
-    setDraft(f, v);
-  };
-
+  const form = createSettingsForm<SpeedDraft, DraftField>(() => props.saved, draftOf, diff);
+  const { draft, changed, error, set } = form;
   // The clock the schedule runs on: its own zone, else the daemon's.
   const [tick, setTick] = createSignal(Date.now());
   const timer = setInterval(() => setTick(Date.now()), 30_000);
@@ -164,41 +101,6 @@ function SpeedForm(props: { saved: Schemas["Settings"] }) {
       toast.error(e instanceof ApiError ? e.message : "The alternative limits did not switch.");
     }
   };
-
-  const save = async () => {
-    if (busy() || !dirty()) return;
-    if (firstError()) return;
-    setBusy(true);
-    try {
-      const next = await unwrap(api.PATCH("/api/v1/settings", { body: d().patch }));
-      client.setQueryData(keys.settings(), next);
-      void client.invalidateQueries({ queryKey: keys.app() });
-      toast.success("Saved");
-    } catch (e) {
-      setSaveError(e instanceof ApiError ? e.message : "The settings could not be saved.");
-    } finally {
-      setBusy(false);
-    }
-  };
-  const discard = () => {
-    setSaveError(null);
-    setDraft(reconcile(draftOf(props.saved)));
-  };
-
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      void save();
-    }
-  };
-  onMount(() => document.addEventListener("keydown", onKey));
-  onCleanup(() => document.removeEventListener("keydown", onKey));
-  useBeforeLeave((e) => {
-    if (dirty() && !e.defaultPrevented) {
-      e.preventDefault();
-      setLeaving(() => () => e.retry(true));
-    }
-  });
 
   const zoneOptions = createMemo(() => {
     const all = zones();
@@ -260,18 +162,10 @@ function SpeedForm(props: { saved: Schemas["Settings"] }) {
   );
 
   return (
-    <SettingsFrame
+    <SettingsPage
       title="Speed"
       description="Global rate limits, the alternative limits and when they switch on. Limits apply as soon as they are saved; 0 or empty means unlimited."
-      overlay={
-        <SaveBar
-          names={d().names}
-          error={saveError() ?? firstError()}
-          busy={busy()}
-          onDiscard={discard}
-          onSave={() => void save()}
-        />
-      }
+      form={form}
     >
       <SettingsGroup title="Global limits">
         {limitRow(
@@ -303,7 +197,7 @@ function SpeedForm(props: { saved: Schemas["Settings"] }) {
           for="speed-alt-input"
           description={altStatus()}
         >
-          <Toggle id="speed-alt" checked={altOn()} onChange={(v) => void switchAlt(v)} />
+          <RowSwitch id="speed-alt" checked={altOn()} onChange={(v) => void switchAlt(v)} />
         </SettingRow>
         {limitRow("alt_download_limit", "Alternative download limit")}
         {limitRow("alt_upload_limit", "Alternative upload limit")}
@@ -316,7 +210,7 @@ function SpeedForm(props: { saved: Schemas["Settings"] }) {
           description="One window a day; a window ending before it starts runs into the next day."
           changed={changed("schedule")}
         >
-          <Toggle
+          <RowSwitch
             id="speed-schedule"
             checked={draft.schedule}
             onChange={(v) => set("schedule", v)}
@@ -424,59 +318,10 @@ function SpeedForm(props: { saved: Schemas["Settings"] }) {
           "global",
         )}
       </SettingsGroup>
-
-      <AlertDialog open={leaving() !== null} onOpenChange={(o) => !o && setLeaving(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Leave without saving?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {d().names.length === 1 ? "1 change is" : `${d().names.length} changes are`} not
-              saved: {d().names.join(", ")}.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button variant="outline" onClick={() => setLeaving(null)}>
-              Stay
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                const go = leaving();
-                setLeaving(null);
-                discard();
-                go?.();
-              }}
-            >
-              Leave
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </SettingsFrame>
+    </SettingsPage>
   );
 }
 
 export default function Speed() {
-  const settings = createQuery(() => ({
-    queryKey: keys.settings(),
-    queryFn: () => unwrap(api.GET("/api/v1/settings")),
-  }));
-  return (
-    <Show
-      when={settings.data}
-      fallback={
-        <SettingsFrame title="Speed">
-          <Show when={settings.isError} fallback={<Loading />}>
-            <p class="m-0 text-danger" role="alert">
-              {settings.error instanceof ApiError
-                ? settings.error.message
-                : "The settings could not be read."}
-            </p>
-          </Show>
-        </SettingsFrame>
-      }
-    >
-      {(s) => <SpeedForm saved={s()} />}
-    </Show>
-  );
+  return <WithSettings title="Speed">{(saved) => <SpeedForm saved={saved()} />}</WithSettings>;
 }

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 urtorrentd contributors
 
-// A settings page: the 48px bar (breadcrumb, restart banner), then the
-// page in a 760px column, and room for the unsaved-changes bar.
+// A settings page: the 48px bar (breadcrumb, whether everything is saved,
+// restart banner), then the page in a 760px column, and room for the
+// unsaved-changes bar.
 
 import Menu from "lucide-solid/icons/menu";
 import { type JSX, Show } from "solid-js";
 
+import { StatusDot } from "~/components/status-dot";
 import { Button } from "~/components/ui/button";
 import { useShell } from "~/features/shell/protected";
 
@@ -18,6 +20,8 @@ export function SettingsFrame(props: {
   children?: JSX.Element;
   /** Floats over the bottom of the page (the unsaved-changes bar). */
   overlay?: JSX.Element;
+  /** Nothing waits to be saved (shown in the bar). */
+  saved?: boolean;
 }) {
   const shell = useShell();
   return (
@@ -38,6 +42,12 @@ export function SettingsFrame(props: {
         </span>
         <span class="font-medium text-muted-foreground">{props.title}</span>
         <div class="flex-1" />
+        <Show when={props.saved}>
+          <span class="flex items-center gap-1.5 text-sm whitespace-nowrap text-subtle">
+            <StatusDot class="bg-ok" />
+            All changes saved
+          </span>
+        </Show>
         <RestartBanner />
       </div>
       <div class="flex min-h-0 flex-1 flex-col items-center overflow-auto px-4 pt-7 pb-[120px]">

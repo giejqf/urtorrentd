@@ -25,6 +25,8 @@ export function FolderPicker(props: {
   disabled?: boolean;
   /** What the picked folder is for, for its accessible name. */
   what: string;
+  /** An icon inside a field's box (settings) instead of a "Browse" button. */
+  inline?: boolean;
 }) {
   const [open, setOpen] = createSignal(false);
   const [cwd, setCwd] = createSignal("/");
@@ -45,18 +47,32 @@ export function FolderPicker(props: {
       placement="bottom-end"
       modal
     >
-      <PopoverTrigger
-        as={Button}
-        type="button"
-        variant="outline"
-        size="md"
-        class="flex-none bg-background"
-        disabled={props.disabled}
-        aria-label={`Browse for the ${props.what}`}
+      <Show
+        when={props.inline}
+        fallback={
+          <PopoverTrigger
+            as={Button}
+            type="button"
+            variant="outline"
+            size="md"
+            class="flex-none bg-background"
+            disabled={props.disabled}
+            aria-label={`Browse for the ${props.what}`}
+          >
+            <Folder />
+            Browse
+          </PopoverTrigger>
+        }
       >
-        <Folder />
-        Browse
-      </PopoverTrigger>
+        <PopoverTrigger
+          type="button"
+          class="flex h-full w-8 flex-none items-center justify-center border-l border-border bg-card text-muted-foreground hover:text-foreground focus-visible:shadow-focus focus-visible:outline-none disabled:opacity-50"
+          disabled={props.disabled}
+          aria-label={`Browse for the ${props.what}`}
+        >
+          <Folder size={14} />
+        </PopoverTrigger>
+      </Show>
       <PopoverContent class="flex w-80 flex-col gap-2 p-2">
         <PopoverTitle class="sr-only">Choose the {props.what}</PopoverTitle>
         <div class="flex items-center gap-1">

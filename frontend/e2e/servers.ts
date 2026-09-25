@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 urtorrentd contributors
 
-// Small local servers for serving specs (AGENTS.md 7.4): a page on another
-// loopback origin (CORS), and a forwarding proxy that behaves like Caddy
-// in front of the daemon (keeps `Host`, adds `X-Forwarded-*`, streams).
+// Small local servers for specs (AGENTS.md 7.4): a text file the daemon
+// fetches (a tracker list), a page on another loopback origin (CORS), and a
+// forwarding proxy that behaves like Caddy in front of the daemon (keeps
+// `Host`, adds `X-Forwarded-*`, streams).
 
 import { createServer, request, type Server } from "node:http";
 
@@ -26,6 +27,21 @@ async function listen(server: Server, host = "127.0.0.1"): Promise<Local> {
         server.close(() => ok());
       }),
   };
+}
+
+/** A text file whose body can change, and how often it was asked for. */
+export async function textFile(
+  body: () => string,
+): Promise<Local & { url: string; hits: () => number }> {
+  let hits = 0;
+  const local = await listen(
+    createServer((_, res) => {
+      hits += 1;
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+      res.end(body());
+    }),
+  );
+  return { ...local, url: `${local.origin}/list.txt`, hits: () => hits };
 }
 
 /** A blank page on its own origin. */

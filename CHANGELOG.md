@@ -50,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are a draft, saved together (Ctrl/⌘ S) or discarded, and leaving asks
   first. A banner offers to restart the daemon when engine settings wait
   for one.
+- Web UI: Settings › Downloads as designed: save and download paths with a
+  folder browser, the incomplete-file suffix, automatic management, and a
+  picture of where a new torrent goes; the categories' paths, added, edited
+  and removed in place; content layout, stop condition and the other add
+  options; file names to skip; `.torrent` exports; trackers for new public
+  torrents, with the fetched list and "Fetch now".
   Screens for statistics, RSS, the log and the other settings sections say
   they are still to come.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and

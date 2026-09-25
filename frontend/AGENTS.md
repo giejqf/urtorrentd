@@ -5,7 +5,7 @@ Guide for coding agents working on `frontend/`, the web UI of urtorrentd. Read t
 too (section 1 restates them for the UI). This file adds what is specific to the UI.
 
 Status (2026-09-25): W0, W1 and W2 are done: sign-in, first-run setup, the shell, the torrents
-screen and the add dialog as the mockups have them. W4 has started with Settings › Speed.
+screen and the add dialog as the mockups have them. W4 has started with Settings › Downloads and Speed.
 Section 10 has the milestones.
 
 ## 1. What this is
@@ -133,7 +133,9 @@ frontend/
                         peers, trackers, web seeds, limits
       settings/         the settings screens: navigation (nav.tsx), the page frame with the
                         restart banner (frame.tsx, restart.tsx), rows, fields and the save bar
-                        (controls.tsx), Speed (speed.tsx; its draft in speed-form.ts, the
+                        (controls.tsx), the draft, save and leave logic every page shares
+                        (form.tsx); Downloads (downloads.tsx; downloads-form.ts, categories,
+                        the path flow, paths.ts) and Speed (speed.tsx; speed-form.ts, the
                         schedule in schedule.ts, the week chart); later the other sections,
                         security (credentials, API key), webhooks, watch folders
       rss/ log/ stats/
@@ -376,6 +378,8 @@ locally.
 - `Add_torrent_dialog-html.zip`: the add dialog (`AddTorrent.dc.html`).
 - `Settings_Speed-html.zip`: Settings › Speed (`Settings.dc.html`). Its navigation, header,
   restart banner, rows and save bar are the pattern for every settings section.
+- `Settings_Downloads-html.zip`: Settings › Downloads (`SettingsDownloads.dc.html`): path fields
+  with a Browse button, a value with its switch, segmented choices, chip lists, a table.
 
 They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
@@ -513,6 +517,11 @@ These are the known differences. Resolve each as noted, never by faking.
 | Settings: "2 engine settings apply after a restart · Restart daemon" | `restart_required` in `GET /app`; `POST /app/restart` (added for the UI) shuts down gracefully and starts the same binary again | The banner and the button, after a confirmation. Sessions live in the daemon's memory, so a restart signs everyone out: the UI waits for the daemon, then shows sign-in. |
 | Settings › Speed: the window "local to the daemon unless a time zone is set" | `alt_speed_schedule.time_zone` (`null` = the daemon's); `time_zone` in `GET /app` (added for the UI) | The zone picker's first entry is the daemon's zone by name. The status line, the week chart and "now" use the saved schedule in that zone. |
 | Settings › Speed: "Also toggled from the toolbar" | `PUT /transfer/alt-speed`; the torrents screen has no such toolbar button | "Also switched by the schedule and `PUT /transfer/alt-speed`". |
+| Settings › Downloads: "/data · 1.21 TB free of 4.0 TB" | `free_space` in the transfer state is the free bytes of the default save path's file system; there is no total | "/data · 1.21 TB free", and nothing while `free_space` is `null`. |
+| Settings › Downloads: "2 torrents here now · 4.9 GB" under the download path | List rows' `content_path` and `completed` (verified bytes) | Counted from the live store: the torrents whose content is under that path now, and their verified bytes. |
+| Settings › Downloads: "38 trackers · fetched 4 h ago · Fetch now" | `fetched_trackers` in `GET /app`; `POST /app/fetched-trackers/refresh` (added for the UI) with `fetched_trackers.fetching` | As shown, for the saved URL; "Fetch now" waits for an edited URL to be saved. |
+| Settings › Downloads: category rows and "Add category" | `/categories` (`PUT` replaces a category, share limits included) | A dialog adds a category, or edits and removes one from its row, at once (not part of the page's draft). Editing reads the category first so its share limits are kept. |
+| Settings › Downloads: an off switch next to a path | One nullable setting (`download_path`, `export_dir`, ...) | The switch sends `null`; the typed path stays in the field, also after saving, so turning it back on brings it back. Typing a path turns the switch on. |
 | Settings footer: "libtorrent 2.0.11" | `library` in `GET /app` is urtorrent's version | Show the library we run on. |
 | Add dialog: "Watch folder" tab | The `watch_folders` setting (path, subfolders, what happens to an added file, add options) | The tab appends a watch folder with the dialog's options (`PATCH /settings`); the right column lists the files it will pick up. |
 
@@ -677,7 +686,9 @@ Each milestone ends with its end-to-end tests green.
 - **W4 Settings.** Every settings group, security (credentials, API key), webhooks, watch
   folders and the alternative-limits schedule. Transfer limits and the alternative-limits
   switch. The main and peer logs. Done so far: the settings navigation and frame, the restart
-  banner (`POST /app/restart`), and Speed (global and alternative limits, the switch, the
+  banner (`POST /app/restart`), Downloads (locations with the path a new torrent takes,
+  category paths, add options, skipped file names, `.torrent` exports, trackers for new public
+  torrents with the fetched list) and Speed (global and alternative limits, the switch, the
   schedule with its week chart, the connection budget) as designed. The other sections show
   that they are not built yet.
 - **W5 RSS.** Folders, feeds, articles, and rules with their matches.

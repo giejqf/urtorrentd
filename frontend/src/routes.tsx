@@ -21,6 +21,7 @@ const Stats = planned(
 );
 const Rss = planned("RSS", "W5", "Feeds, articles and automatic download rules.");
 const Log = planned("Log", "W4", "The daemon's main log and the log of banned peers.");
+const Downloads = lazy(() => import("~/features/settings/downloads"));
 const Speed = lazy(() => import("~/features/settings/speed"));
 const PlannedSettings = lazy(() => import("~/features/settings/planned"));
 
@@ -35,6 +36,7 @@ export const routes = (
       <Route path="/rss/*" component={Rss} />
       <Route path="/log/*" component={Log} />
       <Route path="/settings" component={() => <Navigate href="/settings/speed" />} />
+      <Route path="/settings/downloads" component={Downloads} />
       <Route path="/settings/speed" component={Speed} />
       <Route path="/settings/:section" component={PlannedSettings} />
       <Route path="*" component={() => <Navigate href="/torrents" />} />

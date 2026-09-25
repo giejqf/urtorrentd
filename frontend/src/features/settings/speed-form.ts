@@ -7,6 +7,7 @@
 
 import type { Schemas } from "~/api/client";
 
+import type { FormDiff } from "./form";
 import { minutes, type Weekday } from "./schedule";
 
 type Settings = Schemas["Settings"];
@@ -82,16 +83,7 @@ export function draftOf(s: Settings): SpeedDraft {
   };
 }
 
-export interface Diff {
-  /** What to send (only what changed). */
-  patch: SettingsPatch;
-  /** The fields that differ from the saved settings. */
-  changed: Set<DraftField>;
-  /** Setting names that change, for the save bar (`alt_speed_schedule.days`). */
-  names: string[];
-  /** What is not valid, by field. */
-  errors: Partial<Record<DraftField, string>>;
-}
+export type Diff = FormDiff<DraftField>;
 
 const sameDays = (a: readonly Weekday[], b: readonly Weekday[]) =>
   a.length === b.length && a.every((d) => b.includes(d));

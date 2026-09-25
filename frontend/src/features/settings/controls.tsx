@@ -5,11 +5,12 @@
 // label, description and control, number fields with a unit, the unsaved
 // mark, and the floating save bar.
 
-import { For, type JSX, Show } from "solid-js";
+import { createSignal, For, type JSX, Show } from "solid-js";
 
 import { Kbd } from "~/components/kbd";
 import { StatusDot } from "~/components/status-dot";
 import { Button } from "~/components/ui/button";
+import { Switch, SwitchControl } from "~/components/ui/switch";
 import { cn } from "~/lib/utils";
 
 export function SettingsGroup(props: {
@@ -90,7 +91,7 @@ export function SettingRow(props: {
   );
 }
 
-/** A number with its unit, right-aligned (the design's `.in`). */
+/** A value with its unit, right-aligned (the design's `.in`); paths and URLs left-aligned. */
 export function UnitInput(props: {
   id: string;
   value: string;
@@ -100,10 +101,14 @@ export function UnitInput(props: {
   changed?: boolean;
   invalid?: boolean;
   class?: string;
-  align?: "right" | "center";
-  inputMode?: "decimal" | "numeric" | "text";
+  align?: "right" | "center" | "left";
+  inputMode?: "decimal" | "numeric" | "text" | "url";
   /** A name of its own, when the row's label names another control. */
   label?: string;
+  /** Not in force (its switch is off): shown dimmed, still editable. */
+  muted?: boolean;
+  /** After the input, inside the box (a Browse button). */
+  trailing?: JSX.Element;
 }) {
   return (
     <div
@@ -121,8 +126,13 @@ export function UnitInput(props: {
         id={props.id}
         aria-label={props.label}
         class={cn(
-          "h-full w-full min-w-0 bg-transparent px-2.5 mono text-sm text-foreground outline-none placeholder:text-subtle",
-          props.align === "center" ? "text-center" : "text-right",
+          "h-full w-full min-w-0 bg-transparent px-2.5 mono text-sm outline-none placeholder:text-subtle",
+          props.muted ? "text-subtle" : "text-foreground",
+          props.align === "center"
+            ? "text-center"
+            : props.align === "left"
+              ? "text-left"
+              : "text-right",
         )}
         inputMode={props.inputMode ?? "decimal"}
         placeholder={props.placeholder}
@@ -136,6 +146,85 @@ export function UnitInput(props: {
           {props.unit}
         </span>
       </Show>
+      {props.trailing}
+    </div>
+  );
+}
+
+/** A switch named by its row's label (`SettingRow for="<id>-input"`: Kobalte's input id). */
+export function RowSwitch(props: {
+  id: string;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <Switch
+      id={props.id}
+      class="flex flex-none items-center"
+      checked={props.checked}
+      onChange={props.onChange}
+    >
+      <SwitchControl />
+    </Switch>
+  );
+}
+
+/** One of a few choices (the design's `.seg`): a radio group of buttons. */
+export function Segmented<T extends string>(props: {
+  label: string;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  changed?: boolean;
+}) {
+  const refs: HTMLButtonElement[] = [];
+  const move = (from: number, by: number) => {
+    const n = props.options.length;
+    const i = (from + by + n) % n;
+    const o = props.options[i];
+    if (!o) return;
+    props.onChange(o.value);
+    refs[i]?.focus();
+  };
+  return (
+    <div
+      role="radiogroup"
+      aria-label={props.label}
+      class={cn(
+        "flex flex-none gap-0.5 rounded-lg border p-[3px]",
+        props.changed ? "border-warn" : "border-border",
+      )}
+    >
+      <For each={props.options}>
+        {(o, i) => {
+          const on = () => props.value === o.value;
+          return (
+            <button
+              ref={(el) => (refs[i()] = el)}
+              type="button"
+              role="radio"
+              aria-checked={on()}
+              tabIndex={on() ? 0 : -1}
+              class={cn(
+                "h-6 rounded-[5px] px-2.5 text-sm font-medium whitespace-nowrap transition-colors focus-visible:shadow-focus focus-visible:outline-none",
+                on() ? "bg-border text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => props.onChange(o.value)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                  e.preventDefault();
+                  move(i(), 1);
+                } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  move(i(), -1);
+                }
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        }}
+      </For>
     </div>
   );
 }
@@ -223,5 +312,103 @@ export function SaveBar(props: {
         </Button>
       </div>
     </Show>
+  );
+}
+
+/**
+ * Values as removable chips, then a field that adds one (Enter, or leaving
+ * it): file name patterns wrapped to the right, trackers one per line.
+ * What `problem` refuses stays in the field with the reason under it.
+ */
+export function ChipList(props: {
+  /** The field's id, for the row's label. */
+  id: string;
+  /** What a value is, for the remove buttons: "Remove pattern *.nfo". */
+  what: string;
+  values: readonly string[];
+  onChange: (values: string[]) => void;
+  problem: (value: string) => string | null;
+  placeholder: string;
+  layout: "wrap" | "stack";
+  changed?: boolean;
+}) {
+  const [text, setText] = createSignal("");
+  const [problem, setProblem] = createSignal<string | null>(null);
+  const add = () => {
+    const v = text().trim();
+    if (v === "") return;
+    const p = props.problem(v);
+    if (p) {
+      setProblem(p);
+      return;
+    }
+    if (!props.values.includes(v)) props.onChange([...props.values, v]);
+    setText("");
+  };
+  const stack = () => props.layout === "stack";
+  return (
+    <div
+      class={cn(
+        "flex flex-col gap-1.5",
+        stack() ? "w-full max-w-[380px]" : "max-w-[340px] items-end",
+      )}
+    >
+      <div class={cn("flex gap-1.5", stack() ? "flex-col" : "flex-wrap justify-end")}>
+        <For each={props.values}>
+          {(v) => (
+            <span
+              class={cn(
+                "inline-flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-muted pr-1 pl-2 mono text-sm",
+                stack() ? "h-7 justify-between" : "h-6",
+              )}
+            >
+              <span class="truncate" title={v}>
+                {v}
+              </span>
+              <button
+                type="button"
+                class="inline-flex size-4 flex-none items-center justify-center rounded-sm text-subtle hover:bg-border hover:text-foreground"
+                aria-label={`Remove ${props.what} ${v}`}
+                onClick={() => props.onChange(props.values.filter((x) => x !== v))}
+              >
+                ×
+              </button>
+            </span>
+          )}
+        </For>
+        <div
+          class={cn(
+            "flex items-center overflow-hidden rounded-md border bg-background focus-within:shadow-focus",
+            problem() ? "border-danger" : "border-border focus-within:border-ring",
+            stack() ? "h-7 w-full" : "h-6 w-[140px]",
+          )}
+        >
+          <input
+            id={props.id}
+            class="h-full w-full min-w-0 bg-transparent px-2.5 mono text-xs text-foreground outline-none placeholder:text-subtle"
+            placeholder={props.placeholder}
+            value={text()}
+            spellcheck={false}
+            aria-invalid={problem() ? "true" : undefined}
+            onInput={(e) => {
+              setText(e.currentTarget.value);
+              setProblem(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+            onBlur={add}
+          />
+        </div>
+      </div>
+      <Show when={problem()}>
+        <span class="text-sm text-danger" role="alert">
+          {problem()}
+        </span>
+      </Show>
+    </div>
   );
 }
