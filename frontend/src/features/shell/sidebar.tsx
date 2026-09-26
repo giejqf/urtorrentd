@@ -22,9 +22,13 @@ import {
   createSignal,
   For,
   type JSX,
+  lazy,
+  Match,
   onCleanup,
   onMount,
   Show,
+  Suspense,
+  Switch,
 } from "solid-js";
 import { toast } from "solid-sonner";
 
@@ -113,6 +117,10 @@ export interface FilterParams {
 
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform);
 
+// The RSS and Log screens' own sections and footers, loaded with them.
+const RssSidebar = lazy(() => import("~/features/rss/sidebar"));
+const LogSidebar = lazy(() => import("~/features/log/sidebar"));
+
 function NavItem(props: {
   href: string;
   icon: Component<{ size?: number }>;
@@ -139,12 +147,18 @@ function NavItem(props: {
   );
 }
 
-function FilterItem(props: {
+export function FilterItem(props: {
   label: JSX.Element;
-  count: number;
+  /** A number, or a word ("off"); nothing when absent. */
+  count?: number | string;
   active: boolean;
   onClick: () => void;
   title?: string;
+  /** The count as a pill: something unread. */
+  strong?: boolean;
+  /** Levels of nesting (folders). */
+  indent?: number;
+  class?: string;
 }) {
   return (
     <button
@@ -154,23 +168,39 @@ function FilterItem(props: {
         props.active
           ? "bg-selected text-foreground"
           : "text-muted-foreground hover:bg-accent hover:text-foreground",
+        props.class,
       )}
       aria-pressed={props.active}
       title={props.title}
+      style={props.indent ? { "padding-left": `${8 + props.indent * 14}px` } : undefined}
       onClick={() => props.onClick()}
     >
       <span class="flex min-w-0 items-center gap-2">{props.label}</span>
-      <span class={cn("mono text-xs", props.active ? "text-muted-foreground" : "text-subtle")}>
-        {formatCount(props.count)}
-      </span>
+      <Show when={props.count !== undefined}>
+        <span
+          class={cn(
+            "flex-none mono text-xs",
+            props.strong
+              ? "min-w-[18px] rounded-full bg-border px-1.5 text-center text-foreground"
+              : props.active
+                ? "text-muted-foreground"
+                : "text-subtle",
+          )}
+        >
+          {typeof props.count === "number" ? formatCount(props.count) : props.count}
+        </span>
+      </Show>
     </button>
   );
 }
 
-function Section(props: { title: string; children: JSX.Element }) {
+export function Section(props: { title: string; action?: JSX.Element; children: JSX.Element }) {
   return (
     <section aria-label={props.title}>
-      <h2 class="m-0 px-2 pt-2.5 pb-1 text-xs font-medium text-subtle">{props.title}</h2>
+      <div class="flex items-center justify-between px-2 pt-2.5 pb-1">
+        <h2 class="m-0 text-xs font-medium text-subtle">{props.title}</h2>
+        {props.action}
+      </div>
       {props.children}
     </section>
   );
@@ -498,10 +528,29 @@ export function Sidebar(props: { class?: string; onNavigate?: () => void }) {
         <NavItem href="/log" icon={TextAlignStart} label="Log" onNavigate={props.onNavigate} />
         <NavItem href="/settings" icon={Settings} label="Settings" onNavigate={props.onNavigate} />
       </nav>
-      <Show when={location.pathname.startsWith("/torrents")} fallback={<div class="flex-1" />}>
-        <Filters />
-      </Show>
-      <TransferFooter />
+      <Switch
+        fallback={
+          <>
+            <div class="flex-1" />
+            <TransferFooter />
+          </>
+        }
+      >
+        <Match when={location.pathname.startsWith("/torrents")}>
+          <Filters />
+          <TransferFooter />
+        </Match>
+        <Match when={location.pathname.startsWith("/rss")}>
+          <Suspense fallback={<div class="flex-1" />}>
+            <RssSidebar onNavigate={props.onNavigate} />
+          </Suspense>
+        </Match>
+        <Match when={location.pathname.startsWith("/log")}>
+          <Suspense fallback={<div class="flex-1" />}>
+            <LogSidebar onNavigate={props.onNavigate} />
+          </Suspense>
+        </Match>
+      </Switch>
     </aside>
   );
 }

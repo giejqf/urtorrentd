@@ -4,10 +4,11 @@ Guide for coding agents working on `frontend/`, the web UI of urtorrentd. Read t
 [`AGENTS.md`](../AGENTS.md) first. It is the project charter, and its rules bind this directory
 too (section 1 restates them for the UI). This file adds what is specific to the UI.
 
-Status (2026-09-26): W0, W1 and W2 are done: sign-in, first-run setup, the shell, the torrents
-screen and the add dialog as the mockups have them. W4 has started: every settings section is
-built (Downloads, Speed, Queue & share limits, Connection, BitTorrent, Banned addresses, Watch
-folders, RSS, Webhooks, Statistics & GeoIP, Security & API, Engine, About); the log is next.
+Status (2026-09-26): W0, W1, W2 and W5 are done: sign-in, first-run setup, the shell, the
+torrents screen and the add dialog, and the RSS screen, as the mockups have them. W4 has every
+settings section (Downloads, Speed, Queue & share limits, Connection, BitTorrent, Banned
+addresses, Watch folders, RSS, Webhooks, Statistics & GeoIP, Security & API, Engine, About) and
+the Log screen.
 Section 10 has the milestones.
 
 ## 1. What this is
@@ -148,7 +149,12 @@ frontend/
                         statistics-form.ts), Security & API (security.tsx; security-form.ts),
                         Engine (engine.tsx; engine-form.ts) and About (about.tsx;
                         about-view.ts)
-      rss/ log/ stats/
+      rss/              the RSS screen (rss.tsx): its sidebar sections (sidebar.tsx: feeds in
+                        folders, rules), the article panel, the rule editor (rule-editor.tsx;
+                        rule-form.ts), feed dialogs, the shared queries (data.ts), view.ts
+      log/              the Log screen (log.tsx): its sidebar sections (sidebar.tsx: levels,
+                        topics), the shared log query (use-log.ts), view.ts
+      stats/
   e2e/
     daemon.ts           starts and stops real daemons, one per test that asks (7.4)
     torrent.ts          makes .torrent files for tests (bencode, SHA-1)
@@ -398,6 +404,9 @@ locally.
 - `Settings_Watch_folders-html.zip`, `Settings_RSS-html.zip`, `Settings_Webhooks-html.zip`:
   Settings › Watch folders (`SettingsWatch.dc.html`), RSS (`SettingsRss.dc.html`) and
   Webhooks (`SettingsWebhooks.dc.html`): expanding cards that edit one item each.
+- `RSS-html.zip`, `Log-html.zip`: the RSS screen (`Rss.dc.html`: feeds and rules in the
+  sidebar, articles by age, one article) and the Log screen (`Log.dc.html`: levels and topics
+  in the sidebar, the log by day, one entry with the last day by hour).
 - `Settings_Statistics_GeoIP-html.zip`, `Settings_Security_API-html.zip`,
   `Settings_Engine-html.zip`, `Settings_About-html.zip`: Settings › Statistics & GeoIP
   (`SettingsStats.dc.html`), Security & API (`SettingsSecurity.dc.html`), Engine
@@ -589,6 +598,23 @@ These are the known differences. Resolve each as noted, never by faking.
 | Settings › About: "up to date" | No update check (rule 5) | Left out. |
 | Settings › About: "Seen as" | The transfer state's `external_v4` / `external_v6` | As shown; "not known yet" until trackers or peers agree on one. |
 | Settings › About: "Copy diagnostics", "Delete statistics", "API reference", "Web UI 0.12.0" | `GET /app`, `/app/system`, `/stats`; `DELETE /stats` (added for the UI); `GET /api/v1/openapi.json`; the UI's `package.json` version set at build time | Diagnostics carry versions, the machine, engine and network settings and counts, never an address, a path, a URL or a name. Deleting asks first; recording goes on. The reference opens the schema. |
+| RSS: "Linux ISOs › guid 48213" above the article | A guid is often the article's URL, with a passkey | "Linux ISOs › article". |
+| RSS: the torrent and link URLs of an article | They carry passkeys (rule 6) | The host and "/…"; a magnet link as the start of its info-hash. The article's page opens from the header's link button. |
+| RSS: "Matches “rule”", the "Matches a rule" chip, rule counts "2", "off" | `matched_rule` on every article (added for the UI): the first enabled rule on its feed whose filters take it, its history aside | As shown; a rule's count is the articles kept it would take. |
+| RSS: "Mark unread", Refresh and Mark all read for a folder or every feed | `unread` in `POST /rss/feeds/{id}/read`; `POST /rss/feeds/refresh` and `POST /rss/feeds/read` (added for the UI) | As shown. Mark all read is left out while a rule is chosen (its list is a dry run). |
+| RSS: "Would be added as" with the rule's category, tags, save path | The rule's `add_options`, and the daemon's path rules | As shown, with when it starts; the save path as the daemon decides it (category, automatic management). |
+| RSS: Download | The rule's options belong to the rule | The add dialog with the article's torrent: the user chooses how it is added. |
+| RSS: "⋯" in the article header | Nothing to put there | Left out; a feed's and a folder's actions are on their menus in the sidebar. |
+| RSS: feeds, folders and rules being added or edited | Not designed | The sidebar's "+" (a feed, a folder, a rule) and each row's menu (refresh, mark read, edit, rename, remove); a chosen rule is edited in the panel, beside the list of what it would take. |
+| RSS: the description | HTML from the feed | Its text: tags dropped, entities decoded, never rendered (rule 6). |
+| RSS: "14 auto-added" | `downloaded` on the articles kept | Counted from them. |
+| Log: "About" topics (Trackers, Peers, Torrents, RSS, Webhooks, Settings, Daemon, Tracker list) and "Open torrent" | `topic` and `torrent` on every entry (added for the UI) | The daemon's topics: torrents, trackers, RSS, watch folders, webhooks, settings, sign-in, network, statistics, daemon. Peers are the peer log's (Settings › Banned addresses). |
+| Log: announces, corrupt pieces and such in the list | The main log has what the daemon logs, not the engine's traffic | What there is. |
+| Log: "×3" on a row, "Same message", "Recurring today" | Messages are compared whole, never parsed (rule 1) | A row is entries repeated back to back; the counts are of identical messages among those kept. |
+| Log: "Reannounce", "Ban peer", "Open files" | Entries name a torrent, not a peer | Open torrent, and Reannounce on torrent and tracker entries. |
+| Log: "kept in memory 4 000 entries" | The daemon keeps its last 10 000 | How many are kept now, and since when. |
+| Log: "Following" | `GET /log?after=` every 2 s | New entries come in at the top; reading an entry holds the view ("paused · 2 new entries") until Follow. |
+| Log: Export | — | A text file of the entries shown, oldest first, in UTC. |
 | Add dialog: "Watch folder" tab | The `watch_folders` setting (path, subfolders, what happens to an added file, add options) | The tab appends a watch folder with the dialog's options (`PATCH /settings`); the right column lists the files it will pick up. |
 
 ## 7. Testing
@@ -767,7 +793,11 @@ Each milestone ends with its end-to-end tests green.
   and the API key, sessions and sign-in bans, the HTTP layer, the cookie jar), Engine (the
   machine, tuning beside what runs, restarting now or when idle) and About (the instance,
   diagnostics, deleting statistics, shutting down) as designed.
-- **W5 RSS.** Folders, feeds, articles, and rules with their matches.
+  The Log screen: the main log by day with its levels and topics, one entry with its torrent,
+  following, export.
+- **W5 RSS** (done). Folders, feeds, articles, and rules with their matches: the RSS screen as
+  designed, with feeds, folders and rules managed from its sidebar and a rule edited beside
+  what it would take.
 - **W6 Statistics.** Traffic over time, seeding days, rankings, the timeline, places,
   breakdowns and idle seeds (uPlot).
 - **W7 Finish.** The ⌘K palette, small screens, the full browser matrix, and the 10 000-torrent

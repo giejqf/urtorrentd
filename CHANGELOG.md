@@ -83,7 +83,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   beside what runs, restarting now or once the torrents are idle; the
   instance, diagnostics to copy (no addresses, paths, URLs or names),
   deleting statistics and shutting down.
-  Screens for statistics, RSS and the log say they are still to come.
+- Web UI: the RSS screen as designed: every feed in its folders with what
+  is unread, articles by age, filtered by what they are and by title, read
+  with their description as text and their links by host; downloaded
+  through the add dialog; feeds, folders and rules added and changed from
+  the sidebar, and a rule edited beside what it would take.
+- Web UI: the Log screen as designed: the main log by day, by level and
+  topic and by text, repeats folded; one entry with its torrent, how often
+  it came, the last day by hour and what recurs; followed live or held
+  while reading; exported as text.
+  The statistics screen says it is still to come.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and
   `cargo xtask dist` (a release binary with the UI built in).
 

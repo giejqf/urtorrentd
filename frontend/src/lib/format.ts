@@ -150,6 +150,50 @@ export function formatDateTime(unix: number | null, opts: TimeOptions = {}): str
   }).format(new Date(unix * 1000));
 }
 
+/** A unix time as a time of day with seconds: `10:41:02`. */
+export function formatTime(unix: number, opts: TimeOptions = {}): string {
+  return new Intl.DateTimeFormat(opts.locale ?? "en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    timeZone: opts.timeZone,
+  }).format(new Date(unix * 1000));
+}
+
+/** The viewer's calendar day of a unix time, as `2026-09-26`. */
+export function localDay(unix: number, opts: TimeOptions = {}): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: opts.timeZone,
+  }).format(new Date(unix * 1000));
+}
+
+/**
+ * A day as a list heading: `Today · Sat 26 Sep`, `Yesterday · Fri 25 Sep`,
+ * else `Wed 23 Sep` (with the year when it is not this one).
+ */
+export function formatDayHeading(unix: number, now: number, opts: TimeOptions = {}): string {
+  const day = localDay(unix, opts);
+  const sameYear = day.slice(0, 4) === localDay(now, opts).slice(0, 4);
+  const parts = new Intl.DateTimeFormat(opts.locale ?? "en-US", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: opts.timeZone,
+  }).formatToParts(new Date(unix * 1000));
+  const part = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value ?? "";
+  const date = [part("weekday"), part("day"), part("month"), sameYear ? "" : part("year")]
+    .filter((x) => x !== "")
+    .join(" ");
+  if (day === localDay(now, opts)) return `Today · ${date}`;
+  if (day === localDay(now - 86_400, opts)) return `Yesterday · ${date}`;
+  return date;
+}
+
 /** A unix time as a month and year: `Mar 2027` (expiries, far dates). */
 export function formatMonth(unix: number | null, opts: TimeOptions = {}): string {
   if (unix === null || !Number.isFinite(unix)) return dash;

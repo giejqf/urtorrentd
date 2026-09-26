@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 urtorrentd contributors
 
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, untrack } from "solid-js";
 
 import { Button } from "~/components/ui/button";
 import {
@@ -13,18 +13,20 @@ import {
 } from "~/components/ui/dialog";
 import { TextField, TextFieldInput, TextFieldLabel } from "~/components/ui/text-field";
 
-/** Ask for one line of text: a new tag, a new category. */
+/** Ask for one line of text: a new tag, a new category, a new name. */
 export function PromptDialog(props: {
   open: boolean;
   title: string;
   label: string;
   action: string;
+  /** The text to start from (a rename). */
+  initial?: string;
   onClose: () => void;
   onSubmit: (value: string) => void;
 }) {
   const [value, setValue] = createSignal("");
   createEffect(() => {
-    if (props.open) setValue("");
+    if (props.open) setValue(untrack(() => props.initial ?? ""));
   });
   const submit = () => {
     const v = value().trim();

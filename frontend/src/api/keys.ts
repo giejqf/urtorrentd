@@ -22,6 +22,14 @@ export const keys = {
   torrent: (hash: string) => ["torrent", hash] as const,
   torrentPart: (hash: string, part: TorrentPart) => ["torrent", hash, part] as const,
   log: () => ["log"] as const,
+  /** The main log of one run of the daemon (ids start over at a restart). */
+  mainLog: (startedAt: number) => ["log", "main", startedAt] as const,
   peerLog: () => ["log", "peers"] as const,
+  rss: () => ["rss"] as const,
+  rssFeeds: () => ["rss", "feeds"] as const,
+  rssFolders: () => ["rss", "folders"] as const,
+  rssRules: () => ["rss", "rules"] as const,
+  rssArticles: () => ["rss", "articles"] as const,
+  rssMatches: (rule: string) => ["rss", "matches", rule] as const,
   clientData: (keys: readonly string[]) => ["client-data", ...keys] as const,
 };

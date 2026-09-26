@@ -11,18 +11,7 @@ import { createQuery, keepPreviousData } from "@tanstack/solid-query";
 import LayoutGrid from "lucide-solid/icons/layout-grid";
 import ListFilterIcon from "lucide-solid/icons/list-filter";
 import Plus from "lucide-solid/icons/plus";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  Match,
-  on,
-  onCleanup,
-  onMount,
-  Show,
-  Switch,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, For, Match, on, Show, Switch } from "solid-js";
 
 import { api, type Schemas, unwrap } from "~/api/client";
 import { Button } from "~/components/ui/button";
@@ -53,6 +42,7 @@ import { type FilterParams, STATUS_LABELS } from "~/features/shell/sidebar";
 import { formatCount } from "~/lib/format";
 import { FILTERS } from "~/lib/torrent";
 import { usePref } from "~/lib/prefs";
+import { useWide } from "~/lib/use-wide";
 
 import { actions, copy, isRunning } from "./actions";
 import { AddDialog } from "./add/add-dialog";
@@ -84,16 +74,6 @@ function isDisplay(v: unknown): v is Display {
     typeof d.reverse === "boolean" &&
     SORT_KEYS.some((k) => k.key === d.sort)
   );
-}
-
-/** Whether the viewport has room for the detail panel beside the list. */
-function useWide() {
-  const query = window.matchMedia("(min-width: 1280px)");
-  const [wide, setWide] = createSignal(query.matches);
-  const update = () => setWide(query.matches);
-  onMount(() => query.addEventListener("change", update));
-  onCleanup(() => query.removeEventListener("change", update));
-  return wide;
 }
 
 function EmptyState(props: { title: string; text: string; action?: () => void; label?: string }) {

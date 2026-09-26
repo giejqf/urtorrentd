@@ -19,8 +19,8 @@ const Stats = planned(
   "W6",
   "Traffic over time, seeding days, rankings, places and breakdowns come from the daemon's history.",
 );
-const Rss = planned("RSS", "W5", "Feeds, articles and automatic download rules.");
-const Log = planned("Log", "W4", "The daemon's main log and the log of banned peers.");
+const Rss = lazy(() => import("~/features/rss/rss"));
+const Log = lazy(() => import("~/features/log/log"));
 const Downloads = lazy(() => import("~/features/settings/downloads"));
 const Speed = lazy(() => import("~/features/settings/speed"));
 const Queue = lazy(() => import("~/features/settings/queue"));

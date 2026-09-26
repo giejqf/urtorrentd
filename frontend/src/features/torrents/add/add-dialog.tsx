@@ -21,6 +21,7 @@ import {
   onCleanup,
   Show,
   Switch as Branch,
+  untrack,
 } from "solid-js";
 import { createStore } from "solid-js/store";
 import { toast } from "solid-sonner";
@@ -187,7 +188,12 @@ function LimitInput(props: {
   );
 }
 
-function Body(props: { onClose: () => void; mode: Mode; setMode: (m: Mode) => void }) {
+function Body(props: {
+  onClose: () => void;
+  mode: Mode;
+  setMode: (m: Mode) => void;
+  links?: string;
+}) {
   const auth = useAuth();
   const live = useLive();
   const client = useQueryClient();
@@ -233,7 +239,7 @@ function Body(props: { onClose: () => void; mode: Mode; setMode: (m: Mode) => vo
     ),
   );
 
-  const [links, setLinks] = createSignal("");
+  const [links, setLinks] = createSignal(untrack(() => props.links ?? ""));
   const [folder, setFolder] = createSignal({
     path: "",
     recursive: false,
@@ -788,8 +794,21 @@ function Body(props: { onClose: () => void; mode: Mode; setMode: (m: Mode) => vo
   );
 }
 
-export function AddDialog(props: { open: boolean; onClose: () => void }) {
+export function AddDialog(props: {
+  open: boolean;
+  onClose: () => void;
+  /** Links to start from (an RSS article's torrent). */
+  links?: string;
+}) {
   const [mode, setMode] = createSignal<Mode>("links");
+  createEffect(
+    on(
+      () => props.open,
+      (open) => {
+        if (open && props.links) setMode("links");
+      },
+    ),
+  );
   return (
     <Dialog
       open={props.open}
@@ -801,7 +820,7 @@ export function AddDialog(props: { open: boolean; onClose: () => void }) {
         noClose
         class="flex h-[min(780px,calc(100dvh-2rem))] w-full max-w-[920px] flex-col gap-0 overflow-hidden p-0"
       >
-        <Body onClose={props.onClose} mode={mode()} setMode={setMode} />
+        <Body onClose={props.onClose} mode={mode()} setMode={setMode} links={props.links} />
       </DialogContent>
     </Dialog>
   );

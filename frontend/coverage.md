@@ -57,25 +57,12 @@ row whose operation the UI calls.
 | ---------------------------- | -------------------------------------------------------------------- |
 | `GET /api/v1/webhooks/{id}`  | The Webhooks page reads the list: every webhook with its deliveries. |
 | `POST /api/v1/transfer/bans` | W4: banning peers.                                                   |
-| `GET /api/v1/log`            | W4: the log screen.                                                  |
 
-## W5: RSS
+## RSS
 
-| Operation                              | Why the UI does not call it |
-| -------------------------------------- | --------------------------- |
-| `GET /api/v1/rss/articles`             | W5: the RSS screen.         |
-| `POST /api/v1/rss/feeds`               | W5: the RSS screen.         |
-| `GET /api/v1/rss/feeds/{id}`           | W5: the RSS screen.         |
-| `PATCH /api/v1/rss/feeds/{id}`         | W5: the RSS screen.         |
-| `DELETE /api/v1/rss/feeds/{id}`        | W5: the RSS screen.         |
-| `POST /api/v1/rss/feeds/{id}/read`     | W5: the RSS screen.         |
-| `GET /api/v1/rss/folders`              | W5: the RSS screen.         |
-| `POST /api/v1/rss/folders`             | W5: the RSS screen.         |
-| `POST /api/v1/rss/folders/move`        | W5: the RSS screen.         |
-| `POST /api/v1/rss/folders/remove`      | W5: the RSS screen.         |
-| `DELETE /api/v1/rss/rules/{name}`      | W5: the RSS screen.         |
-| `GET /api/v1/rss/rules/{name}/matches` | W5: the RSS screen.         |
-| `POST /api/v1/rss/rules/{name}/rename` | W5: the RSS screen.         |
+| Operation                    | Why the UI does not call it                                               |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| `GET /api/v1/rss/feeds/{id}` | The RSS screen reads every feed's articles at once (`GET /rss/articles`). |
 
 ## W6: statistics
 
