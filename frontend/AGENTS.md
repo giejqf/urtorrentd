@@ -5,7 +5,8 @@ Guide for coding agents working on `frontend/`, the web UI of urtorrentd. Read t
 too (section 1 restates them for the UI). This file adds what is specific to the UI.
 
 Status (2026-09-25): W0, W1 and W2 are done: sign-in, first-run setup, the shell, the torrents
-screen and the add dialog as the mockups have them. W4 has started with Settings › Downloads, Speed, and Queue & share limits.
+screen and the add dialog as the mockups have them. W4 has started: Settings › Downloads, Speed, Queue & share limits, Connection,
+BitTorrent and Banned addresses.
 Section 10 has the milestones.
 
 ## 1. What this is
@@ -138,7 +139,9 @@ frontend/
                         the path flow, paths.ts), Speed (speed.tsx; speed-form.ts, the
                         schedule in schedule.ts, the week chart) and Queue (queue.tsx;
                         queue-form.ts, the queue's slots in queue-now.ts, the draggable list
-                        in queue-list.tsx, share limits in share.ts); later the other sections,
+                        in queue-list.tsx, share limits in share.ts), Connection and BitTorrent
+                        (connection.tsx, bittorrent.tsx; network-form.ts) and Banned addresses
+                        (banned.tsx; bans.ts); later the other sections,
                         security (credentials, API key), webhooks, watch folders
       rss/ log/ stats/
   e2e/
@@ -384,6 +387,9 @@ locally.
   with a Browse button, a value with its switch, segmented choices, chip lists, a table.
 - `Settings_Queue_share_limits-html.zip`: Settings › Queue & share limits
   (`SettingsQueue.dc.html`): the queue's slots and order, share limits with progress bars.
+- `Settings_Connection-html.zip`, `Settings_BitTorrent-html.zip`,
+  `Settings_Banned_addresses-html.zip`: Settings › Connection (`SettingsConnection.dc.html`),
+  BitTorrent (`SettingsBitTorrent.dc.html`) and Banned addresses (`SettingsBans.dc.html`).
 
 They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
@@ -531,6 +537,17 @@ These are the known differences. Resolve each as noted, never by faking.
 | Settings › Queue: drag handles on the queue rows | `PUT /torrents/{hash}/queue-position` (urtorrent 0.13.5: one call, one re-plan) | Drag handles, no ↑ / ↓ (maintainer decision, 2026-09-25). From the keyboard: Space picks a row up, the arrow keys move it, Space drops it, Escape puts it back, each announced. The dropped order shows until the daemon's arrives. The first 10 running or waiting torrents are listed, then a count. |
 | Settings › Queue: "Defaults — any torrent can use its own value or none, from its properties" | A torrent's `share_limits`, then its category's, then the settings (`daemon/tick.rs`) | "Defaults: a category or a torrent can set its own, or none". Rows are tagged `own` or `category` when those win. |
 | Settings › Queue: "ratio at this rate in ~9 d", "no limits (tag keep)" | Rows' `ratio`, `uploaded`, `downloaded`, `completed`, `upload_rate`, `seeding_time`, `last_activity` | The limit reached first if things go on as they are, from the draft's defaults: seeding time is certain, the ratio is an estimate at the current upload rate ("at this rate"), inactive time only while nothing moves. "no limits" without a reason (the API has none). |
+| Settings › Connection: "Test port", "Re-detect" | No such operations; `connection_status` comes from incoming connections | Left out. |
+| Settings › Connection: "incoming 58% of connections", "61% of current peers are on TCP" | Session-wide peers are counted (`peers`, `connections`), not split by direction or transport; per-torrent peer lists would be an N+1 | "N peers connected"; no share by transport. |
+| Settings › Connection: "Apply rate limits to µTP" | Fixed by the engine (`limit_utp_rate`) | Left out (as on Speed). |
+| Settings › Connection: interface rows "VPN", "API only" | `GET /app/interfaces` has name, addresses, up; `GET /app` the addresses listened on | "listening" (including through `0.0.0.0` / `::`), "down", or nothing. |
+| Settings › BitTorrent: "How your 148 peers were found" with a count per source | Live peers by source are per torrent only; `/stats/peers?dim=source` has peer traffic by source | The last day's peer traffic by how the peer was found, with what the draft's switches keep; a note when statistics are off. |
+| Settings › BitTorrent: "Forced drops … 4 of your 148 peers today" | No session-wide count of unencrypted peers | Left out of the description. |
+| Settings › BitTorrent: identity cards with peer-id prefixes | `GET /app` → `library` is the native user agent; the qbt profile is named by its versions | The native card shows `library`; the qbt card "qBittorrent 5.2.3 · libtorrent 2.0.14". No peer-id prefixes. |
+| Settings › BitTorrent: bootstrap routers shown when none are set | `dht_bootstrap_nodes: null` = the identity's own (not listed by the API); `[]` = none | Chips only for our own list; "Use the identity's routers" goes back to `null`. |
+| Settings › Banned addresses: Note and Added columns | `banned_ips` / `banned_ip_ranges` are plain lists | Address, kind, Unban. |
+| Settings › Banned addresses: "automatic bans, 30 days", "connections refused today" | The peer log (`source`, `torrent`; added for the UI) holds 10 000 entries since the daemon started; refusals are not counted | "engine bans in the peer log"; no refusals figure. |
+| Settings › Banned addresses: "Keep banned", "ban expired" | An engine ban is on one torrent for as long as it runs; nothing expires on a timer | "Ban everywhere" adds the address to `banned_ips`; unbans are the settings'. "Show older" pages through the log already loaded. |
 | Settings footer: "libtorrent 2.0.11" | `library` in `GET /app` is urtorrent's version | Show the library we run on. |
 | Add dialog: "Watch folder" tab | The `watch_folders` setting (path, subfolders, what happens to an added file, add options) | The tab appends a watch folder with the dialog's options (`PATCH /settings`); the right column lists the files it will pick up. |
 
@@ -700,7 +717,9 @@ Each milestone ends with its end-to-end tests green.
   torrents with the fetched list), Speed (global and alternative limits, the switch, the
   schedule with its week chart, the connection budget) and Queue & share limits (the limits
   with the slots they hand out and the queue's order, reordered by dragging, share limits with
-  the seeding torrents closest to one) as designed. The other sections show
+  the seeding torrents closest to one), Connection (reachability, listening, interfaces,
+  transports), BitTorrent (discovery with the last day's traffic by source, bootstrap routers,
+  encryption, identity) and Banned addresses (the list, bans per day, the peer log) as designed. The other sections show
   that they are not built yet.
 - **W5 RSS.** Folders, feeds, articles, and rules with their matches.
 - **W6 Statistics.** Traffic over time, seeding days, rankings, the timeline, places,

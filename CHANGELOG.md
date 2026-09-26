@@ -62,6 +62,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the keyboard, and the
   default share limits in days, hours or minutes with the seeding torrents
   closest to a limit and when they get there.
+- Web UI: Settings › Connection, BitTorrent and Banned addresses as
+  designed: reachability and the addresses peers see, the listen port,
+  interface and address families with the machine's interfaces, peer
+  transports; DHT, PEX and LSD with the last day's peer traffic by how the
+  peer was found, bootstrap routers, encryption and identity; bans added
+  and lifted at once, what they cover, and the peer log with bans per day.
   Screens for statistics, RSS, the log and the other settings sections say
   they are still to come.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and

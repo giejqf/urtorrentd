@@ -60,7 +60,6 @@ row whose operation the UI calls.
 | `DELETE /api/v1/auth/api-key`     | W4: security settings.           |
 | `GET /api/v1/app/cookies`         | W4: the cookie jar for URL adds. |
 | `PUT /api/v1/app/cookies`         | W4: the cookie jar for URL adds. |
-| `GET /api/v1/app/interfaces`      | W4: the network settings.        |
 | `GET /api/v1/webhooks`            | W4: webhooks.                    |
 | `POST /api/v1/webhooks`           | W4: webhooks.                    |
 | `GET /api/v1/webhooks/{id}`       | W4: webhooks.                    |
@@ -69,7 +68,6 @@ row whose operation the UI calls.
 | `POST /api/v1/webhooks/{id}/test` | W4: webhooks.                    |
 | `POST /api/v1/transfer/bans`      | W4: banning peers.               |
 | `GET /api/v1/log`                 | W4: the log screen.              |
-| `GET /api/v1/log/peers`           | W4: the log screen.              |
 
 ## W5: RSS
 
@@ -104,7 +102,6 @@ row whose operation the UI calls.
 | `DELETE /api/v1/stats/torrents/{hash}`      | W6: the statistics screen.  |
 | `GET /api/v1/stats/top`                     | W6: the statistics screen.  |
 | `GET /api/v1/stats/geo`                     | W6: the statistics screen.  |
-| `GET /api/v1/stats/peers`                   | W6: the statistics screen.  |
 | `GET /api/v1/stats/groups`                  | W6: the statistics screen.  |
 | `GET /api/v1/stats/trackers`                | W6: the statistics screen.  |
 | `GET /api/v1/stats/idle-seeds`              | W6: the statistics screen.  |

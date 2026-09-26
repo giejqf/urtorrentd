@@ -24,6 +24,9 @@ const Log = planned("Log", "W4", "The daemon's main log and the log of banned pe
 const Downloads = lazy(() => import("~/features/settings/downloads"));
 const Speed = lazy(() => import("~/features/settings/speed"));
 const Queue = lazy(() => import("~/features/settings/queue"));
+const Connection = lazy(() => import("~/features/settings/connection"));
+const BitTorrent = lazy(() => import("~/features/settings/bittorrent"));
+const Banned = lazy(() => import("~/features/settings/banned"));
 const PlannedSettings = lazy(() => import("~/features/settings/planned"));
 
 export const routes = (
@@ -40,6 +43,9 @@ export const routes = (
       <Route path="/settings/downloads" component={Downloads} />
       <Route path="/settings/speed" component={Speed} />
       <Route path="/settings/queue" component={Queue} />
+      <Route path="/settings/connection" component={Connection} />
+      <Route path="/settings/bittorrent" component={BitTorrent} />
+      <Route path="/settings/bans" component={Banned} />
       <Route path="/settings/:section" component={PlannedSettings} />
       <Route path="*" component={() => <Navigate href="/torrents" />} />
     </Route>
