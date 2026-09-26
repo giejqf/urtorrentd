@@ -390,7 +390,7 @@ be opened, the daemon runs without statistics and `/stats` answers
 | POST | `/transfer/bans` | Ban peer addresses |
 | GET | `/sync` | Incremental updates: everything, then changes since `rev` |
 | GET | `/events` | The same updates pushed as server-sent events |
-| GET | `/log`, `/log/peers` | Main log; peer (ban) log |
+| GET | `/log`, `/log/peers` | Main log; peer (ban) log: each entry says who banned or unbanned (`source`: `engine` on one torrent, named by `torrent`, or `settings`) |
 | GET, POST | `/rss/feeds` | RSS feeds; add one |
 | GET, PATCH, DELETE | `/rss/feeds/{id}` | A feed with its articles; change it; remove it |
 | POST | `/rss/feeds/{id}/refresh`, `/rss/feeds/{id}/read` | Refresh now; mark articles read |

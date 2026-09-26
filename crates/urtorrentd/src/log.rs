@@ -41,6 +41,18 @@ pub struct LogEntry {
     pub message: String,
 }
 
+/// Who banned or unbanned a peer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PeerLogSource {
+    /// The engine, on one torrent, for pieces that failed their hash; for
+    /// as long as the torrent runs in this session.
+    Engine,
+    /// The settings (`banned_ips`, `POST /transfer/bans`): every torrent,
+    /// until unbanned.
+    Settings,
+}
+
 /// One peer-log entry (an address banned or unbanned).
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct PeerLogEntry {
@@ -53,6 +65,11 @@ pub struct PeerLogEntry {
     pub ip: IpAddr,
     /// Whether the address is now banned (`false`: the ban was lifted).
     pub banned: bool,
+    /// Who banned or unbanned it.
+    pub source: PeerLogSource,
+    /// The torrent an engine ban is on (info-hash); `null` for the settings'.
+    #[schema(required = true)]
+    pub torrent: Option<String>,
     /// Why.
     pub reason: String,
 }
@@ -125,7 +142,14 @@ impl Logs {
     }
 
     /// Record a ban or unban in the peer log.
-    pub fn peer(&self, ip: IpAddr, banned: bool, reason: impl Into<String>) {
+    pub fn peer(
+        &self,
+        ip: IpAddr,
+        banned: bool,
+        source: PeerLogSource,
+        torrent: Option<String>,
+        reason: impl Into<String>,
+    ) {
         let reason = reason.into();
         if let Ok(mut ring) = self.peers.lock() {
             ring.push(|id| PeerLogEntry {
@@ -133,6 +157,8 @@ impl Logs {
                 time: now(),
                 ip,
                 banned,
+                source,
+                torrent,
                 reason,
             });
         }

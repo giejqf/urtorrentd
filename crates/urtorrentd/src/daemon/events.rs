@@ -11,7 +11,7 @@ use std::sync::{Arc, Weak};
 use urtorrent::{ErrorKind, Event, EventStream, InfoHash, TorrentId};
 
 use super::{Daemon, ResumeSave};
-use crate::log::LogLevel;
+use crate::log::{LogLevel, PeerLogSource};
 use crate::model::TimelineKind;
 use crate::stats::peers::PeerSample;
 use crate::util::{blocking, hex, now};
@@ -87,10 +87,13 @@ impl Daemon {
                 }
             }
             Event::PeerBanned { id, ip, reason, .. } => {
-                let name = self.hash_of(id).map(|h| self.name_of(&h));
+                let hash = self.hash_of(id);
+                let name = hash.map(|h| self.name_of(&h));
                 self.logs.peer(
                     ip,
                     true,
+                    PeerLogSource::Engine,
+                    hash.map(|h| hex(&h)),
                     match name {
                         Some(n) => format!("{reason} ({n})"),
                         None => reason,

@@ -14215,6 +14215,8 @@
           "time",
           "ip",
           "banned",
+          "source",
+          "torrent",
           "reason"
         ],
         "properties": {
@@ -14238,11 +14240,30 @@
             "type": "boolean",
             "description": "Whether the address is now banned (`false`: the ban was lifted)."
           },
+          "source": {
+            "$ref": "#/components/schemas/PeerLogSource",
+            "description": "Who banned or unbanned it."
+          },
+          "torrent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The torrent an engine ban is on (info-hash); `null` for the settings'."
+          },
           "reason": {
             "type": "string",
             "description": "Why."
           }
         }
+      },
+      "PeerLogSource": {
+        "type": "string",
+        "description": "Who banned or unbanned a peer.",
+        "enum": [
+          "engine",
+          "settings"
+        ]
       },
       "PeerPoint": {
         "type": "object",

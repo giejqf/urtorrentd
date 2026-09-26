@@ -307,6 +307,9 @@ async fn settings_apply_live_and_report_restarts() {
     assert_eq!(s["banned_ips"], json!(["10.9.8.7", "fd00::5"]));
     let log = t.get("/api/v1/log/peers").await;
     assert_eq!(log.as_array().unwrap().len(), 2);
+    assert_eq!(log[0]["source"], "settings");
+    assert_eq!(log[0]["torrent"], serde_json::Value::Null);
+    assert_eq!(log[0]["banned"], true);
     t.stop().await;
 }
 

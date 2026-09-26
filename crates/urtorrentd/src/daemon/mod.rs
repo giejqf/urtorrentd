@@ -554,14 +554,26 @@ impl Daemon {
             .iter()
             .filter(|ip| !old.banned_ips.contains(ip))
         {
-            self.logs.peer(*ip, true, "banned in the settings");
+            self.logs.peer(
+                *ip,
+                true,
+                crate::log::PeerLogSource::Settings,
+                None,
+                "banned in the settings",
+            );
         }
         for ip in old
             .banned_ips
             .iter()
             .filter(|ip| !new.banned_ips.contains(ip))
         {
-            self.logs.peer(*ip, false, "unbanned in the settings");
+            self.logs.peer(
+                *ip,
+                false,
+                crate::log::PeerLogSource::Settings,
+                None,
+                "unbanned in the settings",
+            );
         }
         if save_path_changed {
             // Automatically managed torrents follow the default save path

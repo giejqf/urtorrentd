@@ -95,6 +95,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - List rows carry `slow`: running for a minute below 2 KiB/s both ways,
   the state in which a queued torrent holds no slot unless
   `count_slow_torrents` (urtorrent 0.13.5).
+- Peer-log entries say who banned or unbanned the address (`source`:
+  `engine` or `settings`) and, for the engine's bans, on which torrent
+  (`torrent`).
 - `POST /app/fetched-trackers/refresh` fetches the `add_trackers_url` list
   at once instead of at its daily turn; `fetched_trackers.fetching` in
   `GET /app` says a fetch is under way.
