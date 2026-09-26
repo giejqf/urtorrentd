@@ -57,6 +57,28 @@ export function formatLimit(bytesPerSecond: number | null, opts: UnitOptions = {
 }
 
 /**
+ * The unit an axis of byte values up to `max` is written in, and its size:
+ * `{ unit: "GB", size: 1e9 }`. Values are divided by `size` for their labels.
+ */
+export function byteUnit(max: number, opts: UnitOptions = {}): { unit: string; size: number } {
+  const units = opts.binary ? BINARY : DECIMAL;
+  const base = opts.binary ? 1024 : 1000;
+  let unit = 0;
+  let size = 1;
+  while (max >= size * base && unit < units.length - 1) {
+    size *= base;
+    unit += 1;
+  }
+  return { unit: units[unit] ?? "B", size };
+}
+
+/** A number on an axis: at most one decimal, none from 10 on (`2.5`, `40`). */
+export function formatAxis(value: number): string {
+  if (!Number.isFinite(value)) return dash;
+  return value >= 10 || Number.isInteger(value) ? String(Math.round(value)) : value.toFixed(1);
+}
+
+/**
  * A piece size, always binary (pieces are powers of two): `4 MiB`, `16 KiB`.
  */
 export function formatPieceSize(bytes: number): string {
@@ -159,6 +181,23 @@ export function formatTime(unix: number, opts: TimeOptions = {}): string {
     hourCycle: "h23",
     timeZone: opts.timeZone,
   }).format(new Date(unix * 1000));
+}
+
+/** A unix time as a time of day: `18:30`. */
+export function formatClock(unix: number, opts: TimeOptions = {}): string {
+  return new Intl.DateTimeFormat(opts.locale ?? "en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: opts.timeZone,
+  }).format(new Date(unix * 1000));
+}
+
+/** A change as a fraction, with its direction: `▲ 12%`, `▼ 8%`, `± 0%`. */
+export function formatChange(fraction: number): string {
+  const pct = Math.round(Math.abs(fraction) * 100);
+  if (pct === 0) return "± 0%";
+  return `${fraction > 0 ? "▲" : "▼"} ${formatCount(pct)}%`;
 }
 
 /** The viewer's calendar day of a unix time, as `2026-09-26`. */

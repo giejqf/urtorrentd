@@ -117,7 +117,8 @@ export interface FilterParams {
 
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform);
 
-// The RSS and Log screens' own sections and footers, loaded with them.
+// The Stats, RSS and Log screens' own sections and footers, loaded with them.
+const StatsSidebar = lazy(() => import("~/features/stats/sidebar"));
 const RssSidebar = lazy(() => import("~/features/rss/sidebar"));
 const LogSidebar = lazy(() => import("~/features/log/sidebar"));
 
@@ -539,6 +540,11 @@ export function Sidebar(props: { class?: string; onNavigate?: () => void }) {
         <Match when={location.pathname.startsWith("/torrents")}>
           <Filters />
           <TransferFooter />
+        </Match>
+        <Match when={location.pathname.startsWith("/stats")}>
+          <Suspense fallback={<div class="flex-1" />}>
+            <StatsSidebar onNavigate={props.onNavigate} />
+          </Suspense>
         </Match>
         <Match when={location.pathname.startsWith("/rss")}>
           <Suspense fallback={<div class="flex-1" />}>

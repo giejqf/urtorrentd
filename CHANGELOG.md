@@ -92,7 +92,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   topic and by text, repeats folded; one entry with its torrent, how often
   it came, the last day by hour and what recurs; followed live or held
   while reading; exported as text.
-  The statistics screen says it is still to come.
+- Web UI: Stats › Overview and Trackers as designed. The Overview has the
+  range's traffic against the range before, the transfer rate (uPlot), top
+  torrents, traffic by category, peers by client or another breakdown, idle
+  seeds with Reclaim, and the newest events. Trackers shows each host's
+  traffic and announces beside its torrents now, traffic by tracker, and
+  announce problems with Reannounce, Remove and adding the trackers for new
+  public torrents. Ranges are presets or days picked; hosts only, never URLs.
+  The Peers & geo, Idle seeds and Timeline reports say they are still to
+  come.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and
   `cargo xtask dist` (a release binary with the UI built in).
 

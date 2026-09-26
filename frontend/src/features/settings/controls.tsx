@@ -302,7 +302,10 @@ export function Segmented<T extends string>(props: {
               type="button"
               role="radio"
               aria-checked={on()}
-              tabIndex={on() ? 0 : -1}
+              // With none chosen, the first keeps the group reachable.
+              tabIndex={
+                on() || (i() === 0 && !props.options.some((x) => x.value === props.value)) ? 0 : -1
+              }
               class={cn(
                 "h-6 rounded-[5px] px-2.5 text-sm font-medium whitespace-nowrap transition-colors focus-visible:shadow-focus focus-visible:outline-none",
                 on()

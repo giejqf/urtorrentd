@@ -32,7 +32,8 @@
     "openapi-fetch": "0.17.0",
     "solid-js": "1.9.15",
     "solid-sonner": "0.3.2",
-    "tailwind-merge": "3.7.0"
+    "tailwind-merge": "3.7.0",
+    "uplot": "1.6.32"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

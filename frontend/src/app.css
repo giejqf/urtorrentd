@@ -120,6 +120,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-upload: var(--upload);
   --color-online: var(--online);
+  --color-grid-line: var(--grid-line);
   --color-cat-1: var(--cat-1);
   --color-cat-2: var(--cat-2);
   --color-cat-3: var(--cat-3);
@@ -244,4 +245,14 @@
   background-size: 48px 48px;
   background-position: center;
   mask-image: radial-gradient(ellipse 55% 55% at 50% 45%, black 0%, transparent 100%);
+}
+
+/* uPlot (the statistics charts): the app's font, the full width, and a
+   dashed guide at the pointer. */
+.uplot {
+  font-family: var(--font-sans);
+  width: 100%;
+}
+.u-hz .u-cursor-x {
+  border-right: 1px dashed var(--ring);
 }

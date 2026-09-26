@@ -8,7 +8,7 @@ Status (2026-09-26): W0, W1, W2 and W5 are done: sign-in, first-run setup, the s
 torrents screen and the add dialog, and the RSS screen, as the mockups have them. W4 has every
 settings section (Downloads, Speed, Queue & share limits, Connection, BitTorrent, Banned
 addresses, Watch folders, RSS, Webhooks, Statistics & GeoIP, Security & API, Engine, About) and
-the Log screen.
+the Log screen. W6 has the Stats screen's Overview and Trackers reports.
 Section 10 has the milestones.
 
 ## 1. What this is
@@ -154,7 +154,10 @@ frontend/
                         rule-form.ts), feed dialogs, the shared queries (data.ts), view.ts
       log/              the Log screen (log.tsx): its sidebar sections (sidebar.tsx: levels,
                         topics), the shared log query (use-log.ts), view.ts
-      stats/
+      stats/            the Stats screen: Overview (overview.tsx; view.ts) and Trackers
+                        (trackers.tsx; trackers-view.ts), the reports in the sidebar
+                        (sidebar.tsx), the range from the URL (range.ts), the queries
+                        (data.ts), uPlot time series (chart.tsx), cards and figures (parts.tsx)
   e2e/
     daemon.ts           starts and stops real daemons, one per test that asks (7.4)
     torrent.ts          makes .torrent files for tests (bencode, SHA-1)
@@ -411,13 +414,18 @@ locally.
   `Settings_Engine-html.zip`, `Settings_About-html.zip`: Settings › Statistics & GeoIP
   (`SettingsStats.dc.html`), Security & API (`SettingsSecurity.dc.html`), Engine
   (`SettingsEngine.dc.html`) and About (`SettingsAbout.dc.html`): the daemon itself.
+- `Stats-html.zip`, `Stats___Trackers-html.zip`: Stats › Overview (`Stats.dc.html`: figures
+  against the range before, the transfer rate, rankings and breakdowns, idle seeds, the newest
+  events) and Stats › Trackers (`StatsTrackers.dc.html`: each host's traffic and announces,
+  traffic by tracker, announce problems). The Overview artboard has the older, roomier shell;
+  both are built at the Trackers artboard's density, which is the current shell's.
 
 They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
 view one, unzip it into a scratch directory outside the repository and serve it with
 `python3 -m http.server`. Replicate the values in our components and never copy the markup.
 
-The main screen links to a Stats artboard that has not been exported yet, and more mockups
+The Stats reports Peers & geo, Idle seeds and Timeline have no artboard yet, and more mockups
 may arrive in `.design/`. Build a screen that has no design from the same tokens
 and primitives, at the same density. Never invent a new visual language.
 
@@ -539,7 +547,6 @@ These are the known differences. Resolve each as noted, never by faking.
 | Tracker filter by host, including "DHT only" | `tracker_hosts` in every list row (added for the UI), `GET /torrents?tracker=` | A torrent counts under each of its trackers' hosts; "No tracker" for `trackers_count == 0`; "Not working" as well while none of its trackers works. |
 | Pieces chart ("terrain") drawn from random noise | `GET /torrents/{hash}/pieces` gives `states`, `availability` and `priorities` per piece | Bin the real data. "Rare" means a missing piece with availability ≤ 1, and the legend says so. |
 | Limits line "↓ ∞ · ↑ 5.0 MB/s · ratio 5.0" | `download_limit`, `upload_limit` (`null` = unlimited), `share_limits` | As shown. Use ∞ only for `null`. |
-| Link to Stats | Not designed yet | Wait for the design, or build from the tokens (6.1). |
 | Add dialog: "Skip hash check" | Never offered (charter rule 1: nothing may claim data it has not verified) | Left out. |
 | Add dialog: "Use category share limits" | Categories' `share_limits` (added for the UI): a torrent's `global` limits defer to its category's, then to the settings | The switch sends the torrent's limits as all `global`; off, the Ratio limit field is the torrent's own (empty: none) and it has no time limits. Without a category it reads "Use global share limits". |
 | Add dialog: "Swarm: 186 seeds · 24 peers" | `swarm_seeds` / `swarm_leechers` on previews (added for the UI), kept after the metadata arrives; `null` when no tracker answered | "186 seeds · 24 leechers", or the connected peers while fetching, or "—". |
@@ -616,6 +623,19 @@ These are the known differences. Resolve each as noted, never by faking.
 | Log: "Following" | `GET /log?after=` every 2 s | New entries come in at the top; reading an entry holds the view ("paused · 2 new entries") until Follow. |
 | Log: Export | — | A text file of the entries shown, oldest first, in UTC. |
 | Add dialog: "Watch folder" tab | The `watch_folders` setting (path, subfolders, what happens to an added file, add options) | The tab appends a watch folder with the dialog's options (`PATCH /settings`); the right column lists the files it will pick up. |
+| Stats: "▲ 12% vs previous 7 days" | `/stats/transfer` for the range and for the one before | The same range one length earlier (Today: yesterday by this time); "—" when nothing was recorded then; nothing to compare for All. |
+| Stats: Free space "▼ 48 GB this week · 4.0 TB total" | `free_space` is now only (no history); `GET /app/system` has the file system's size | Free now "of 4.0 TB on /data"; no change over time. |
+| Stats: Transfer rate "30-minute buckets, last 24 hours" | `/stats/transfer` has minute, hour or day buckets over the range asked | Follows the range: the daemon's buckets grouped into at most 100 (15 minutes for a day), each the average over the seconds recorded. Time not recorded is a gap; a lone bucket is a dot. |
+| Stats: Peer clients "Client ▾" | `/stats/peers` by client, source, transport, encryption, IP version or direction | The menu picks the breakdown, and upload or download. Smaller values, peers that gave none, and bytes tied to no peer are "Other or unknown". |
+| Stats: Idle seeds "Reclaim 21.2 GB" | `/stats/idle-seeds` (the last 30 days, whatever the range), `POST /torrents/delete` | The seeds under 0.1× (the red ones), deleted after the usual question; files only when chosen. |
+| Stats: Timeline "View all"; the Peers & geo, Idle seeds and Timeline reports | Not designed yet | No "View all"; the reports say they are not built yet (W6). |
+| Stats: range buttons and "Sep 17 – Sep 24" | Ranges are unix seconds | Presets end now; the date button picks whole days in the viewer's zone (`?from=&to=`). |
+| Stats › Trackers: "4 + DHT trackers doing work" | The `null` row is torrents with no working tracker, whatever found their peers | "4 + no tracker" when those moved data too. |
+| Stats › Trackers: "private · 4 torrents · passkey", "slow · 4.8 s", "6 min median announce interval" | `GET /torrents/trackers` (added for the UI): torrents on each host now, private ones. Replies carry neither the interval nor a response time (`docs/gaps.md`) | "private · 4 torrents" (or public, or both); no passkey hint, since the UI never reads URLs here; no slow warning or interval until the library reports them. The fifth figure is the hosts failing now. |
+| Stats › Trackers: "63 failed · 7 in a row", the error, "last try 08:05 · next in 22 min" | `GET /torrents/trackers` (added for the UI): the running torrents failing on a host, the latest error, the most failures in a row, since when, the last one; no next announce per host | As shown without the next announce, with "failing since" and the torrents named as links. URLs in an error show as their host (rule 6). |
+| Stats › Trackers: "Reannounce", "Edit URL", "Remove from torrent" | `POST /torrents/reannounce`; `POST /torrents/trackers/remove` by host (added for the UI) | Reannounce, and Remove after a question. Edit URL is left out: a URL is per torrent (passkeys differ), and editing one is W3; the torrent's link opens its detail. |
+| Stats › Trackers: "6 torrents have no working tracker … Add trackers to 6 torrents" | `POST /torrents/trackers` (added for the UI); `add_trackers` and the fetched list in `GET /app` | Offered for the public ones only (rule 4), with the trackers meant for new public torrents; without any, a pointer to Settings › Downloads. The peer sources named are the ones switched on. |
+| Stats › Trackers: "Announces · 7 days", "GB per day", "Torrents" column | `/stats/trackers?series=true` (added for the UI): hours when kept for the range, else days | Per hour over a day or two, else per day of the viewer (hours grouped), or per UTC day when only days are kept. Torrents are those on the host now. |
 
 ## 7. Testing
 
@@ -799,7 +819,11 @@ Each milestone ends with its end-to-end tests green.
   designed, with feeds, folders and rules managed from its sidebar and a rule edited beside
   what it would take.
 - **W6 Statistics.** Traffic over time, seeding days, rankings, the timeline, places,
-  breakdowns and idle seeds (uPlot).
+  breakdowns and idle seeds (uPlot). Done so far: the Overview (the range's traffic against
+  the one before, the transfer rate, top torrents, traffic by category, peers by client or
+  another breakdown, idle seeds with Reclaim, the newest events) and Trackers (each host's
+  traffic and announces beside its torrents now, traffic by tracker, announce problems with
+  what can be done about them) as designed.
 - **W7 Finish.** The ⌘K palette, small screens, the full browser matrix, and the 10 000-torrent
   budgets.
 

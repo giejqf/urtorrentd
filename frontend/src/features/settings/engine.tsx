@@ -7,7 +7,7 @@
 // once the torrents are idle. Edits are a draft saved with one
 // `PATCH /settings`; they apply at the next start.
 
-import { createQuery, useQueryClient } from "@tanstack/solid-query";
+import { useQueryClient } from "@tanstack/solid-query";
 import { createMemo, For, type JSX, Show } from "solid-js";
 import { toast } from "solid-sonner";
 
@@ -18,7 +18,7 @@ import { Button } from "~/components/ui/button";
 import { dash, formatBytes, formatCount, formatDateTime } from "~/lib/format";
 import { cn } from "~/lib/utils";
 
-import { useAppInfo } from "./app-info";
+import { useAppInfo, useSystemInfo } from "./app-info";
 import { ChangeDot, InfoBox, RowSwitch, SettingsGroup, Tag, UnitInput } from "./controls";
 import {
   type EngineCount,
@@ -32,15 +32,6 @@ import {
 } from "./engine-form";
 import { createSettingsForm, SettingsPage, WithSettings } from "./form";
 import { askRestart } from "./restart";
-
-/** The machine the daemon runs on (`GET /app/system`), read every half minute. */
-export function useSystemInfo() {
-  return createQuery(() => ({
-    queryKey: keys.system(),
-    queryFn: () => unwrap(api.GET("/api/v1/app/system")),
-    refetchInterval: 30_000,
-  }));
-}
 
 const onOff = (b: boolean) => (b ? "on" : "off");
 

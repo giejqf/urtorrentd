@@ -22,3 +22,22 @@ export function useAppInfo() {
     },
   }));
 }
+
+/** The machine the daemon runs on (`GET /app/system`), read every half minute. */
+export function useSystemInfo() {
+  return createQuery(() => ({
+    queryKey: keys.system(),
+    queryFn: () => unwrap(api.GET("/api/v1/app/system")),
+    refetchInterval: 30_000,
+  }));
+}
+
+/** `GET /stats`: what the statistics database holds (503 while it cannot be opened). */
+export function useStatsInfo() {
+  return createQuery(() => ({
+    queryKey: keys.stats(),
+    queryFn: () => unwrap(api.GET("/api/v1/stats")),
+    refetchInterval: 60_000,
+    retry: false,
+  }));
+}

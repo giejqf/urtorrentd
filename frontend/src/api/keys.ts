@@ -18,6 +18,11 @@ export const keys = {
   requestCheck: () => ["auth", "check"] as const,
   stats: () => ["stats"] as const,
   geoStats: (dim: "country" | "asn") => ["stats", "geo", dim] as const,
+  /** A statistics report over a range, with its parameters. */
+  statsReport: (report: string, params: Record<string, string | number | boolean>) =>
+    ["stats", report, params] as const,
+  /** Tracker hosts across the torrents, now. */
+  trackerHosts: () => ["trackers", "hosts"] as const,
   settings: () => ["settings"] as const,
   torrent: (hash: string) => ["torrent", hash] as const,
   torrentPart: (hash: string, part: TorrentPart) => ["torrent", hash, part] as const,

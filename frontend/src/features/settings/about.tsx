@@ -32,12 +32,10 @@ import { dash, formatAgo, formatBytes, formatDateTime, formatShortDate } from "~
 import { cn } from "~/lib/utils";
 
 import { diagnostics, uptime } from "./about-view";
-import { useAppInfo } from "./app-info";
+import { useAppInfo, useStatsInfo, useSystemInfo } from "./app-info";
 import { SettingRow, SettingsGroup, Tag, UnitInput } from "./controls";
 import { pendingChanges } from "./engine-form";
-import { useSystemInfo } from "./engine";
 import { createSettingsForm, type FormDiff, SettingsPage, WithSettings } from "./form";
-import { useStatsInfo } from "./statistics";
 
 interface AboutDraft {
   instance_name: string;

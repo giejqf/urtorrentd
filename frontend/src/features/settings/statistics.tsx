@@ -35,7 +35,7 @@ import {
 } from "~/lib/format";
 import { cn } from "~/lib/utils";
 
-import { useAppInfo } from "./app-info";
+import { useAppInfo, useStatsInfo } from "./app-info";
 import { InfoBox, RowSwitch, SettingRow, SettingsGroup, Tag, UnitInput } from "./controls";
 import { createSettingsForm, SettingsPage, WithSettings } from "./form";
 import {
@@ -50,16 +50,6 @@ import {
   tierLabel,
   tiers,
 } from "./statistics-form";
-
-/** `GET /stats`: what the statistics database holds (503 while it cannot be opened). */
-export function useStatsInfo() {
-  return createQuery(() => ({
-    queryKey: keys.stats(),
-    queryFn: () => unwrap(api.GET("/api/v1/stats")),
-    refetchInterval: 60_000,
-    retry: false,
-  }));
-}
 
 function Kpi(props: { value: JSX.Element; unit?: string; label: JSX.Element }) {
   return (

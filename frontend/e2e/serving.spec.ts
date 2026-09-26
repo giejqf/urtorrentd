@@ -18,7 +18,9 @@ test("deep links load the app, with the daemon's headers", async ({ signedIn: pa
 
   // Screens of later milestones say so rather than pretend.
   await page.getByRole("link", { name: "Stats" }).click();
-  await expect(page.getByRole("heading", { name: "Stats is not built yet" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Statistics", level: 1 })).toBeVisible();
+  await page.getByRole("link", { name: "Timeline" }).click();
+  await expect(page.getByRole("heading", { name: "Timeline is not built yet" })).toBeVisible();
   await expectAccessible(page);
 });
 

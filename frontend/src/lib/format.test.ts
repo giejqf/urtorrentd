@@ -4,9 +4,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  byteUnit,
   dash,
   formatAgo,
+  formatAxis,
   formatBytes,
+  formatChange,
+  formatClock,
   formatCount,
   formatDateTime,
   formatDuration,
@@ -136,6 +140,26 @@ describe("times", () => {
     expect(formatAgo(t, t + 2 * 86_400, opts)).toBe("2d ago");
     expect(formatAgo(t, t + 8 * 86_400, opts)).toBe("Sep 24, 10:02");
     expect(formatAgo(null, t, opts)).toBe(dash);
+  });
+});
+
+describe("charts", () => {
+  it("picks an axis unit and writes its numbers", () => {
+    expect(byteUnit(0)).toEqual({ unit: "B", size: 1 });
+    expect(byteUnit(420e9)).toEqual({ unit: "GB", size: 1e9 });
+    expect(byteUnit(999)).toEqual({ unit: "B", size: 1 });
+    expect(byteUnit(2 * 1024 ** 2, { binary: true })).toEqual({ unit: "MiB", size: 1024 ** 2 });
+    expect(formatAxis(2.5)).toBe("2.5");
+    expect(formatAxis(40)).toBe("40");
+    expect(formatAxis(12.4)).toBe("12");
+  });
+
+  it("writes times of day and changes", () => {
+    expect(formatClock(Date.UTC(2026, 8, 21, 22, 5) / 1000, { timeZone: "UTC" })).toBe("22:05");
+    expect(formatChange(0.124)).toBe("▲ 12%");
+    expect(formatChange(-0.08)).toBe("▼ 8%");
+    expect(formatChange(0.001)).toBe("± 0%");
+    expect(formatChange(12)).toBe("▲ 1,200%");
   });
 });
 

@@ -66,17 +66,11 @@ row whose operation the UI calls.
 
 ## W6: statistics
 
-| Operation                                   | Why the UI does not call it |
-| ------------------------------------------- | --------------------------- |
-| `GET /api/v1/stats/transfer`                | W6: the statistics screen.  |
-| `GET /api/v1/stats/torrents/{hash}/traffic` | W6: the statistics screen.  |
-| `GET /api/v1/stats/torrents/{hash}/days`    | W6: the statistics screen.  |
-| `DELETE /api/v1/stats/torrents/{hash}`      | W6: the statistics screen.  |
-| `GET /api/v1/stats/top`                     | W6: the statistics screen.  |
-| `GET /api/v1/stats/groups`                  | W6: the statistics screen.  |
-| `GET /api/v1/stats/trackers`                | W6: the statistics screen.  |
-| `GET /api/v1/stats/idle-seeds`              | W6: the statistics screen.  |
-| `GET /api/v1/stats/timeline`                | W6: the statistics screen.  |
+| Operation                                   | Why the UI does not call it                            |
+| ------------------------------------------- | ------------------------------------------------------ |
+| `GET /api/v1/stats/torrents/{hash}/traffic` | W6: a torrent's history (not designed yet).            |
+| `GET /api/v1/stats/torrents/{hash}/days`    | W6: a torrent's seeding days (not designed yet).       |
+| `DELETE /api/v1/stats/torrents/{hash}`      | W6: deleting one torrent's history (not designed yet). |
 
 ## W7: the palette
 
