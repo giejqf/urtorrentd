@@ -193,6 +193,14 @@ export function formatClock(unix: number, opts: TimeOptions = {}): string {
   }).format(new Date(unix * 1000));
 }
 
+/** A span as days, or hours and minutes under a day: `30 d`, `5 h`, `12 min`. */
+export function formatDays(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return dash;
+  if (seconds >= 86_400) return `${Math.round(seconds / 86_400)} d`;
+  if (seconds >= 3600) return `${Math.round(seconds / 3600)} h`;
+  return `${Math.round(seconds / 60)} min`;
+}
+
 /** A change as a fraction, with its direction: `▲ 12%`, `▼ 8%`, `± 0%`. */
 export function formatChange(fraction: number): string {
   const pct = Math.round(Math.abs(fraction) * 100);

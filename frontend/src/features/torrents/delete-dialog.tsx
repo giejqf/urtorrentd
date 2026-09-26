@@ -25,12 +25,14 @@ export function DeleteDialog(props: {
   hashes: readonly string[];
   /** What to call them: the name of one, or "3 torrents". */
   label: string;
+  /** Whether "delete the files too" starts chosen (off unless asked for). */
+  files?: boolean;
   onClose: (deleted: boolean) => void;
 }) {
   const [files, setFiles] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   createEffect(() => {
-    if (props.hashes.length > 0) setFiles(false);
+    if (props.hashes.length > 0) setFiles(props.files ?? false);
   });
   const confirm = async () => {
     setBusy(true);

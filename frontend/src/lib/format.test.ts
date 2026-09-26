@@ -12,6 +12,7 @@ import {
   formatChange,
   formatClock,
   formatCount,
+  formatDays,
   formatDateTime,
   formatDuration,
   formatEta,
@@ -160,6 +161,9 @@ describe("charts", () => {
     expect(formatChange(-0.08)).toBe("▼ 8%");
     expect(formatChange(0.001)).toBe("± 0%");
     expect(formatChange(12)).toBe("▲ 1,200%");
+    expect(formatDays(30 * 86_400 + 5000)).toBe("30 d");
+    expect(formatDays(5 * 3600)).toBe("5 h");
+    expect(formatDays(700)).toBe("12 min");
   });
 });
 

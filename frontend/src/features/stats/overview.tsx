@@ -213,13 +213,14 @@ function RateCard(props: { span: Span; words: string; now: number }) {
   const rates = createMemo(() => {
     const d = q.data;
     if (!d) return [];
+    // The bucket running now counts the seconds gone, by the real clock.
     return rateSeries(
       d.points,
       STEP_SECONDS[d.step],
       bucket(),
       props.span.from,
       props.span.to,
-      props.now,
+      Math.min(props.now, Date.now() / 1000),
     );
   });
   const top = () => Math.max(0, ...rates().flatMap((r) => [r.down ?? 0, r.up ?? 0]));
@@ -507,14 +508,15 @@ function PeersCard(props: { span: Span; words: string }) {
 }
 
 function IdleCard(props: { now: number }) {
-  const q = useIdleSeeds();
+  const q = useIdleSeeds(() => 30, 50);
+  const live = useLive();
   const seeds = () => q.data?.torrents ?? [];
-  const reclaim = () => reclaimable(seeds());
+  const reclaim = () => reclaimable(seeds(), (h) => live.state.torrents[h]?.tags ?? []);
   const [deleting, setDeleting] = createSignal<string[]>([]);
   return (
     <Card
       title="Idle seeds"
-      sub="Complete torrents by upload relative to size, last 30 days: candidates to remove"
+      sub="Complete torrents by upload relative to size, last 30 days: candidates to remove (not those tagged keep)"
       actions={
         <Show when={reclaim().hashes.length > 0}>
           <Button variant="outline" size="sm" onClick={() => setDeleting(reclaim().hashes)}>
@@ -582,7 +584,18 @@ function TimelineCard(props: { now: number }) {
   const live = useLive();
   const known = (hash: string) => live.state.torrents[hash] !== undefined;
   return (
-    <Card title="Timeline" sub="Newest first">
+    <Card
+      title="Timeline"
+      sub="Newest first"
+      actions={
+        <A
+          href="/stats/timeline"
+          class="inline-flex h-7 items-center rounded-md border border-border px-2.5 text-sm font-medium text-foreground-2 hover:bg-accent hover:text-foreground"
+        >
+          View all
+        </A>
+      }
+    >
       <Show when={(q.data ?? []).length > 0} fallback={<Empty>Nothing has happened yet.</Empty>}>
         <ul class="m-0 flex list-none flex-col p-0">
           <For each={q.data ?? []}>

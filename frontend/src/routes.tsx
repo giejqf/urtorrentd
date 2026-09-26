@@ -8,7 +8,6 @@ import { Navigate, Route } from "@solidjs/router";
 import { lazy } from "solid-js";
 
 import Protected from "~/features/shell/protected";
-import { planned } from "~/features/shell/planned";
 
 const SignIn = lazy(() => import("~/features/auth/sign-in"));
 const Setup = lazy(() => import("~/features/auth/setup"));
@@ -16,21 +15,9 @@ const Torrents = lazy(() => import("~/features/torrents/torrents"));
 
 const StatsOverview = lazy(() => import("~/features/stats/overview"));
 const StatsTrackers = lazy(() => import("~/features/stats/trackers"));
-const StatsPeers = planned(
-  "Peers & geo",
-  "W6",
-  "Peer traffic by country, network and client over time comes from the daemon's history.",
-);
-const StatsIdle = planned(
-  "Idle seeds",
-  "W6",
-  "Every complete torrent by what it shared for its size, with what removing it would win back.",
-);
-const StatsTimeline = planned(
-  "Timeline",
-  "W6",
-  "What happened to every torrent (added, finished, moved, errors, removed), searchable.",
-);
+const StatsPeers = lazy(() => import("~/features/stats/peers"));
+const StatsIdle = lazy(() => import("~/features/stats/idle"));
+const StatsTimeline = lazy(() => import("~/features/stats/timeline"));
 const Rss = lazy(() => import("~/features/rss/rss"));
 const Log = lazy(() => import("~/features/log/log"));
 const Downloads = lazy(() => import("~/features/settings/downloads"));

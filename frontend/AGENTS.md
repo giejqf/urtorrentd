@@ -8,7 +8,8 @@ Status (2026-09-26): W0, W1, W2 and W5 are done: sign-in, first-run setup, the s
 torrents screen and the add dialog, and the RSS screen, as the mockups have them. W4 has every
 settings section (Downloads, Speed, Queue & share limits, Connection, BitTorrent, Banned
 addresses, Watch folders, RSS, Webhooks, Statistics & GeoIP, Security & API, Engine, About) and
-the Log screen. W6 has the Stats screen's Overview and Trackers reports.
+the Log screen. W6 has every Stats report: Overview, Trackers, Peers & geo, Idle seeds and
+Timeline.
 Section 10 has the milestones.
 
 ## 1. What this is
@@ -129,7 +130,7 @@ frontend/
     features/           one folder per area, following the API's groups
       auth/             the session (auth.tsx), first-run setup, sign-in
       shell/            the signed-in gate (protected.tsx), the live store (live.tsx), sidebar,
-                        navigation, transfer footer, instance menu; screens still to come
+                        navigation, transfer footer, instance menu
       torrents/         the screen (torrents.tsx), the list, filters and sort (view.ts), the
                         detail panel, pieces (pieces.ts), add/ (the dialog, its sources and
                         previews, form.ts), delete, actions; later files,
@@ -154,15 +155,19 @@ frontend/
                         rule-form.ts), feed dialogs, the shared queries (data.ts), view.ts
       log/              the Log screen (log.tsx): its sidebar sections (sidebar.tsx: levels,
                         topics), the shared log query (use-log.ts), view.ts
-      stats/            the Stats screen: Overview (overview.tsx; view.ts) and Trackers
-                        (trackers.tsx; trackers-view.ts), the reports in the sidebar
-                        (sidebar.tsx), the range from the URL (range.ts), the queries
-                        (data.ts), uPlot time series (chart.tsx), cards and figures (parts.tsx)
+      stats/            the Stats screen: Overview (overview.tsx; view.ts), Trackers
+                        (trackers.tsx; trackers-view.ts), Peers & geo (peers.tsx;
+                        peers-view.ts, the map in map.tsx on world.ts), Idle seeds (idle.tsx;
+                        idle-view.ts) and Timeline (timeline.tsx; timeline-view.ts); the
+                        reports in the sidebar (sidebar.tsx), the range from the URL
+                        (range.ts), the queries (data.ts), uPlot time series (chart.tsx),
+                        cards, figures and the torrent picker (parts.tsx)
   e2e/
     daemon.ts           starts and stops real daemons, one per test that asks (7.4)
     torrent.ts          makes .torrent files for tests (bencode, SHA-1)
     servers.ts          a page on another origin (CORS), a Caddy-like forwarding proxy
     fixtures.ts         Playwright fixtures: daemons, a signed-in page, the offline and CSP guard
+    mmdb.ts             writes GeoIP files for tests (MaxMind DB, country records)
     *.spec.ts
 ```
 
@@ -419,14 +424,18 @@ locally.
   events) and Stats › Trackers (`StatsTrackers.dc.html`: each host's traffic and announces,
   traffic by tracker, announce problems). The Overview artboard has the older, roomier shell;
   both are built at the Trackers artboard's density, which is the current shell's.
+- `Peers__geo-html.zip`, `Stats___Idle_seeds-html.zip`, `Timeline-html.zip`: Stats › Peers &
+  geo (`Peers.dc.html`: the world map with a curve to each place, the peers, by country, how
+  they connect), Idle seeds (`StatsIdle.dc.html`: size against value, the least valuable first
+  with a selection to stop, keep or remove) and Timeline (`Timeline.dc.html`: events by kind,
+  one lane per torrent, the feed by day, what needs attention).
 
 They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
 view one, unzip it into a scratch directory outside the repository and serve it with
 `python3 -m http.server`. Replicate the values in our components and never copy the markup.
 
-The Stats reports Peers & geo, Idle seeds and Timeline have no artboard yet, and more mockups
-may arrive in `.design/`. Build a screen that has no design from the same tokens
+More mockups may arrive in `.design/`. Build a screen that has no design from the same tokens
 and primitives, at the same density. Never invent a new visual language.
 
 `.design/` is not in git, so section 6.2 records its values. Once `app.css` exists it becomes the
@@ -627,8 +636,8 @@ These are the known differences. Resolve each as noted, never by faking.
 | Stats: Free space "▼ 48 GB this week · 4.0 TB total" | `free_space` is now only (no history); `GET /app/system` has the file system's size | Free now "of 4.0 TB on /data"; no change over time. |
 | Stats: Transfer rate "30-minute buckets, last 24 hours" | `/stats/transfer` has minute, hour or day buckets over the range asked | Follows the range: the daemon's buckets grouped into at most 100 (15 minutes for a day), each the average over the seconds recorded. Time not recorded is a gap; a lone bucket is a dot. |
 | Stats: Peer clients "Client ▾" | `/stats/peers` by client, source, transport, encryption, IP version or direction | The menu picks the breakdown, and upload or download. Smaller values, peers that gave none, and bytes tied to no peer are "Other or unknown". |
-| Stats: Idle seeds "Reclaim 21.2 GB" | `/stats/idle-seeds` (the last 30 days, whatever the range), `POST /torrents/delete` | The seeds under 0.1× (the red ones), deleted after the usual question; files only when chosen. |
-| Stats: Timeline "View all"; the Peers & geo, Idle seeds and Timeline reports | Not designed yet | No "View all"; the reports say they are not built yet (W6). |
+| Stats: Idle seeds "Reclaim 21.2 GB", values in red and amber | `/stats/idle-seeds` (the last 30 days, whatever the range), `POST /torrents/delete` | The seeds under 0.1× not tagged `keep`, deleted after the usual question; files only when chosen. Red under 0.1×, amber under 1× (the Idle seeds report's classes; this artboard had 0.5×). |
+| Stats: Timeline "View all" | The Timeline report | A link to it. |
 | Stats: range buttons and "Sep 17 – Sep 24" | Ranges are unix seconds | Presets end now; the date button picks whole days in the viewer's zone (`?from=&to=`). |
 | Stats › Trackers: "4 + DHT trackers doing work" | The `null` row is torrents with no working tracker, whatever found their peers | "4 + no tracker" when those moved data too. |
 | Stats › Trackers: "private · 4 torrents · passkey", "slow · 4.8 s", "6 min median announce interval" | `GET /torrents/trackers` (added for the UI): torrents on each host now, private ones. Replies carry neither the interval nor a response time (`docs/gaps.md`) | "private · 4 torrents" (or public, or both); no passkey hint, since the UI never reads URLs here; no slow warning or interval until the library reports them. The fifth figure is the hosts failing now. |
@@ -636,6 +645,19 @@ These are the known differences. Resolve each as noted, never by faking.
 | Stats › Trackers: "Reannounce", "Edit URL", "Remove from torrent" | `POST /torrents/reannounce`; `POST /torrents/trackers/remove` by host (added for the UI) | Reannounce, and Remove after a question. Edit URL is left out: a URL is per torrent (passkeys differ), and editing one is W3; the torrent's link opens its detail. |
 | Stats › Trackers: "6 torrents have no working tracker … Add trackers to 6 torrents" | `POST /torrents/trackers` (added for the UI); `add_trackers` and the fetched list in `GET /app` | Offered for the public ones only (rule 4), with the trackers meant for new public torrents; without any, a pointer to Settings › Downloads. The peer sources named are the ones switched on. |
 | Stats › Trackers: "Announces · 7 days", "GB per day", "Torrents" column | `/stats/trackers?series=true` (added for the UI): hours when kept for the range, else days | Per hour over a day or two, else per day of the viewer (hours grouped), or per UTC day when only days are kept. Torrents are those on the host now. |
+| Stats › Peers & geo: live peers of all torrents, "148 connected", "12 torrents · 163 connections" | `GET /transfer/peers` (added for the UI): the peers of the torrents moving data, as sampled every 10 s, or all of one torrent's now; the live store's `peers` for the count | The header counts every connection; the map, the list and the figures hold the sampled peers ("of 4 torrents moving data · sampled 7s ago"), or all of the torrent picked. |
+| Stats › Peers & geo: "seedbox-01 · London", peers in cities ("New York, United States") | GeoIP gives a country and a network, never a city (ADR 0005); `here` in `GET /transfer/peers` (added for the UI) is the external address's country | The daemon at its country's point ("urtorrentd · United Kingdom"), each peer at its country's; no curves until the external address is known. Countries' points are the centres of their largest areas (Natural Earth, `world.ts`). |
+| Stats › Peers & geo: country flags | No flag artwork in the UI | The two-letter code in a chip, the name beside it or in its title. |
+| Stats › Peers & geo: map modes "Countries / ASN / Peers" | A network has no place of its own | Countries and Peers (a curve per peer, bent apart); networks are in the "Country ▾" menu (By network) and the 24 h / 7 d table. |
+| Stats › Peers & geo: "24 h", "7 d" | `/stats/geo` and `/stats/peers` over the range | Curves as wide as the traffic; the list becomes the countries (or networks) with their traffic; Connections are shares of traffic. |
+| Stats › Peers & geo: "Add peers", "Ban selected" | `POST /torrents/peers` (per torrent), `POST /transfer/bans` | Add peers once a torrent is picked; Ban asks first and names the addresses. |
+| Stats › Idle seeds: "keep" tag, "Tag keep", "Select all under 0.1×" | Tags are the user's; the daemon gives `keep` no meaning | The UI's convention: `keep` is shown on the row, and neither "Select all under 0.1×" nor the Overview's Reclaim take kept torrents. |
+| Stats › Idle seeds: state pills "stopped", "error", "stalled" | The live store's state | Every state but seeding, by its label ("Stopped", "Error"); a seed nobody downloads from is normal here, not a pill. |
+| Stats › Idle seeds: "full · recording since Mar 02", "30 d" seeding | `recorded_from` in `/stats/idle-seeds`; `seeding_time` | "full" when the window is covered, else how much of it ("3 h of 30 days recorded"); seeding in days, or hours under a day. |
+| Stats › Timeline: details ("queued · position 3 · /data/linux", "3.1 GB in 41 min · avg 1.3 MB/s", "with content · 3.1 GB freed · ratio 2.4 at removal", "was added to linux") | Events carry the torrent, the kind, the new state and, for moves and errors, the directory or the error | What the events hold: the error, the new directory, the state before and after (the torrent's last state change), and "in 34s from adding" when the add is in the history. The category chip is the torrent's now; no size, path, rate or ratio at the time. |
+| Stats › Timeline: "Re-add" on a removal, "Reannounce" on an error, "Edit tracker" | A removed torrent's `.torrent` is gone; timeline errors are the torrent's (disk, missing files), not a tracker's | "Start" on an error while the torrent is still in error (it recovers missing files and disk errors). Failing trackers are listed in Needs attention with a link to Trackers. |
+| Stats › Timeline: lanes coloured from range start | A state is known from the events: a state change, finishing, the metadata; after the last event, the state now | What is not established is drawn dashed, as before the range. |
+| Stats › Timeline: "Freed by removals 5.4 GB" | Removals do not record sizes | Left out; "Added → finished" is the median from the events. |
 
 ## 7. Testing
 
@@ -821,9 +843,13 @@ Each milestone ends with its end-to-end tests green.
 - **W6 Statistics.** Traffic over time, seeding days, rankings, the timeline, places,
   breakdowns and idle seeds (uPlot). Done so far: the Overview (the range's traffic against
   the one before, the transfer rate, top torrents, traffic by category, peers by client or
-  another breakdown, idle seeds with Reclaim, the newest events) and Trackers (each host's
+  another breakdown, idle seeds with Reclaim, the newest events), Trackers (each host's
   traffic and announces beside its torrents now, traffic by tracker, announce problems with
-  what can be done about them) as designed.
+  what can be done about them), Peers & geo (the world map from the daemon to its peers' countries,
+  now or over a day or a week; the peers to ban or add; by country or network; how peers
+  connect), Idle seeds (size against value; the least valuable first, to stop, keep or remove;
+  CSV) and Timeline (events by kind, lanes per torrent, the feed by day, what needs attention;
+  CSV) as designed. Left for later: a torrent's own history (its traffic and seeding days).
 - **W7 Finish.** The ⌘K palette, small screens, the full browser matrix, and the 10 000-torrent
   budgets.
 

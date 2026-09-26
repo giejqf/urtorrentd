@@ -25,6 +25,18 @@ export const TRACKER_PRESETS = [
   { value: "90d", label: "90 d" },
 ] as const satisfies readonly { value: Preset; label: string }[];
 
+export const TIMELINE_PRESETS = [
+  { value: "7d", label: "7 d" },
+  { value: "30d", label: "30 d" },
+  { value: "90d", label: "90 d" },
+  { value: "all", label: "All" },
+] as const satisfies readonly { value: Preset; label: string }[];
+
+export const LIVE_PRESETS = [
+  { value: "24h", label: "24 h" },
+  { value: "7d", label: "7 d" },
+] as const satisfies readonly { value: Preset; label: string }[];
+
 const DAY = 86_400;
 
 const SPANS: Record<Exclude<Preset, "today" | "all">, number> = {

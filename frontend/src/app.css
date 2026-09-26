@@ -256,3 +256,30 @@
 .u-hz .u-cursor-x {
   border-right: 1px dashed var(--ring);
 }
+
+/* The Peers & geo map: data moving along its curves, and the daemon's pulse
+   (both stop with reduced motion). */
+.map-flow {
+  stroke-dasharray: 5 7;
+  animation: map-flow 1.4s linear infinite;
+}
+@keyframes map-flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.map-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: map-pulse 2.4s ease-out infinite;
+}
+@keyframes map-pulse {
+  from {
+    opacity: 0.7;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}

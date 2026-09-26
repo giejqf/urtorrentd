@@ -16,11 +16,12 @@ test("deep links load the app, with the daemon's headers", async ({ signedIn: pa
   expect(headers["x-frame-options"]).toBe("DENY");
   await expect(page.getByRole("heading", { name: "Seeding" })).toBeVisible();
 
-  // Screens of later milestones say so rather than pretend.
-  await page.getByRole("link", { name: "Stats" }).click();
+  // A report's deep link, and an unknown one.
+  await page.goto(`${daemon.url}/stats/timeline?range=7d`);
+  await expect(page.getByRole("heading", { name: "Timeline", level: 1 })).toBeVisible();
+  await page.goto(`${daemon.url}/stats/nothing-here`);
+  await expect(page).toHaveURL(/\/stats$/);
   await expect(page.getByRole("heading", { name: "Statistics", level: 1 })).toBeVisible();
-  await page.getByRole("link", { name: "Timeline" }).click();
-  await expect(page.getByRole("heading", { name: "Timeline is not built yet" })).toBeVisible();
   await expectAccessible(page);
 });
 

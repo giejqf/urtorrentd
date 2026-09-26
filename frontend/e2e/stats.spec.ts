@@ -122,6 +122,10 @@ test("stats: the overview and the trackers report", async ({
     await expect(idleCard.getByRole("row", { name: /idle-e2e\.bin/ })).toContainText("0.00×");
     const timeline = page.getByRole("region", { name: "Timeline" });
     await expect(timeline).toContainText("added");
+    await expect(timeline.getByRole("link", { name: "View all" })).toHaveAttribute(
+      "href",
+      "/stats/timeline",
+    );
     await expectAccessible(page);
 
     // Ranges: a preset, then days picked.

@@ -6,7 +6,8 @@
 
 import { useSearchParams } from "@solidjs/router";
 import CalendarDays from "lucide-solid/icons/calendar-days";
-import { createSignal, For, type JSX, Show } from "solid-js";
+import ChevronDown from "lucide-solid/icons/chevron-down";
+import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 
 import { Button } from "~/components/ui/button";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "~/components/ui/popover";
@@ -276,4 +277,111 @@ export function Empty(props: { children: JSX.Element }) {
       {props.children}
     </p>
   );
+}
+
+const segButton = (on: boolean) =>
+  cn(
+    "h-6 rounded-[5px] px-2.5 text-sm font-medium whitespace-nowrap transition-colors focus-visible:shadow-focus focus-visible:outline-none",
+    on ? "bg-border text-foreground" : "text-muted-foreground hover:text-foreground",
+  );
+
+/** All torrents, or one picked from a list with a filter. */
+export function TorrentPicker(props: {
+  options: readonly { hash: string; name: string; meta?: string }[];
+  value: string | null;
+  onChange: (hash: string | null) => void;
+}) {
+  const [open, setOpen] = createSignal(false);
+  const [filter, setFilter] = createSignal("");
+  const chosen = () => props.options.find((o) => o.hash === props.value);
+  const shown = createMemo(() => {
+    const f = filter().trim().toLowerCase();
+    return props.options.filter((o) => o.name.toLowerCase().includes(f)).slice(0, 100);
+  });
+  return (
+    <div
+      role="group"
+      aria-label="Torrents"
+      class="flex flex-none gap-0.5 rounded-lg border border-border p-[3px]"
+    >
+      <button
+        type="button"
+        aria-pressed={props.value === null}
+        class={segButton(props.value === null)}
+        onClick={() => props.onChange(null)}
+      >
+        All torrents
+      </button>
+      <Popover open={open()} onOpenChange={setOpen} placement="bottom-end">
+        <PopoverTrigger
+          as="button"
+          type="button"
+          aria-pressed={props.value !== null}
+          class={cn(segButton(props.value !== null), "flex max-w-[260px] items-center gap-1.5")}
+        >
+          <span class="truncate">
+            {chosen()?.name ?? (props.value ? props.value.slice(0, 12) : "Torrent…")}
+          </span>
+          <ChevronDown size={12} />
+        </PopoverTrigger>
+        <PopoverContent class="flex w-80 flex-col gap-2 p-2">
+          <PopoverTitle class="sr-only">Pick a torrent</PopoverTitle>
+          <input
+            type="search"
+            aria-label="Filter torrents"
+            placeholder="Filter torrents"
+            class="h-8 rounded-md border border-input bg-transparent px-2 text-sm text-foreground placeholder:text-subtle"
+            value={filter()}
+            onInput={(e) => setFilter(e.currentTarget.value)}
+          />
+          <ul
+            class="m-0 flex max-h-72 list-none flex-col overflow-auto p-0"
+            aria-label="Torrents to pick"
+          >
+            <For
+              each={shown()}
+              fallback={<li class="px-2 py-1.5 text-sm text-subtle">No torrent matches.</li>}
+            >
+              {(o) => (
+                <li>
+                  <button
+                    type="button"
+                    class={cn(
+                      "flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent",
+                      o.hash === props.value && "bg-selected",
+                    )}
+                    onClick={() => {
+                      props.onChange(o.hash);
+                      setOpen(false);
+                    }}
+                  >
+                    <span class="truncate">{o.name}</span>
+                    <Show when={o.meta}>
+                      <span class="flex-none mono text-xs text-subtle">{o.meta}</span>
+                    </Show>
+                  </button>
+                </li>
+              )}
+            </For>
+          </ul>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
+/** Save text as a file the browser downloads. */
+export function download(name: string, text: string, type: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** A file name's time part: `202609261041` (the viewer's zone). */
+export function fileStamp(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}`;
 }

@@ -190,11 +190,15 @@ describe("the overview", () => {
       ({ hash, size, value }) as Schemas["IdleSeed"];
     expect(valueTone(0.05)).toBe("danger");
     expect(valueTone(0.3)).toBe("warn");
+    expect(valueTone(0.9)).toBe("warn");
     expect(valueTone(2)).toBeNull();
-    expect(reclaimable([seed("a", 100, 0), seed("b", 50, 0.09), seed("c", 70, 0.2)])).toEqual({
-      hashes: ["a", "b"],
-      bytes: 150,
-    });
+    const tags = (h: string) => (h === "k" ? ["keep"] : []);
+    expect(
+      reclaimable(
+        [seed("a", 100, 0), seed("b", 50, 0.09), seed("c", 70, 0.2), seed("k", 9, 0)],
+        tags,
+      ),
+    ).toEqual({ hashes: ["a", "b"], bytes: 150 });
   });
 
   it("rounds axes up and stacks series", () => {

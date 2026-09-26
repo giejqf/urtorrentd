@@ -11,9 +11,12 @@ import { type Accessor, createSignal, onCleanup } from "solid-js";
 import { api, type Schemas, unwrap } from "~/api/client";
 import { keys } from "~/api/keys";
 
-/** Unix seconds, to the minute, updated every minute. */
+/**
+ * The end of the current minute, unix seconds, updated every minute: a
+ * range ending "now" holds what happened this minute too.
+ */
 export function useMinuteClock(): Accessor<number> {
-  const minute = () => Math.floor(Date.now() / 60_000) * 60;
+  const minute = () => Math.ceil(Date.now() / 60_000) * 60;
   const [now, setNow] = createSignal(minute());
   const timer = setInterval(() => setNow(minute()), 5_000);
   onCleanup(() => clearInterval(timer));
@@ -78,12 +81,83 @@ export function usePeers(span: Accessor<Span>, dim: Accessor<Schemas["PeerDimens
   });
 }
 
-export function useIdleSeeds() {
+export function useIdleSeeds(days: Accessor<number>, limit: number) {
   return createQuery(() => {
-    const query = { days: 30, limit: 50 };
+    const query = { days: days(), limit };
     return {
       queryKey: keys.statsReport("idle-seeds", query),
       queryFn: () => unwrap(api.GET("/api/v1/stats/idle-seeds", { params: { query } })),
+      placeholderData: keepPreviousData,
+      refetchInterval: REFRESH,
+      retry: false,
+    };
+  });
+}
+
+/** Every event kept, newest first (at most the daemon's 10 000). */
+export function useAllTimeline() {
+  return createQuery(() => {
+    const query = { limit: 10_000 };
+    return {
+      queryKey: keys.statsReport("timeline", query),
+      queryFn: () => unwrap(api.GET("/api/v1/stats/timeline", { params: { query } })),
+      refetchInterval: 30_000,
+      retry: false,
+    };
+  });
+}
+
+/** Peers across torrents (the daemon's 10 s sample) or one torrent's now. */
+export function usePeersNow(hash: Accessor<string | null>, enabled: Accessor<boolean>) {
+  return createQuery(() => {
+    const h = hash();
+    const query: { hash?: string } = h ? { hash: h } : {};
+    return {
+      queryKey: keys.statsReport("peers-now", { hash: h ?? "" }),
+      queryFn: () => unwrap(api.GET("/api/v1/transfer/peers", { params: { query } })),
+      enabled: enabled(),
+      placeholderData: keepPreviousData,
+      refetchInterval: h ? 2000 : 5000,
+    };
+  });
+}
+
+/** Peer traffic by country or network over a range (one torrent, or all). */
+export function useGeo(
+  span: Accessor<Span>,
+  dim: Accessor<Schemas["GeoDimension"]>,
+  hash: Accessor<string | null>,
+  enabled: Accessor<boolean>,
+) {
+  return createQuery(() => {
+    const h = hash();
+    const query = { ...span(), dim: dim(), limit: 250, ...(h ? { hash: h } : {}) };
+    return {
+      queryKey: keys.statsReport("geo", query),
+      queryFn: () => unwrap(api.GET("/api/v1/stats/geo", { params: { query } })),
+      enabled: enabled(),
+      placeholderData: keepPreviousData,
+      refetchInterval: REFRESH,
+      retry: false,
+    };
+  });
+}
+
+/** Peer traffic by one breakdown over a range (one torrent, or all). */
+export function usePeerSplit(
+  span: Accessor<Span>,
+  dim: Schemas["PeerDimension"],
+  hash: Accessor<string | null>,
+  enabled: Accessor<boolean>,
+) {
+  return createQuery(() => {
+    const h = hash();
+    const query = { ...span(), dim, limit: 250, ...(h ? { hash: h } : {}) };
+    return {
+      queryKey: keys.statsReport("peers", query),
+      queryFn: () => unwrap(api.GET("/api/v1/stats/peers", { params: { query } })),
+      enabled: enabled(),
+      placeholderData: keepPreviousData,
       refetchInterval: REFRESH,
       retry: false,
     };

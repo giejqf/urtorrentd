@@ -7,6 +7,8 @@
 
 import type { Schemas } from "~/api/client";
 
+import { idleUnkept, valueClass } from "./idle-view";
+
 type TransferPoint = Schemas["TransferPoint"];
 type PeerBreakdown = Schemas["PeerBreakdown"];
 type PeerDimension = Schemas["PeerDimension"];
@@ -142,16 +144,21 @@ export function shares(b: PeerBreakdown, metric: "uploaded" | "downloaded", show
   return out;
 }
 
-/** How an idle seed's upload compares with its size: red under 0.1×, amber under 0.5×. */
+/** How an idle seed's upload compares with its size: red under 0.1×, amber under 1×. */
 export function valueTone(value: number): "danger" | "warn" | null {
-  if (value < 0.1) return "danger";
-  if (value < 0.5) return "warn";
-  return null;
+  const c = valueClass(value);
+  return c === "idle" ? "danger" : c === "low" ? "warn" : null;
 }
 
-/** The idle seeds that shared less than a tenth of their size: what Reclaim deletes. */
-export function reclaimable(seeds: readonly IdleSeed[]): { hashes: string[]; bytes: number } {
-  const picked = seeds.filter((s) => valueTone(s.value) === "danger");
+/**
+ * The idle seeds that shared less than a tenth of their size, less those
+ * tagged to keep: what Reclaim deletes.
+ */
+export function reclaimable(
+  seeds: readonly IdleSeed[],
+  tagsOf: (hash: string) => readonly string[],
+): { hashes: string[]; bytes: number } {
+  const picked = idleUnkept(seeds, tagsOf);
   return { hashes: picked.map((s) => s.hash), bytes: picked.reduce((n, s) => n + s.size, 0) };
 }
 

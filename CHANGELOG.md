@@ -99,8 +99,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   traffic and announces beside its torrents now, traffic by tracker, and
   announce problems with Reannounce, Remove and adding the trackers for new
   public torrents. Ranges are presets or days picked; hosts only, never URLs.
-  The Peers & geo, Idle seeds and Timeline reports say they are still to
-  come.
+- Web UI: Stats › Peers & geo, Idle seeds and Timeline as designed. Peers &
+  geo draws a world map from the daemon's country to its peers', now (the
+  peers of the torrents moving data, or all of one torrent's) or over a day
+  or a week, with the peers to ban or add, traffic by country or network
+  and how peers connect; places are countries and networks, never cities.
+  Idle seeds sets every complete torrent's size against what it uploaded in
+  the window, least valuable first, to stop, tag `keep` or remove, and
+  exports CSV. Timeline shows the events by kind, one lane per torrent and a
+  feed by day, with what needs attention now, and exports CSV. The
+  Overview's Reclaim leaves torrents tagged `keep` alone.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and
   `cargo xtask dist` (a release binary with the UI built in).
 

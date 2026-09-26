@@ -34,7 +34,6 @@ row whose operation the UI calls.
 | `POST /api/v1/torrents/{hash}/files/rename`    | W3: the files tab.                                                               |
 | `POST /api/v1/torrents/{hash}/folders/rename`  | W3: the files tab.                                                               |
 | `GET /api/v1/torrents/{hash}/peers`            | W3: the peers tab.                                                               |
-| `POST /api/v1/torrents/peers`                  | W3: adding peers by hand.                                                        |
 | `GET /api/v1/torrents/{hash}/pieces/hashes`    | W3: the pieces tab.                                                              |
 | `POST /api/v1/torrents/{hash}/trackers`        | W3: editing trackers.                                                            |
 | `POST /api/v1/torrents/{hash}/trackers/edit`   | W3: editing trackers.                                                            |
@@ -53,10 +52,9 @@ row whose operation the UI calls.
 
 ## W4: settings, security, logs
 
-| Operation                    | Why the UI does not call it                                          |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `GET /api/v1/webhooks/{id}`  | The Webhooks page reads the list: every webhook with its deliveries. |
-| `POST /api/v1/transfer/bans` | W4: banning peers.                                                   |
+| Operation                   | Why the UI does not call it                                          |
+| --------------------------- | -------------------------------------------------------------------- |
+| `GET /api/v1/webhooks/{id}` | The Webhooks page reads the list: every webhook with its deliveries. |
 
 ## RSS
 
