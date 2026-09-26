@@ -104,7 +104,7 @@ test("bittorrent: discovery, bootstrap routers, encryption and identity", async 
     identity: "qbt_5_2_3_lt2_0_14",
   });
   // The routers apply after a restart, and the page says so.
-  await expect(page.getByText(/engine settings? appl(y|ies) after a restart/)).toBeVisible();
+  await expect(page.getByText(/settings? appl(y|ies) after a restart/)).toBeVisible();
 });
 
 test("bans apply at once and show in the peer log", async ({ signedIn: page, daemon }) => {

@@ -30,7 +30,10 @@ const Banned = lazy(() => import("~/features/settings/banned"));
 const WatchFolders = lazy(() => import("~/features/settings/watch-folders"));
 const RssSettings = lazy(() => import("~/features/settings/rss-settings"));
 const Webhooks = lazy(() => import("~/features/settings/webhooks"));
-const PlannedSettings = lazy(() => import("~/features/settings/planned"));
+const Statistics = lazy(() => import("~/features/settings/statistics"));
+const Security = lazy(() => import("~/features/settings/security"));
+const Engine = lazy(() => import("~/features/settings/engine"));
+const About = lazy(() => import("~/features/settings/about"));
 
 export const routes = (
   <>
@@ -52,7 +55,11 @@ export const routes = (
       <Route path="/settings/watch-folders" component={WatchFolders} />
       <Route path="/settings/rss" component={RssSettings} />
       <Route path="/settings/webhooks" component={Webhooks} />
-      <Route path="/settings/:section" component={PlannedSettings} />
+      <Route path="/settings/statistics" component={Statistics} />
+      <Route path="/settings/security" component={Security} />
+      <Route path="/settings/engine" component={Engine} />
+      <Route path="/settings/about" component={About} />
+      <Route path="/settings/*" component={() => <Navigate href="/settings/speed" />} />
       <Route path="*" component={() => <Navigate href="/torrents" />} />
     </Route>
   </>

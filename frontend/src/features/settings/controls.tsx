@@ -38,6 +38,70 @@ export function SettingsGroup(props: {
   );
 }
 
+/** A small outlined label (the design's `.tag`): `io_uring`, `after restart`. */
+export function Tag(props: {
+  tone?: "ok" | "warn" | "danger";
+  class?: string;
+  title?: string;
+  children: JSX.Element;
+}) {
+  return (
+    <span
+      title={props.title}
+      class={cn(
+        "inline-flex h-[18px] flex-none items-center rounded border px-1.5 mono text-2xs font-normal whitespace-nowrap",
+        props.tone === "ok"
+          ? "border-ok/35 text-ok"
+          : props.tone === "warn"
+            ? "border-warn/35 text-warn"
+            : props.tone === "danger"
+              ? "border-danger/35 text-danger"
+              : "border-border text-muted-foreground",
+        props.class,
+      )}
+    >
+      {props.children}
+    </span>
+  );
+}
+
+/** A small card of facts (the design's `.box`): a label, a value, a note. */
+export function InfoBox(props: {
+  label: JSX.Element;
+  value: JSX.Element;
+  note?: JSX.Element;
+  /** The value's full text, when it may be cut. */
+  title?: string;
+  tone?: "ok" | "warn" | "danger" | "strong";
+  class?: string;
+}) {
+  return (
+    <div
+      class={cn(
+        "flex min-w-0 flex-col gap-[3px] rounded-lg border bg-muted px-3 py-2.5",
+        props.tone === "ok"
+          ? "border-ok/40"
+          : props.tone === "warn"
+            ? "border-warn/40"
+            : props.tone === "danger"
+              ? "border-danger/40"
+              : props.tone === "strong"
+                ? "border-border-strong"
+                : "border-border",
+        props.class,
+      )}
+    >
+      <span class="flex min-w-0 items-center gap-1.5 text-xs text-subtle">{props.label}</span>
+      <span class="truncate mono text-sm" title={props.title}>
+        {props.value}
+      </span>
+      <Show when={props.note}>
+        <span class="text-xs text-subtle">{props.note}</span>
+      </Show>
+    </div>
+  );
+}
+
 /** The mark of a setting changed but not saved. */
 export function ChangeDot() {
   return (

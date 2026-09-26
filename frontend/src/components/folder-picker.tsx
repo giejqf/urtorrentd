@@ -2,10 +2,12 @@
 // Copyright (c) 2026 urtorrentd contributors
 
 // "Browse": the daemon's directories (`GET /fs/directory`), to pick a path
-// on the machine the daemon runs on (not the browser's).
+// on the machine the daemon runs on (not the browser's): a folder, or a file
+// with a given extension (`pickFile`).
 
 import { createQuery } from "@tanstack/solid-query";
 import ArrowUp from "lucide-solid/icons/arrow-up";
+import File from "lucide-solid/icons/file";
 import Folder from "lucide-solid/icons/folder";
 import { createSignal, For, Show } from "solid-js";
 
@@ -27,21 +29,35 @@ export function FolderPicker(props: {
   what: string;
   /** An icon inside a field's box (settings) instead of a "Browse" button. */
   inline?: boolean;
+  /** Pick a file with this extension (`.mmdb`) instead of a folder. */
+  pickFile?: string;
 }) {
   const [open, setOpen] = createSignal(false);
   const [cwd, setCwd] = createSignal("/");
-  const dirs = createQuery(() => ({
-    queryKey: ["fs", "directory", cwd()],
+  const entries = createQuery(() => ({
+    queryKey: ["fs", "directory", cwd(), props.pickFile ? "all" : "dirs"],
     queryFn: () =>
-      unwrap(api.GET("/api/v1/fs/directory", { params: { query: { path: cwd(), mode: "dirs" } } })),
+      unwrap(
+        api.GET("/api/v1/fs/directory", {
+          params: { query: { path: cwd(), mode: props.pickFile ? "all" : "dirs" } },
+        }),
+      ),
     enabled: open(),
     retry: false,
   }));
+  const shown = () =>
+    (entries.data ?? []).filter(
+      (e) => e.is_dir || (props.pickFile !== undefined && e.name.endsWith(props.pickFile)),
+    );
   return (
     <Popover
       open={open()}
       onOpenChange={(o) => {
-        if (o) setCwd(props.value.startsWith("/") ? props.value : "/");
+        // A file's folder, or the folder typed.
+        if (o) {
+          const v = props.value.startsWith("/") ? props.value : "/";
+          setCwd(props.pickFile && v.endsWith(props.pickFile) ? parent(v) : v);
+        }
         setOpen(o);
       }}
       placement="bottom-end"
@@ -92,18 +108,24 @@ export function FolderPicker(props: {
         </div>
         <div class="flex max-h-60 min-h-24 flex-col overflow-auto rounded-md border border-border">
           <Show
-            when={!dirs.isError}
+            when={!entries.isError}
             fallback={
               <p class="m-0 p-3 text-sm text-danger">
-                {dirs.error instanceof ApiError ? dirs.error.message : "The folder cannot be read."}
+                {entries.error instanceof ApiError
+                  ? entries.error.message
+                  : "The folder cannot be read."}
               </p>
             }
           >
             <For
-              each={dirs.data ?? []}
+              each={shown()}
               fallback={
                 <p class="m-0 p-3 text-sm text-subtle">
-                  {dirs.isLoading ? "Reading…" : "No folders here."}
+                  {entries.isLoading
+                    ? "Reading…"
+                    : props.pickFile
+                      ? `No folders or ${props.pickFile} files here.`
+                      : "No folders here."}
                 </p>
               }
             >
@@ -111,27 +133,38 @@ export function FolderPicker(props: {
                 <button
                   type="button"
                   class="flex h-7 flex-none items-center gap-2 px-2 text-left text-sm text-foreground-2 hover:bg-accent hover:text-foreground"
-                  onClick={() => setCwd(d.path)}
+                  onClick={() => {
+                    if (d.is_dir) {
+                      setCwd(d.path);
+                    } else {
+                      props.onPick(d.path);
+                      setOpen(false);
+                    }
+                  }}
                 >
-                  <Folder size={13} class="flex-none text-subtle" />
+                  <Show when={d.is_dir} fallback={<File size={13} class="flex-none text-subtle" />}>
+                    <Folder size={13} class="flex-none text-subtle" />
+                  </Show>
                   <span class="truncate">{d.name}</span>
                 </button>
               )}
             </For>
           </Show>
         </div>
-        <div class="flex justify-end">
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              props.onPick(cwd());
-              setOpen(false);
-            }}
-          >
-            Choose this folder
-          </Button>
-        </div>
+        <Show when={props.pickFile === undefined}>
+          <div class="flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                props.onPick(cwd());
+                setOpen(false);
+              }}
+            >
+              Choose this folder
+            </Button>
+          </div>
+        </Show>
       </PopoverContent>
     </Popover>
   );

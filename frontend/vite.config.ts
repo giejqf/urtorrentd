@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 urtorrentd contributors
 
+import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 
 import tailwindcss from "@tailwindcss/vite";
@@ -12,8 +13,14 @@ import { defineConfig } from "vitest/config";
 // with it, so rewriting it would refuse every POST (AGENTS.md 5.3).
 const daemon = process.env.URTORRENTD_URL ?? "http://127.0.0.1:8080";
 
+// The UI's version (Settings › About), released with the daemon's.
+const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as {
+  version: string;
+};
+
 export default defineConfig({
   plugins: [solid(), tailwindcss()],
+  define: { __UI_VERSION__: JSON.stringify(pkg.version) },
   base: "/",
   resolve: {
     alias: { "~": fileURLToPath(new URL("./src", import.meta.url)) },

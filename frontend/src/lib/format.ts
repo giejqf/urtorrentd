@@ -150,6 +150,37 @@ export function formatDateTime(unix: number | null, opts: TimeOptions = {}): str
   }).format(new Date(unix * 1000));
 }
 
+/** A unix time as a month and year: `Mar 2027` (expiries, far dates). */
+export function formatMonth(unix: number | null, opts: TimeOptions = {}): string {
+  if (unix === null || !Number.isFinite(unix)) return dash;
+  return new Intl.DateTimeFormat(opts.locale, {
+    year: "numeric",
+    month: "short",
+    timeZone: opts.timeZone,
+  }).format(new Date(unix * 1000));
+}
+
+/** A unix time as a month and day: `Mar 02` (recent dates, the year implied). */
+export function formatShortDate(unix: number | null, opts: TimeOptions = {}): string {
+  if (unix === null || !Number.isFinite(unix)) return dash;
+  return new Intl.DateTimeFormat(opts.locale, {
+    month: "short",
+    day: "2-digit",
+    timeZone: opts.timeZone,
+  }).format(new Date(unix * 1000));
+}
+
+/** A unix time as a date: `Sep 16, 2026`. */
+export function formatDate(unix: number | null, opts: TimeOptions = {}): string {
+  if (unix === null || !Number.isFinite(unix)) return dash;
+  return new Intl.DateTimeFormat(opts.locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: opts.timeZone,
+  }).format(new Date(unix * 1000));
+}
+
 /** A unix time as a full date and time: `Sep 24, 2026, 10:02:05`. */
 export function formatFullDateTime(unix: number | null, opts: TimeOptions = {}): string {
   if (unix === null || !Number.isFinite(unix)) return dash;

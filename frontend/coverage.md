@@ -53,16 +53,11 @@ row whose operation the UI calls.
 
 ## W4: settings, security, logs
 
-| Operation                      | Why the UI does not call it                                          |
-| ------------------------------ | -------------------------------------------------------------------- |
-| `PUT /api/v1/auth/credentials` | W4: security settings.                                               |
-| `POST /api/v1/auth/api-key`    | W4: security settings.                                               |
-| `DELETE /api/v1/auth/api-key`  | W4: security settings.                                               |
-| `GET /api/v1/app/cookies`      | W4: the cookie jar for URL adds.                                     |
-| `PUT /api/v1/app/cookies`      | W4: the cookie jar for URL adds.                                     |
-| `GET /api/v1/webhooks/{id}`    | The Webhooks page reads the list: every webhook with its deliveries. |
-| `POST /api/v1/transfer/bans`   | W4: banning peers.                                                   |
-| `GET /api/v1/log`              | W4: the log screen.                                                  |
+| Operation                    | Why the UI does not call it                                          |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `GET /api/v1/webhooks/{id}`  | The Webhooks page reads the list: every webhook with its deliveries. |
+| `POST /api/v1/transfer/bans` | W4: banning peers.                                                   |
+| `GET /api/v1/log`            | W4: the log screen.                                                  |
 
 ## W5: RSS
 
@@ -86,13 +81,11 @@ row whose operation the UI calls.
 
 | Operation                                   | Why the UI does not call it |
 | ------------------------------------------- | --------------------------- |
-| `GET /api/v1/stats`                         | W6: the statistics screen.  |
 | `GET /api/v1/stats/transfer`                | W6: the statistics screen.  |
 | `GET /api/v1/stats/torrents/{hash}/traffic` | W6: the statistics screen.  |
 | `GET /api/v1/stats/torrents/{hash}/days`    | W6: the statistics screen.  |
 | `DELETE /api/v1/stats/torrents/{hash}`      | W6: the statistics screen.  |
 | `GET /api/v1/stats/top`                     | W6: the statistics screen.  |
-| `GET /api/v1/stats/geo`                     | W6: the statistics screen.  |
 | `GET /api/v1/stats/groups`                  | W6: the statistics screen.  |
 | `GET /api/v1/stats/trackers`                | W6: the statistics screen.  |
 | `GET /api/v1/stats/idle-seeds`              | W6: the statistics screen.  |

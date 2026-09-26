@@ -4,9 +4,10 @@ Guide for coding agents working on `frontend/`, the web UI of urtorrentd. Read t
 [`AGENTS.md`](../AGENTS.md) first. It is the project charter, and its rules bind this directory
 too (section 1 restates them for the UI). This file adds what is specific to the UI.
 
-Status (2026-09-25): W0, W1 and W2 are done: sign-in, first-run setup, the shell, the torrents
-screen and the add dialog as the mockups have them. W4 has started: Settings › Downloads, Speed, Queue & share limits, Connection,
-BitTorrent, Banned addresses, Watch folders, RSS and Webhooks.
+Status (2026-09-26): W0, W1 and W2 are done: sign-in, first-run setup, the shell, the torrents
+screen and the add dialog as the mockups have them. W4 has started: every settings section is
+built (Downloads, Speed, Queue & share limits, Connection, BitTorrent, Banned addresses, Watch
+folders, RSS, Webhooks, Statistics & GeoIP, Security & API, Engine, About); the log is next.
 Section 10 has the milestones.
 
 ## 1. What this is
@@ -143,8 +144,10 @@ frontend/
                         (connection.tsx, bittorrent.tsx; network-form.ts) and Banned addresses
                         (banned.tsx; bans.ts), Watch folders (watch-folders.tsx;
                         watch-form.ts), RSS (rss-settings.tsx; rss-view.ts) and Webhooks
-                        (webhooks.tsx; webhooks-view.ts); later the other sections,
-                        security (credentials, API key), webhooks, watch folders
+                        (webhooks.tsx; webhooks-view.ts), Statistics & GeoIP (statistics.tsx;
+                        statistics-form.ts), Security & API (security.tsx; security-form.ts),
+                        Engine (engine.tsx; engine-form.ts) and About (about.tsx;
+                        about-view.ts)
       rss/ log/ stats/
   e2e/
     daemon.ts           starts and stops real daemons, one per test that asks (7.4)
@@ -395,6 +398,10 @@ locally.
 - `Settings_Watch_folders-html.zip`, `Settings_RSS-html.zip`, `Settings_Webhooks-html.zip`:
   Settings › Watch folders (`SettingsWatch.dc.html`), RSS (`SettingsRss.dc.html`) and
   Webhooks (`SettingsWebhooks.dc.html`): expanding cards that edit one item each.
+- `Settings_Statistics_GeoIP-html.zip`, `Settings_Security_API-html.zip`,
+  `Settings_Engine-html.zip`, `Settings_About-html.zip`: Settings › Statistics & GeoIP
+  (`SettingsStats.dc.html`), Security & API (`SettingsSecurity.dc.html`), Engine
+  (`SettingsEngine.dc.html`) and About (`SettingsAbout.dc.html`): the daemon itself.
 
 They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
@@ -564,6 +571,24 @@ These are the known differences. Resolve each as noted, never by faking.
 | Settings › Webhooks: "Redeliver", "Payload of the last finished" | Deliveries kept their result only; `GET /webhooks/{id}/deliveries/{delivery}` and `.../redeliver` (added for the UI) keep and resend the payload | Redeliver on failed rows (once, same delivery id); the payload of the newest delivery that is not a test, else the test. |
 | Settings › Webhooks: secret "Rotate" | A secret is never shown back | Rotate or Generate fills a new random one, shown until saved so the receiver can be given it; Remove unsigns. |
 | Settings footer: "libtorrent 2.0.11" | `library` in `GET /app` is urtorrent's version | Show the library we run on. |
+| Settings › Engine: "8 cores · 16 threads · AMD EPYC", "6.8.0 · io_uring available", "512 asked for · 2 231 in use", "/data · ext4 · NVMe · 4.0 TB · 1.21 TB free" | `GET /app/system` (added for the UI): the CPUs the daemon may use, the CPU model, kernel, memory, the open-file limit and use, the default save path's file system | "16 CPU threads" (no core count), the kernel with "io_uring" (the daemon runs on nothing else), the mount point and file system type, size and free space; no drive kind. |
+| Settings › Engine: Running beside Saved, "Changed Sep 25 09:12", "Revert to running" | `running` and `restart_required_since` in `GET /app` (added for the UI) | As shown. A saved setting waiting for the restart is tagged "after restart"; an edit not saved yet keeps the unsaved mark. Revert saves the running values of what waits. |
+| Settings › Engine: "Your service manager starts it again", "Needs a kernel with io_uring — yours has it" | `POST /app/restart` starts the same binary again in its own process; the daemon runs only with io_uring | "no service manager needed"; the io_uring sentence is left out. |
+| Settings › Engine: "Restart when idle" | `POST /app/restart?when=idle`, `DELETE /app/restart`, `restart_waiting` in `GET /app` (added for the UI): idle is no torrent checking, moving or receiving data | The button, then "Waiting…" with "Call off". |
+| Settings › Security: "A request, as configured" | `POST /auth/check` (added for the UI) | As shown, for this browser's own request; forwarding headers from a proxy that is not trusted show as a warning. |
+| Settings › Security: the user name in a field beside "Change password" | `PUT /auth/credentials` takes both; `GET /auth/account` (added for the UI) has the user name | The name as text; a dialog changes both (the password twice). Every session ends, so the page signs in again. |
+| Settings › Security: API key "created Sep 12 · last used 2 min ago from 10.66.0.9" | `GET /auth/account` (added for the UI): when the key was made (none for keys made before 0.14.0) and its last use since the daemon started | As shown. Regenerate and Delete ask first; a new key shows once, in a dialog. |
+| Settings › Security: sessions and bans with "End", "Revoke", "Unban", "End all other sessions", "Firefox · via proxy" | `GET`/`DELETE /auth/sessions`, `DELETE /auth/sessions/{id}`, `GET /auth/bans`, `DELETE /auth/bans/{address}` (added for the UI) | As shown, the client named from its user agent ("Firefox · Linux"); "via proxy" is not recorded. Addresses with failed sign-ins short of a ban are listed too ("Forget"). Revoke deletes the API key. |
+| Settings › Security: no row for browser origins | `api_cors_origins` | A row in the HTTP layer: "Browser origins allowed (CORS)". |
+| Settings › Security: a list of allowed hosts without this page's host | The `Host` check would refuse the page | Refused before saving: the page's host (or a pattern that covers it) stays. |
+| Settings › Security: cookie values "9f3c…e1" | `GET /app/cookies` has the values, often passkeys | Values longer than 6 characters are cut; the full value never shows once added. |
+| Settings › Statistics: "97% of peers located by GeoIP", "146 of 148 peers matched to an AS right now" | Live peers are per torrent (an N+1); `GET /stats/geo` has peer traffic by country | "of peer traffic located, last day" from the country rows; the ASN count is left out. |
+| Settings › Statistics: "112 torrents with history · 100 removed" | `removed` in `GET /stats` (added for the UI) | As shown. |
+| Settings › Statistics: removed history "Review", "21.9 MB of the database" | No size per torrent; the statistics screen is W6 | "Delete all" (`DELETE /stats/removed`, added for the UI); no size, and no Review until W6. |
+| Settings › Statistics: GeoIP "Reload now", "last read Sep 16 04:12" | Files are re-read when they change (checked every 2 s); `loaded` on each database (added for the UI) | No reload button (it would change nothing); "read" with its time. |
+| Settings › About: "up to date" | No update check (rule 5) | Left out. |
+| Settings › About: "Seen as" | The transfer state's `external_v4` / `external_v6` | As shown; "not known yet" until trackers or peers agree on one. |
+| Settings › About: "Copy diagnostics", "Delete statistics", "API reference", "Web UI 0.12.0" | `GET /app`, `/app/system`, `/stats`; `DELETE /stats` (added for the UI); `GET /api/v1/openapi.json`; the UI's `package.json` version set at build time | Diagnostics carry versions, the machine, engine and network settings and counts, never an address, a path, a URL or a name. Deleting asks first; recording goes on. The reference opens the schema. |
 | Add dialog: "Watch folder" tab | The `watch_folders` setting (path, subfolders, what happens to an added file, add options) | The tab appends a watch folder with the dialog's options (`PATCH /settings`); the right column lists the files it will pick up. |
 
 ## 7. Testing
@@ -737,8 +762,11 @@ Each milestone ends with its end-to-end tests green.
   encryption, identity), Banned addresses (the list, bans per day, the peer log), Watch folders
   (each folder's options and standing, the files picked up), RSS (polling with the next hour
   planned, rules and feeds) and Webhooks (health, editing, deliveries with redelivery, the
-  payload) as designed. The other sections show
-  that they are not built yet.
+  payload), Statistics & GeoIP (recording and retention with what is on disk, the opt-in scrape,
+  removed torrents' history, the GeoIP files), Security & API (how a request is seen, the login
+  and the API key, sessions and sign-in bans, the HTTP layer, the cookie jar), Engine (the
+  machine, tuning beside what runs, restarting now or when idle) and About (the instance,
+  diagnostics, deleting statistics, shutting down) as designed.
 - **W5 RSS.** Folders, feeds, articles, and rules with their matches.
 - **W6 Statistics.** Traffic over time, seeding days, rankings, the timeline, places,
   breakdowns and idle seeds (uPlot).

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 urtorrentd contributors
 
-// "N engine settings apply after a restart", and the restart itself
+// "N settings apply after a restart", and the restart itself
 // (`POST /app/restart`): the daemon stops gracefully and starts again in
 // place. Login sessions live in its memory, so the page signs in again.
 
@@ -29,11 +29,18 @@ import { useAppInfo } from "./app-info";
 
 const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
+// One confirmation for every page: the banner's button, Engine and About.
+const [confirm, setConfirm] = createSignal(false);
+
+/** Ask to restart the daemon now (the frame confirms, then restarts). */
+export function askRestart() {
+  setConfirm(true);
+}
+
 export function RestartBanner() {
   const app = useAppInfo();
   const auth = useAuth();
   const client = useQueryClient();
-  const [confirm, setConfirm] = createSignal(false);
   const [restarting, setRestarting] = createSignal(false);
   const pending = () => app.data?.restart_required ?? [];
 
@@ -81,8 +88,8 @@ export function RestartBanner() {
           <StatusDot class="bg-warn" />
           <span title={pending().join(", ")}>
             {pending().length === 1
-              ? "1 engine setting applies after a restart"
-              : `${pending().length} engine settings apply after a restart`}
+              ? "1 setting applies after a restart"
+              : `${pending().length} settings apply after a restart`}
           </span>
           <Button
             variant="outline"
@@ -100,7 +107,8 @@ export function RestartBanner() {
             <AlertDialogTitle>Restart the daemon?</AlertDialogTitle>
             <AlertDialogDescription>
               Every torrent stops for a few seconds while urtorrentd saves its state and starts
-              again, and you sign in again. It applies: {pending().join(", ")}.
+              again, and you sign in again.
+              <Show when={pending().length > 0}> It applies: {pending().join(", ")}.</Show>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

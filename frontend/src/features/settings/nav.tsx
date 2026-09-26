@@ -57,11 +57,6 @@ export const SECTIONS: readonly { title: string; items: readonly Section[] }[] =
   },
 ];
 
-export function sectionLabel(id: string): string | undefined {
-  for (const s of SECTIONS) for (const i of s.items) if (i.id === id) return i.label;
-  return undefined;
-}
-
 /** Seconds since the Unix epoch, ticking every half minute. */
 function useNow() {
   const [now, setNow] = createSignal(Math.floor(Date.now() / 1000));

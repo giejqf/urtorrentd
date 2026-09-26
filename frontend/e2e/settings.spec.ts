@@ -107,19 +107,38 @@ test("leaving with unsaved changes asks first", async ({ signedIn: page, daemon 
   expect(data?.download_limit).toBeNull();
 });
 
-test("other sections say they are coming", async ({ signedIn: page, daemon }) => {
+test("every section has its page; an unknown one goes to Speed", async ({
+  signedIn: page,
+  daemon,
+}) => {
   await page.goto(`${daemon.url}/settings/speed`);
-  await page.getByRole("link", { name: "Security & API" }).click();
-  await expect(page.getByRole("heading", { name: "Security & API", level: 1 })).toBeVisible();
-  await expect(page.getByText("are not built yet")).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Settings sections" });
+  for (const name of [
+    "Downloads",
+    "Speed",
+    "Queue & share limits",
+    "Connection",
+    "BitTorrent",
+    "Banned addresses",
+    "Watch folders",
+    "RSS",
+    "Webhooks",
+    "Statistics & GeoIP",
+    "Security & API",
+    "Engine",
+    "About",
+  ]) {
+    await nav.getByRole("link", { name, exact: true }).click();
+    await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
+  }
+  await page.goto(`${daemon.url}/settings/nothing-here`);
+  await expect(page).toHaveURL(/\/settings\/speed$/);
 });
 
 test("a restart from the page applies an engine setting", async ({ signedIn: page, daemon }) => {
   await daemon.api.PATCH("/api/v1/settings", { body: { hash_threads: 3 } });
   await page.goto(`${daemon.url}/settings/speed`);
-  const banner = page
-    .getByRole("status")
-    .filter({ hasText: "engine setting applies after a restart" });
+  const banner = page.getByRole("status").filter({ hasText: "1 setting applies after a restart" });
   await expect(banner).toBeVisible();
   await expect(page.getByRole("link", { name: /Engine \(restart required\)/ })).toBeVisible();
   await banner.getByRole("button", { name: "Restart daemon" }).click();

@@ -74,8 +74,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switched on and off, feeds refreshed on demand; webhooks with their
   health, edited in place, a test, their last deliveries with redelivery,
   and what the last one sent.
-  Screens for statistics, RSS, the log and the other settings sections say
-  they are still to come.
+- Web UI: Settings › Statistics & GeoIP, Security & API, Engine and About
+  as designed: retention with what is on disk and where it is cut, the
+  opt-in scrape, removed torrents' history, the GeoIP files; how the
+  daemon sees this browser's request, the login and the API key (shown
+  once), sessions and sign-in bans ended or lifted at once, the HTTP layer
+  with the browser origins, the cookie jar; the machine, engine tuning
+  beside what runs, restarting now or once the torrents are idle; the
+  instance, diagnostics to copy (no addresses, paths, URLs or names),
+  deleting statistics and shutting down.
+  Screens for statistics, RSS and the log say they are still to come.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and
   `cargo xtask dist` (a release binary with the UI built in).
 
