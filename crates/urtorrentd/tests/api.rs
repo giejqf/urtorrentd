@@ -251,6 +251,31 @@ async fn settings_apply_live_and_report_restarts() {
     assert_eq!(st, StatusCode::OK);
     let app = t.get("/api/v1/app").await;
     assert_eq!(app["restart_required"], json!(["hash_threads"]));
+    // Beside what runs, since when.
+    assert_eq!(app["running"]["hash_threads"], 2, "{app}");
+    assert_eq!(app["running"]["disk_thread"], true);
+    let since = app["restart_required_since"].as_u64().unwrap();
+    assert!(since + 60 > urtorrentd::util::now());
+    assert_eq!(app["restart_waiting"], false);
+    // Back to the running value: nothing waits.
+    let (st, _) = t
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({"hash_threads": 2})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    let app = t.get("/api/v1/app").await;
+    assert_eq!(app["restart_required"], json!([]));
+    assert_eq!(app["restart_required_since"], serde_json::Value::Null);
+
+    // The machine.
+    let sys = t.get("/api/v1/app/system").await;
+    assert!(sys["cpus"].as_u64().unwrap() >= 1, "{sys}");
+    assert!(!sys["kernel"].as_str().unwrap().is_empty());
+    assert!(sys["open_files"].as_u64().unwrap() > 0);
+    assert!(sys["save_path_fs"]["total"].as_u64().unwrap() > 0, "{sys}");
 
     // Address ranges: blocks and first-last ranges reach the engine.
     let (st, v) = t
@@ -524,5 +549,340 @@ async fn first_run_setup() {
     );
     let (s, _) = setup(&t, json!({"username": "late", "password": "long enough"})).await;
     assert_eq!(s, StatusCode::CONFLICT);
+    t.stop().await;
+}
+
+/// A login from `ua`; returns the cookie.
+async fn login_as(t: &TestDaemon, password: &str, ua: &str) -> String {
+    let (s, headers, _) = t
+        .request(
+            req(Method::POST, "/api/v1/auth/login")
+                .header("content-type", "application/json")
+                .header("user-agent", ua)
+                .body(json_body(
+                    json!({"username": "admin", "password": password}),
+                ))
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    headers["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string()
+}
+
+/// A request with a cookie; `(status, JSON body or Null)`.
+async fn with_cookie(
+    t: &TestDaemon,
+    method: Method,
+    path: &str,
+    cookie: &str,
+    headers: &[(&str, &str)],
+) -> (StatusCode, serde_json::Value) {
+    let mut b = req(method, path).header("cookie", cookie);
+    for (k, v) in headers {
+        b = b.header(*k, *v);
+    }
+    let (s, _, body) = t.request(b.body(Body::empty()).unwrap()).await;
+    (
+        s,
+        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn sessions_bans_the_key_and_how_a_request_is_seen() {
+    let t = TestDaemon::start(26, |s| {
+        s.api_bypass_local_auth = false;
+        s.api_max_auth_failures = 2;
+        s.api_allowed_hosts = vec!["localhost".into(), "torrents.example".into()];
+    })
+    .await;
+    let temp = t.daemon.temporary_password().unwrap().to_string();
+    let a = login_as(&t, &temp, "Firefox/140").await;
+    let b = login_as(&t, &temp, "curl/8.9").await;
+
+    // Listed by an id that is not the cookie, this one marked.
+    let (s, list) = with_cookie(&t, Method::GET, "/api/v1/auth/sessions", &a, &[]).await;
+    assert_eq!(s, StatusCode::OK, "{list}");
+    let list = list.as_array().unwrap().clone();
+    assert_eq!(list.len(), 2);
+    let text = serde_json::to_string(&list).unwrap();
+    for c in [&a, &b] {
+        assert!(!text.contains(c.split('=').nth(1).unwrap()), "{text}");
+    }
+    let me = list.iter().find(|x| x["current"] == true).unwrap();
+    assert_eq!(me["last_used"]["user_agent"], "Firefox/140");
+    assert_eq!(me["last_used"]["address"], "127.0.0.1");
+    let other = list.iter().find(|x| x["current"] == false).unwrap();
+    assert_eq!(other["last_used"]["user_agent"], "curl/8.9");
+
+    // Ended by id; then every other one.
+    let id = other["id"].as_str().unwrap();
+    let path = format!("/api/v1/auth/sessions/{id}");
+    assert_eq!(
+        with_cookie(&t, Method::DELETE, &path, &a, &[]).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        with_cookie(&t, Method::DELETE, &path, &a, &[]).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        with_cookie(&t, Method::GET, "/api/v1/app", &b, &[]).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let c = login_as(&t, &temp, "Safari").await;
+    assert_eq!(
+        with_cookie(&t, Method::DELETE, "/api/v1/auth/sessions", &a, &[])
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        with_cookie(&t, Method::GET, "/api/v1/app", &c, &[]).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        with_cookie(&t, Method::GET, "/api/v1/app", &a, &[]).await.0,
+        StatusCode::OK
+    );
+
+    // The account: no key, then one made now, then its use.
+    let (_, acc) = with_cookie(&t, Method::GET, "/api/v1/auth/account", &a, &[]).await;
+    assert_eq!(acc, json!({"username": "admin", "api_key": null}));
+    let (s, key) = with_cookie(&t, Method::POST, "/api/v1/auth/api-key", &a, &[]).await;
+    assert_eq!(s, StatusCode::OK);
+    let key = key["api_key"].as_str().unwrap().to_string();
+    let (_, acc) = with_cookie(&t, Method::GET, "/api/v1/auth/account", &a, &[]).await;
+    assert!(acc["api_key"]["created"].as_u64().unwrap() + 60 > urtorrentd::util::now());
+    assert_eq!(acc["api_key"]["last_used"], serde_json::Value::Null);
+    let bearer = format!("Bearer {key}");
+    let (s, _, _) = t
+        .request(
+            req(Method::GET, "/api/v1/torrents")
+                .header("authorization", &bearer)
+                .header("user-agent", "python-requests/2.32")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, acc) = with_cookie(&t, Method::GET, "/api/v1/auth/account", &a, &[]).await;
+    assert_eq!(
+        acc["api_key"]["last_used"]["user_agent"],
+        "python-requests/2.32"
+    );
+    assert_eq!(acc["api_key"]["last_used"]["address"], "127.0.0.1");
+
+    // How requests are seen: a session from this page's origin...
+    let (s, v) = with_cookie(
+        &t,
+        Method::POST,
+        "/api/v1/auth/check",
+        &a,
+        &[
+            ("host", "127.0.0.1:8080"),
+            ("origin", "http://127.0.0.1:8080"),
+        ],
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(
+        v,
+        json!({"peer": "127.0.0.1", "client": "127.0.0.1", "proxy": "none",
+               "host": "127.0.0.1:8080", "host_check": "address", "https": false,
+               "auth": "session", "csrf": "same_origin"})
+    );
+    // ...refused from another...
+    let (s, v) = with_cookie(
+        &t,
+        Method::POST,
+        "/api/v1/auth/check",
+        &a,
+        &[("host", "127.0.0.1:8080"), ("origin", "http://evil.test")],
+    )
+    .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    assert_eq!(v["error"]["code"], "cross_origin");
+    // ...the key, never checked for its origin...
+    let (s, _, body) = t
+        .request(
+            req(Method::POST, "/api/v1/auth/check")
+                .header("authorization", &bearer)
+                .header("host", "localhost:8080")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        (&v["auth"], &v["csrf"], &v["host_check"]),
+        (&json!("api_key"), &json!("not_applied"), &json!("allowed"))
+    );
+    // ...forwarding headers from a peer that is not trusted...
+    let (_, v) = with_cookie(
+        &t,
+        Method::POST,
+        "/api/v1/auth/check",
+        &a,
+        &[("x-forwarded-for", "203.0.113.9")],
+    )
+    .await;
+    assert_eq!(
+        (&v["proxy"], &v["client"], &v["csrf"]),
+        (
+            &json!("untrusted"),
+            &json!("127.0.0.1"),
+            &json!("no_origin")
+        )
+    );
+
+    // ...and through a trusted proxy.
+    let (s, _, body) = t
+        .request(
+            req(Method::PATCH, "/api/v1/settings")
+                .header("cookie", &a)
+                .header("content-type", "application/json")
+                .body(json_body(json!({"api_trusted_proxies": ["127.0.0.1"]})))
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let proxied = [
+        ("x-forwarded-for", "198.51.100.7"),
+        ("x-forwarded-host", "torrents.example"),
+        ("x-forwarded-proto", "https"),
+        ("origin", "https://torrents.example"),
+    ];
+    let (s, v) = with_cookie(&t, Method::POST, "/api/v1/auth/check", &a, &proxied).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(
+        v,
+        json!({"peer": "127.0.0.1", "client": "198.51.100.7", "proxy": "trusted",
+               "host": "torrents.example", "host_check": "allowed", "https": true,
+               "auth": "session", "csrf": "same_origin"})
+    );
+
+    // Failed logins from an address, its ban, and lifting it.
+    let fail = |ua: &'static str| {
+        req(Method::POST, "/api/v1/auth/login")
+            .header("content-type", "application/json")
+            .header("x-forwarded-for", "203.0.113.99")
+            .header("user-agent", ua)
+            .body(json_body(json!({"username": "admin", "password": "nope"})))
+            .unwrap()
+    };
+    assert_eq!(
+        t.request(fail("curl/8.9")).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (_, bans) = with_cookie(&t, Method::GET, "/api/v1/auth/bans", &a, &[]).await;
+    assert_eq!(bans[0]["address"], "203.0.113.99");
+    assert_eq!(bans[0]["failures"], 1);
+    assert_eq!(bans[0]["banned_until"], serde_json::Value::Null);
+    assert_eq!(
+        t.request(fail("curl/8.10")).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(t.request(fail("curl/8.10")).await.0, StatusCode::FORBIDDEN);
+    let (_, bans) = with_cookie(&t, Method::GET, "/api/v1/auth/bans", &a, &[]).await;
+    assert_eq!(bans.as_array().unwrap().len(), 1, "{bans}");
+    assert_eq!(bans[0]["failures"], 2);
+    assert_eq!(bans[0]["user_agent"], "curl/8.10");
+    assert!(bans[0]["banned_until"].as_u64().unwrap() > urtorrentd::util::now());
+    let unban = "/api/v1/auth/bans/203.0.113.99";
+    assert_eq!(
+        with_cookie(&t, Method::DELETE, unban, &a, &[]).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        with_cookie(&t, Method::DELETE, unban, &a, &[]).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        with_cookie(&t, Method::DELETE, "/api/v1/auth/bans/nonsense", &a, &[])
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        t.request(fail("curl/8.10")).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    t.stop().await;
+}
+
+#[tokio::test]
+async fn clients_without_login_still_need_the_pages_origin() {
+    // Loopback needs no login (the test default): a page on another origin
+    // still cannot change anything through the visitor's browser.
+    let t = TestDaemon::start(27, |s| {
+        s.api_auth_whitelist = vec!["127.0.0.0/8".into()];
+    })
+    .await;
+    let tag = |origin: Option<&str>| {
+        let mut b = req(Method::POST, "/api/v1/tags")
+            .header("host", "127.0.0.1:8080")
+            .header("content-type", "application/json");
+        if let Some(o) = origin {
+            b = b.header("origin", o);
+        }
+        b.body(json_body(json!({"tags": ["x"]}))).unwrap()
+    };
+    let (s, _, body) = t.request(tag(Some("http://evil.test"))).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    assert!(String::from_utf8_lossy(&body).contains("cross_origin"));
+    assert_eq!(t.request(tag(None)).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(
+        t.request(tag(Some("http://127.0.0.1:8080"))).await.0,
+        StatusCode::NO_CONTENT
+    );
+    // Reads are never refused for their origin.
+    let (s, _, _) = t
+        .request(
+            req(Method::GET, "/api/v1/tags")
+                .header("origin", "http://evil.test")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (s, v) = t.post("/api/v1/auth/check", json!(null)).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(
+        (&v["auth"], &v["csrf"]),
+        (&json!("whitelist"), &json!("no_origin"))
+    );
+    let (s, _) = t
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({"api_auth_whitelist": []})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, v) = t.post("/api/v1/auth/check", json!(null)).await;
+    assert_eq!(v["auth"], "loopback");
+    // Unchecked when the setting is off.
+    let (s, _) = t
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({"api_csrf_protection": false})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        t.request(tag(Some("http://evil.test"))).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, v) = t.post("/api/v1/auth/check", json!(null)).await;
+    assert_eq!(v["csrf"], "off");
     t.stop().await;
 }

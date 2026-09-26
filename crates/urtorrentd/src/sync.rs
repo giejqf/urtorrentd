@@ -241,7 +241,7 @@ pub(crate) fn event_stream(
                 if !s
                     .daemon
                     .auth
-                    .touch_session(sid, Duration::from_secs(timeout))
+                    .touch_session(sid, Duration::from_secs(timeout), None)
                 {
                     return None;
                 }

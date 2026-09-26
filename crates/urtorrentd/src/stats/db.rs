@@ -296,6 +296,8 @@ pub struct Info {
     pub size: u64,
     /// Torrents known.
     pub torrents: u64,
+    /// Of those, the ones removed from the session.
+    pub removed: u64,
     /// Oldest session bucket per step (minute, hour, day).
     pub oldest: [Option<u64>; 3],
 }
@@ -916,6 +918,80 @@ impl StatsDb {
         Ok(true)
     }
 
+    /// Delete everything recorded, and start a recording period at `now`
+    /// when `recording`; the file shrinks (`VACUUM`). Returns the new
+    /// period.
+    pub fn clear(&self, now: u64, recording: bool) -> io::Result<Option<i64>> {
+        let mut w = self.writer();
+        let Writer { conn, ids } = &mut *w;
+        let tx = conn.transaction().map_err(db_err)?;
+        for table in [
+            "traffic",
+            "daily",
+            "session",
+            "events",
+            "peer_traffic",
+            "announces",
+            "asns",
+            "torrents",
+            "periods",
+        ] {
+            tx.execute(&format!("DELETE FROM {table}"), [])
+                .map_err(db_err)?;
+        }
+        let period = if recording {
+            Some(
+                tx.query_row(
+                    "INSERT INTO periods (started, last_seen) VALUES (?1, ?1) RETURNING id",
+                    params![now],
+                    |r| r.get(0),
+                )
+                .map_err(db_err)?,
+            )
+        } else {
+            None
+        };
+        tx.commit().map_err(db_err)?;
+        ids.clear();
+        conn.execute_batch("VACUUM").map_err(db_err)?;
+        Ok(period)
+    }
+
+    /// Delete the history of every torrent removed from the session; the
+    /// file shrinks (`VACUUM`). Returns how many torrents that was.
+    pub fn purge_removed(&self) -> io::Result<u64> {
+        let mut w = self.writer();
+        let Writer { conn, ids } = &mut *w;
+        let tx = conn.transaction().map_err(db_err)?;
+        let hashes: Vec<String> = {
+            let mut stmt = tx
+                .prepare("SELECT hash FROM torrents WHERE removed IS NOT NULL")
+                .map_err(db_err)?;
+            let rows = stmt.query_map([], |r| r.get(0)).map_err(db_err)?;
+            rows.collect::<rusqlite::Result<_>>().map_err(db_err)?
+        };
+        for table in ["traffic", "daily", "events", "peer_traffic"] {
+            tx.execute(
+                &format!(
+                    "DELETE FROM {table} WHERE torrent IN
+                     (SELECT id FROM torrents WHERE removed IS NOT NULL)"
+                ),
+                [],
+            )
+            .map_err(db_err)?;
+        }
+        tx.execute("DELETE FROM torrents WHERE removed IS NOT NULL", [])
+            .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        for h in &hashes {
+            ids.remove(h);
+        }
+        if !hashes.is_empty() {
+            conn.execute_batch("VACUUM").map_err(db_err)?;
+        }
+        Ok(u64::try_from(hashes.len()).unwrap_or(u64::MAX))
+    }
+
     /// A torrent by info-hash.
     pub fn torrent(&self, hash: &str) -> io::Result<Option<TorrentRow>> {
         self.reader()
@@ -1509,8 +1585,10 @@ impl StatsDb {
         let page_size: u64 = conn
             .pragma_query_value(None, "page_size", |r| r.get(0))
             .map_err(db_err)?;
-        let torrents: u64 = conn
-            .query_row("SELECT count(*) FROM torrents", [], |r| r.get(0))
+        let (torrents, removed): (u64, u64) = conn
+            .query_row("SELECT count(*), count(removed) FROM torrents", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
             .map_err(db_err)?;
         let mut oldest = [None; 3];
         for (i, step) in StatsStep::ALL.into_iter().enumerate() {
@@ -1525,6 +1603,7 @@ impl StatsDb {
         Ok(Info {
             size: pages.saturating_mul(page_size),
             torrents,
+            removed,
             oldest,
         })
     }

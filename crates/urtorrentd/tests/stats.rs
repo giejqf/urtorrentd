@@ -318,3 +318,67 @@ async fn a_broken_stats_database_turns_statistics_off() {
     assert!(log.to_string().contains("statistics are off"), "{log}");
     t.stop().await;
 }
+
+#[tokio::test]
+async fn removed_history_and_everything_can_be_deleted() {
+    let t = TestDaemon::start(59, |_| {}).await;
+    let add = |name: &'static str, seed: u32| {
+        let f = fixture(name, &[(name, 50_000)], 16_384, None, false, seed);
+        f.write_to(&t.save_path());
+        f
+    };
+    let (a, b) = (add("gone.bin", 41), add("kept.bin", 42));
+    let gone = t.add(&a, json!({})).await;
+    let kept = t.add(&b, json!({})).await;
+    for h in [&gone, &kept] {
+        t.wait_for(h, "seeding", 30, |x| x["state"] == "seeding")
+            .await;
+    }
+    // Seeding days are recorded for both.
+    wait_get(&t, "/api/v1/stats", "two torrents", |v| v["torrents"] == 2).await;
+    let (s, _) = t
+        .post("/api/v1/torrents/delete", json!({"hashes": [gone.clone()]}))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let info = t.get("/api/v1/stats").await;
+    assert_eq!(
+        (&info["torrents"], &info["removed"]),
+        (&json!(2), &json!(1))
+    );
+
+    // The removed torrent's history goes; the other's stays.
+    let (s, _) = t.call(Method::DELETE, "/api/v1/stats/removed", None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let info = t.get("/api/v1/stats").await;
+    assert_eq!(
+        (&info["torrents"], &info["removed"]),
+        (&json!(1), &json!(0))
+    );
+    let (s, _) = t
+        .call(
+            Method::GET,
+            &format!("/api/v1/stats/torrents/{gone}/days"),
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    t.get(&format!("/api/v1/stats/torrents/{kept}/days")).await;
+
+    // Everything goes, the timeline too; recording goes on.
+    let cleared = urtorrentd::util::now();
+    let (s, _) = t.call(Method::DELETE, "/api/v1/stats", None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let tl = t.get("/api/v1/stats/timeline").await;
+    assert_eq!(tl, json!([]), "{tl}");
+    let v = t.get("/api/v1/stats/transfer").await;
+    let periods = v["periods"].as_array().unwrap();
+    assert_eq!(periods.len(), 1, "{v}");
+    assert!(periods[0]["started"].as_u64().unwrap() >= cleared, "{v}");
+    let info = wait_get(&t, "/api/v1/stats", "the seed recorded again", |v| {
+        v["torrents"] == 1
+    })
+    .await;
+    assert_eq!(info["enabled"], true);
+    assert_eq!(info["removed"], 0);
+    t.stop().await;
+}

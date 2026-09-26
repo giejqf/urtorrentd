@@ -186,6 +186,7 @@ crates/urtorrentd/src/
   geo.rs                GeoIP: user-supplied .mmdb files, country and ASN lookups
   webhooks.rs           webhooks: signed HTTP deliveries of torrent events (ADR 0006)
   interfaces.rs         network interfaces; listen addresses with listen_interface resolved
+  system.rs             the machine (GET /app/system): CPUs, kernel, open files, file systems
   auth.rs log.rs sync.rs error.rs util.rs
 crates/urtorrentd/tests/  API tests on real engines, restart / kill -9, statistics, schema, coverage
 sdk/typescript/         generates TypeScript types from openapi.json and type-checks a client
@@ -416,8 +417,9 @@ webhooks to any URL. Treat it as a security boundary. The daemon never runs a pr
   after repeated login failures, an opt-in localhost bypass and an opt-in subnet
   whitelist.
 - Cookie sessions can be used from browsers, so they get CSRF protection (`Origin` /
-  `Referer`) and `Host` validation. Requests authenticated with an API key do not need
-  them.
+  `Referer`) and `Host` validation, and so do clients exempt from sign-in (a browser on
+  loopback or a whitelisted network reaches them for any page it shows). Requests
+  authenticated with an API key do not need them.
 - Bound everything a request can make us allocate: body size, multipart parts, `.torrent`
   size, list lengths. No panics on request input (the lints in section 7 enforce
   `unwrap` / `expect` / `panic`).

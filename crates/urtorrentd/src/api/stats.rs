@@ -25,6 +25,23 @@ pub(crate) async fn get_stats_info(State(d): State<Arc<Daemon>>) -> ApiResult<Js
     Ok(Json(d.stats_info().await?))
 }
 
+/// Delete every statistic: traffic, days, the timeline and recording
+/// periods of every torrent, removed ones included (the file shrinks).
+/// Settings stay; recording goes on if it is on.
+#[utoipa::path(delete, path = "/stats", tag = "stats", responses((status = 204, description = "Deleted.")))]
+pub(crate) async fn delete_stats(State(d): State<Arc<Daemon>>) -> ApiResult<StatusCode> {
+    d.clear_stats().await?;
+    Ok(no_content())
+}
+
+/// Delete the history of every torrent removed from the session
+/// (`removed` in `GET /stats`).
+#[utoipa::path(delete, path = "/stats/removed", tag = "stats", responses((status = 204, description = "Deleted.")))]
+pub(crate) async fn delete_removed_stats(State(d): State<Arc<Daemon>>) -> ApiResult<StatusCode> {
+    d.purge_removed_stats().await?;
+    Ok(no_content())
+}
+
 /// Session-wide traffic over time.
 #[utoipa::path(get, path = "/stats/transfer", tag = "stats", params(StatsRangeQuery), responses((status = 200, body = TransferStats)))]
 pub(crate) async fn get_transfer_stats(

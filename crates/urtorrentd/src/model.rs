@@ -1122,6 +1122,108 @@ pub struct AppInfo {
     /// schedule's when it names none. `null` when the system's has no name.
     #[schema(required = true)]
     pub time_zone: Option<String>,
+    /// The settings that apply after a restart, as the running engine was
+    /// started with them (`restart_required` names those saved otherwise).
+    pub running: RestartSettings,
+    /// When a setting in `restart_required` was last changed, unix seconds;
+    /// `null` when none waits.
+    #[schema(required = true)]
+    pub restart_required_since: Option<u64>,
+    /// A restart waits for the torrents to be idle
+    /// (`POST /app/restart?when=idle`).
+    pub restart_waiting: bool,
+}
+
+/// The settings that apply after a restart (their meaning is the
+/// settings').
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+pub struct RestartSettings {
+    /// `dht_bootstrap_nodes`; `null` = the identity's defaults.
+    #[schema(required = true)]
+    pub dht_bootstrap_nodes: Option<Vec<String>>,
+    /// `hash_threads`.
+    pub hash_threads: u32,
+    /// `max_open_files`.
+    pub max_open_files: u32,
+    /// `max_checking`.
+    pub max_checking: u32,
+    /// `piece_extent_affinity`.
+    pub piece_extent_affinity: bool,
+    /// `max_concurrent_announces`.
+    pub max_concurrent_announces: u32,
+    /// `disk_thread`.
+    pub disk_thread: bool,
+    /// `zero_copy_send`.
+    pub zero_copy_send: bool,
+}
+
+/// When to restart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RestartWhen {
+    /// At once.
+    #[default]
+    Now,
+    /// Once no torrent is checking or moving and none is receiving data
+    /// (checked every 2 seconds); `DELETE /app/restart` calls it off.
+    Idle,
+}
+
+/// Query of a restart.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct RestartQuery {
+    /// When; default `now`.
+    pub when: Option<RestartWhen>,
+}
+
+/// The machine the daemon runs on (`GET /app/system`).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SystemInfo {
+    /// CPUs the daemon may use (its affinity and quota considered).
+    pub cpus: u32,
+    /// The CPU's model name; `null` = not known.
+    #[schema(required = true)]
+    pub cpu_model: Option<String>,
+    /// The kernel's release (`uname -r`).
+    pub kernel: String,
+    /// Memory of the machine, bytes; `null` = not known.
+    #[schema(required = true)]
+    pub memory: Option<u64>,
+    /// How many files the daemon may have open (`ulimit -n`, the soft
+    /// limit); `null` = no limit.
+    #[schema(required = true)]
+    pub open_files_limit: Option<u64>,
+    /// The hard limit the soft one may be raised to; `null` = no limit.
+    #[schema(required = true)]
+    pub open_files_hard_limit: Option<u64>,
+    /// Files the daemon has open now: content files, sockets, databases;
+    /// `null` = not known.
+    #[schema(required = true)]
+    pub open_files: Option<u64>,
+    /// The file system of the default save path; `null` when it cannot be
+    /// read.
+    #[schema(required = true)]
+    pub save_path_fs: Option<FileSystemInfo>,
+}
+
+/// A file system.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FileSystemInfo {
+    /// The path looked at: the default save path, or its nearest existing
+    /// parent.
+    pub path: String,
+    /// Where the file system is mounted; `null` = not known.
+    #[schema(required = true)]
+    pub mount_point: Option<String>,
+    /// Its type (`ext4`, `xfs`, `btrfs`, `zfs`, `nfs4`, ...); `null` = not
+    /// known.
+    #[schema(required = true)]
+    pub fs_type: Option<String>,
+    /// Size, bytes.
+    pub total: u64,
+    /// Free for the daemon, bytes.
+    pub free: u64,
 }
 
 /// What a directory listing includes.
@@ -1189,6 +1291,176 @@ pub struct AuthStatus {
 pub struct ApiKeyResponse {
     /// Send as `Authorization: Bearer <key>`.
     pub api_key: String,
+}
+
+/// The login and the API key (`GET /auth/account`).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct Account {
+    /// The user name.
+    pub username: String,
+    /// The API key; `null` = none.
+    #[schema(required = true)]
+    pub api_key: Option<ApiKeyInfo>,
+}
+
+/// The API key (never the key itself).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApiKeyInfo {
+    /// When it was made, unix seconds; `null` for keys made before 0.14.0.
+    #[schema(required = true)]
+    pub created: Option<u64>,
+    /// Its last use since the daemon started; `null` = none.
+    #[schema(required = true)]
+    pub last_used: Option<ClientUse>,
+}
+
+/// A use of the API by a client.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ClientUse {
+    /// When, unix seconds.
+    pub time: u64,
+    /// The client's address (through trusted proxies, the one they name).
+    #[schema(required = true)]
+    pub address: Option<String>,
+    /// Its `User-Agent` (as the client sent it: text from anyone who can
+    /// reach the daemon).
+    #[schema(required = true)]
+    pub user_agent: Option<String>,
+}
+
+/// A login session (`GET /auth/sessions`). Sessions live in the daemon's
+/// memory: a restart ends them all.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct LoginSession {
+    /// Its id (not the cookie, which is never shown).
+    pub id: String,
+    /// The session of this request.
+    pub current: bool,
+    /// When it was opened (the login), unix seconds.
+    pub created: u64,
+    /// Its last use; `user_agent` is the login's.
+    pub last_used: ClientUse,
+}
+
+/// Failed logins from an address (`GET /auth/bans`).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct LoginBan {
+    /// The address.
+    pub address: String,
+    /// Failed logins since the last success (a ban comes at
+    /// `api_max_auth_failures`).
+    pub failures: u32,
+    /// The last failed login, unix seconds.
+    pub last_failure: u64,
+    /// Banned from the API until then, unix seconds (`api_ban_duration`
+    /// after the last failure); `null` = not banned.
+    #[schema(required = true)]
+    pub banned_until: Option<u64>,
+    /// The `User-Agent` of the last failed login.
+    #[schema(required = true)]
+    pub user_agent: Option<String>,
+}
+
+/// Path of one login session.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct SessionPath {
+    /// The session's id.
+    pub id: String,
+}
+
+/// Path of one address with failed logins.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct BanPath {
+    /// The address.
+    pub address: String,
+}
+
+/// How the daemon sees a request (`POST /auth/check`): its client through
+/// the proxies, the host check, the authentication and the cross-origin
+/// check, as the settings apply them.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RequestCheck {
+    /// The address the connection comes from.
+    #[schema(required = true)]
+    pub peer: Option<String>,
+    /// The client's address as the daemon uses it for bans,
+    /// `api_bypass_local_auth` and `api_auth_whitelist`: the one a trusted
+    /// proxy forwards, else the peer's.
+    #[schema(required = true)]
+    pub client: Option<String>,
+    /// How the peer's forwarding headers were taken.
+    pub proxy: ProxyCheck,
+    /// The host the request is for (`X-Forwarded-Host` from a trusted
+    /// proxy, else `Host`).
+    #[schema(required = true)]
+    pub host: Option<String>,
+    /// Why the host passed.
+    pub host_check: HostCheck,
+    /// A trusted proxy says the client used HTTPS: the session cookie is
+    /// `Secure`.
+    pub https: bool,
+    /// How the request was authenticated.
+    pub auth: AuthMethod,
+    /// The cross-origin check of state-changing requests.
+    pub csrf: CsrfCheck,
+}
+
+/// How a peer's forwarding headers were taken.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxyCheck {
+    /// No proxy: no forwarding headers.
+    None,
+    /// The peer is in `api_trusted_proxies`: its forwarding headers name
+    /// the client and the host.
+    Trusted,
+    /// Forwarding headers from a peer not in `api_trusted_proxies`: not
+    /// believed, and the client is exempt from nothing.
+    Untrusted,
+}
+
+/// Why a request's host passed the `Host` check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum HostCheck {
+    /// No host named.
+    None,
+    /// An IP address: always accepted.
+    Address,
+    /// A name in `api_allowed_hosts`.
+    Allowed,
+}
+
+/// How a request was authenticated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthMethod {
+    /// A login session's cookie.
+    Session,
+    /// The API key.
+    ApiKey,
+    /// None needed: a loopback client (`api_bypass_local_auth`).
+    Loopback,
+    /// None needed: a client in `api_auth_whitelist`.
+    Whitelist,
+}
+
+/// The cross-origin check of a state-changing request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CsrfCheck {
+    /// Off (`api_csrf_protection`).
+    Off,
+    /// Not applied: requests with the API key are never checked.
+    NotApplied,
+    /// Passed: the browser's `Origin` (or `Referer`) is this host.
+    SameOrigin,
+    /// Passed: the origin is in `api_cors_origins`.
+    ListedOrigin,
+    /// Passed: no origin named (not a browser's cross-origin request).
+    NoOrigin,
 }
 
 /// Query of the main log.
@@ -1582,6 +1854,9 @@ pub struct StatsInfo {
     /// Oldest day kept, unix seconds; `null` = none.
     #[schema(required = true)]
     pub oldest_day: Option<u64>,
+    /// Of `torrents`, those removed from the session (their history is
+    /// kept until `stats_day_retention`, or `DELETE /stats/removed`).
+    pub removed: u64,
 }
 
 /// A GeoIP database file.
@@ -1596,6 +1871,10 @@ pub struct GeoDatabaseInfo {
     /// When it was built, unix seconds; `null` = not loaded.
     #[schema(required = true)]
     pub built: Option<u64>,
+    /// When the database in use was read from the file, unix seconds;
+    /// `null` = not loaded.
+    #[schema(required = true)]
+    pub loaded: Option<u64>,
     /// Why it could not be read (at the start, or the last reload; a failed
     /// reload keeps the database read before).
     #[schema(required = true)]

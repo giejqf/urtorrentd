@@ -187,7 +187,11 @@ and these settings:
   `api_auth_whitelist`), and the daemon logs a warning once.
 - `api_allowed_hosts`: the public name (`["torrents.example.com"]`).
 - `api_csrf_protection` needs nothing: it compares the `Origin`'s host and
-  port with the request's, not the scheme, so TLS at the proxy is fine.
+  port with the request's, not the scheme, so TLS at the proxy is fine. It
+  applies to every state-changing request but those with the API key,
+  clients exempt from sign-in included.
+- `POST /api/v1/auth/check` shows how the daemon sees a request through the
+  proxy ([api.md](api.md#sign-in-and-security)).
 
 Caddy streams `GET /api/v1/events` as it comes (the daemon sends a comment
 every 15 s on an idle stream, so proxy timeouts do not end it); nginx needs

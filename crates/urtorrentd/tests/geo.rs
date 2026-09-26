@@ -322,6 +322,7 @@ async fn geoip_settings_are_checked_and_files_reloaded() {
     assert_eq!(g["country"]["database_type"], "GeoLite2-Country", "{g}");
     assert_eq!(g["country"]["built"], 100);
     assert_eq!(g["country"]["error"], Value::Null);
+    let read_at = g["country"]["loaded"].as_u64().unwrap();
 
     // A monthly update replaces the file: it is read again.
     mmdb::write(
@@ -331,10 +332,11 @@ async fn geoip_settings_are_checked_and_files_reloaded() {
         200,
         vec![("127.0.0.0/8", V::Map(Vec::new()))],
     );
-    wait_get(&t, "/api/v1/app", "the new database", |v| {
+    let v = wait_get(&t, "/api/v1/app", "the new database", |v| {
         v["geoip"]["country"]["built"] == 200
     })
     .await;
+    assert!(v["geoip"]["country"]["loaded"].as_u64().unwrap() >= read_at);
     let log = t.get("/api/v1/log").await;
     assert!(log.to_string().contains("reloaded"), "{log}");
     t.stop().await;

@@ -20,6 +20,7 @@ use axum::response::{IntoResponse, Response};
 use super::SESSION_COOKIE;
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ErrorCode};
+use crate::model::{AuthMethod, CsrfCheck, HostCheck, ProxyCheck, RequestCheck};
 use crate::util::{Cidr, normalize_ip};
 
 /// Who is calling (inserted into request extensions by [`authenticate`]).
@@ -303,25 +304,14 @@ pub(crate) async fn authenticate(
                 "invalid API key",
             );
         }
+        d.auth.api_key_used(ip, user_agent(req.headers()));
         Principal::ApiKey
     } else if let Some(sid) = session_cookie(req.headers()) {
-        if !d.auth.touch_session(&sid, Duration::from_secs(timeout)) {
+        if !d.auth.touch_session(&sid, Duration::from_secs(timeout), ip) {
             return refuse(
                 StatusCode::UNAUTHORIZED,
                 ErrorCode::Unauthorized,
                 "the session has expired; log in again",
-            );
-        }
-        let unsafe_method = !matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS);
-        let host = req
-            .extensions()
-            .get::<Client>()
-            .and_then(|c| c.host.clone());
-        if csrf && unsafe_method && cross_origin(req.headers(), host.as_deref(), &cors) {
-            return refuse(
-                StatusCode::FORBIDDEN,
-                ErrorCode::CrossOrigin,
-                "cross-origin request refused",
             );
         }
         Principal::Session(sid)
@@ -332,8 +322,106 @@ pub(crate) async fn authenticate(
             "log in or send an API key",
         );
     };
+    // Browsers send cookies, and reach loopback and whitelisted addresses
+    // for any page they show: a state-changing request needs the page's
+    // origin to be this host (or listed). A request with the API key is
+    // never a browser's own doing.
+    let unsafe_method = !matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS);
+    if csrf && unsafe_method && principal != Principal::ApiKey {
+        let host = req
+            .extensions()
+            .get::<Client>()
+            .and_then(|c| c.host.clone());
+        if cross_origin(req.headers(), host.as_deref(), &cors) {
+            return refuse(
+                StatusCode::FORBIDDEN,
+                ErrorCode::CrossOrigin,
+                "cross-origin request refused",
+            );
+        }
+    }
     req.extensions_mut().insert(principal);
     next.run(req).await
+}
+
+/// The request's `User-Agent`, as kept.
+pub(crate) fn user_agent(headers: &HeaderMap) -> Option<String> {
+    crate::auth::user_agent(
+        headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok()),
+    )
+}
+
+/// How the daemon sees a request that got through [`gate`] and
+/// [`authenticate`] (`POST /auth/check`).
+pub(crate) fn check(
+    d: &Daemon,
+    parts: &axum::http::Extensions,
+    headers: &HeaderMap,
+) -> RequestCheck {
+    let (trusted, whitelist, csrf, cors) = {
+        let st = d.state();
+        let s = &st.settings;
+        (
+            s.api_trusted_proxies
+                .iter()
+                .filter_map(|c| Cidr::parse(c))
+                .collect::<Vec<_>>(),
+            s.api_auth_whitelist
+                .iter()
+                .filter_map(|c| Cidr::parse(c))
+                .collect::<Vec<_>>(),
+            s.api_csrf_protection,
+            s.api_cors_origins.clone(),
+        )
+    };
+    let peer = peer_ip(parts);
+    let client = parts.get::<Client>();
+    let client_ip = client.and_then(|c| c.ip).or(peer);
+    let host = client.and_then(|c| c.host.clone());
+    let proxy = if client.is_some_and(|c| c.forwarded_by_untrusted) {
+        ProxyCheck::Untrusted
+    } else if peer.is_some_and(|p| trusted.iter().any(|c| c.contains(p))) {
+        ProxyCheck::Trusted
+    } else {
+        ProxyCheck::None
+    };
+    let host_check = match &host {
+        None => HostCheck::None,
+        Some(h) if host_part(h.trim()).parse::<IpAddr>().is_ok() => HostCheck::Address,
+        Some(_) => HostCheck::Allowed,
+    };
+    let auth = match parts.get::<Principal>() {
+        Some(Principal::Session(_)) => AuthMethod::Session,
+        Some(Principal::ApiKey) => AuthMethod::ApiKey,
+        _ if client_ip.is_some_and(|ip| whitelist.iter().any(|c| c.contains(ip))) => {
+            AuthMethod::Whitelist
+        }
+        _ => AuthMethod::Loopback,
+    };
+    let named = headers.contains_key(header::ORIGIN) || headers.contains_key(header::REFERER);
+    let csrf = if !csrf {
+        CsrfCheck::Off
+    } else if auth == AuthMethod::ApiKey {
+        CsrfCheck::NotApplied
+    } else if super::cors::listed_origin(headers, &cors).is_some() {
+        CsrfCheck::ListedOrigin
+    } else if named {
+        CsrfCheck::SameOrigin
+    } else {
+        CsrfCheck::NoOrigin
+    };
+    RequestCheck {
+        peer: peer.map(|p| p.to_string()),
+        client: client_ip.map(|p| p.to_string()),
+        proxy,
+        host,
+        host_check,
+        https: client.is_some_and(|c| c.https),
+        auth,
+        csrf,
+    }
 }
 
 #[cfg(test)]

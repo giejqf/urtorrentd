@@ -15,7 +15,7 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::util::{hex, random_bytes};
+use crate::util::{hex, now, random_bytes};
 
 /// Stored credentials.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +28,10 @@ pub struct Credentials {
     /// SHA-256 (hex) of the API key; `None` when no key exists.
     #[serde(default)]
     pub api_key_hash: Option<String>,
+    /// When the API key was made, unix seconds (keys made before 0.14.0
+    /// have none).
+    #[serde(default)]
+    pub api_key_created: Option<u64>,
 }
 
 impl Default for Credentials {
@@ -36,6 +40,7 @@ impl Default for Credentials {
             username: "admin".into(),
             password_hash: None,
             api_key_hash: None,
+            api_key_created: None,
         }
     }
 }
@@ -73,6 +78,76 @@ pub fn temporary_password() -> std::io::Result<String> {
 struct Failures {
     count: u32,
     banned_until: Option<Instant>,
+    /// The last failure, unix seconds.
+    last: u64,
+    user_agent: Option<String>,
+}
+
+/// Failed logins from one address, as `GET /auth/bans` shows them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailedLogins {
+    /// The address.
+    pub ip: IpAddr,
+    /// Failed logins since the last success or ban.
+    pub count: u32,
+    /// The last one, unix seconds.
+    pub last: u64,
+    /// Banned until then, unix seconds.
+    pub banned_until: Option<u64>,
+    /// The `User-Agent` of the last one.
+    pub user_agent: Option<String>,
+}
+
+/// A login session.
+#[derive(Debug, Clone)]
+struct Session {
+    last: Instant,
+    created: u64,
+    last_seen: u64,
+    ip: Option<IpAddr>,
+    user_agent: Option<String>,
+}
+
+/// Where a login session or the API key was last used from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Use {
+    /// When, unix seconds.
+    pub time: u64,
+    /// The client's address.
+    pub ip: Option<IpAddr>,
+    /// Its `User-Agent`.
+    pub user_agent: Option<String>,
+}
+
+/// A login session, as `GET /auth/sessions` shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionInfo {
+    /// Its public id (never the cookie).
+    pub id: String,
+    /// When it was opened, unix seconds.
+    pub created: u64,
+    /// Its last use.
+    pub last: Use,
+}
+
+/// The public id of a session: a digest of the cookie, which it does not
+/// give away.
+pub fn session_id(sid: &str) -> String {
+    sha256_hex(sid)[..16].to_string()
+}
+
+/// `User-Agent` values are kept to this many characters.
+const USER_AGENT_MAX: usize = 200;
+
+/// A `User-Agent` as kept: trimmed, control characters dropped, bounded.
+pub fn user_agent(ua: Option<&str>) -> Option<String> {
+    let ua: String = ua?
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(USER_AGENT_MAX)
+        .collect();
+    let ua = ua.trim();
+    (!ua.is_empty()).then(|| ua.to_string())
 }
 
 /// Authentication state.
@@ -81,9 +156,11 @@ pub struct Auth {
     creds: Mutex<Credentials>,
     /// Hash of this run's temporary password, when none is configured.
     temporary: Mutex<Option<String>>,
-    /// Login sessions: id -> last use.
-    sessions: Mutex<HashMap<String, Instant>>,
+    /// Login sessions by cookie.
+    sessions: Mutex<HashMap<String, Session>>,
     failures: Mutex<HashMap<IpAddr, Failures>>,
+    /// The API key's last use in this run.
+    key_used: Mutex<Option<Use>>,
 }
 
 impl Auth {
@@ -94,6 +171,7 @@ impl Auth {
             temporary: Mutex::new(None),
             sessions: Mutex::new(HashMap::new()),
             failures: Mutex::new(HashMap::new()),
+            key_used: Mutex::new(None),
         }
     }
 
@@ -145,12 +223,20 @@ impl Auth {
     }
 
     /// Count a failed login; returns whether the address is now banned.
-    pub fn record_failure(&self, ip: IpAddr, max: u32, ban: Duration) -> bool {
+    pub fn record_failure(
+        &self,
+        ip: IpAddr,
+        max: u32,
+        ban: Duration,
+        user_agent: Option<String>,
+    ) -> bool {
         let Ok(mut f) = self.failures.lock() else {
             return false;
         };
         let e = f.entry(ip).or_default();
         e.count += 1;
+        e.last = now();
+        e.user_agent = user_agent;
         if e.count >= max.max(1) {
             e.banned_until = Some(Instant::now() + ban);
             true
@@ -159,36 +245,104 @@ impl Auth {
         }
     }
 
-    /// Forget failed logins of `ip` after a successful one.
-    pub fn clear_failures(&self, ip: IpAddr) {
-        if let Ok(mut f) = self.failures.lock() {
-            f.remove(&ip);
-        }
+    /// Forget failed logins of `ip` (after a successful one, or an unban);
+    /// returns whether there were any.
+    pub fn clear_failures(&self, ip: IpAddr) -> bool {
+        self.failures
+            .lock()
+            .is_ok_and(|mut f| f.remove(&ip).is_some())
     }
 
-    /// Open a login session; returns its id.
-    pub fn new_session(&self) -> std::io::Result<String> {
+    /// Addresses with failed logins, banned ones included, most recent
+    /// first (expired bans are forgotten).
+    pub fn failed_logins(&self) -> Vec<FailedLogins> {
+        let Ok(mut f) = self.failures.lock() else {
+            return Vec::new();
+        };
+        let (instant, unix) = (Instant::now(), now());
+        f.retain(|_, e| e.banned_until.is_none_or(|u| u > instant));
+        let mut out: Vec<FailedLogins> = f
+            .iter()
+            .map(|(ip, e)| FailedLogins {
+                ip: *ip,
+                count: e.count,
+                last: e.last,
+                banned_until: e
+                    .banned_until
+                    .map(|u| unix + u.saturating_duration_since(instant).as_secs()),
+                user_agent: e.user_agent.clone(),
+            })
+            .collect();
+        out.sort_by(|a, b| b.last.cmp(&a.last).then(a.ip.cmp(&b.ip)));
+        out
+    }
+
+    /// Open a login session for a client; returns its cookie.
+    pub fn new_session(
+        &self,
+        ip: Option<IpAddr>,
+        user_agent: Option<String>,
+    ) -> std::io::Result<String> {
         let sid = hex(&random_bytes::<32>()?);
+        let t = now();
         if let Ok(mut s) = self.sessions.lock() {
-            s.insert(sid.clone(), Instant::now());
+            s.insert(
+                sid.clone(),
+                Session {
+                    last: Instant::now(),
+                    created: t,
+                    last_seen: t,
+                    ip,
+                    user_agent,
+                },
+            );
         }
         Ok(sid)
     }
 
-    /// Whether `sid` is a live session (idle less than `timeout`); refreshes it.
-    pub fn touch_session(&self, sid: &str, timeout: Duration) -> bool {
+    /// Whether `sid` is a live session (idle less than `timeout`); refreshes
+    /// it, and notes the address it is used from.
+    pub fn touch_session(&self, sid: &str, timeout: Duration, ip: Option<IpAddr>) -> bool {
         let Ok(mut s) = self.sessions.lock() else {
             return false;
         };
-        let now = Instant::now();
-        s.retain(|_, last| now.duration_since(*last) < timeout);
+        let now_i = Instant::now();
+        s.retain(|_, x| now_i.duration_since(x.last) < timeout);
         match s.get_mut(sid) {
-            Some(last) => {
-                *last = now;
+            Some(x) => {
+                x.last = now_i;
+                x.last_seen = now();
+                if ip.is_some() {
+                    x.ip = ip;
+                }
                 true
             }
             None => false,
         }
+    }
+
+    /// The live login sessions (idle less than `timeout`), most recently
+    /// used first.
+    pub fn sessions(&self, timeout: Duration) -> Vec<SessionInfo> {
+        let Ok(mut s) = self.sessions.lock() else {
+            return Vec::new();
+        };
+        let now_i = Instant::now();
+        s.retain(|_, x| now_i.duration_since(x.last) < timeout);
+        let mut out: Vec<SessionInfo> = s
+            .iter()
+            .map(|(sid, x)| SessionInfo {
+                id: session_id(sid),
+                created: x.created,
+                last: Use {
+                    time: x.last_seen,
+                    ip: x.ip,
+                    user_agent: x.user_agent.clone(),
+                },
+            })
+            .collect();
+        out.sort_by(|a, b| b.last.time.cmp(&a.last.time).then(a.id.cmp(&b.id)));
+        out
     }
 
     /// Close a session.
@@ -196,6 +350,26 @@ impl Auth {
         if let Ok(mut s) = self.sessions.lock() {
             s.remove(sid);
         }
+    }
+
+    /// Close the session with this public id; returns whether there was one.
+    pub fn end_session_by_id(&self, id: &str) -> bool {
+        let Ok(mut s) = self.sessions.lock() else {
+            return false;
+        };
+        let before = s.len();
+        s.retain(|sid, _| session_id(sid) != id);
+        s.len() < before
+    }
+
+    /// Close every session but `keep` (a cookie); returns how many closed.
+    pub fn end_other_sessions(&self, keep: Option<&str>) -> usize {
+        let Ok(mut s) = self.sessions.lock() else {
+            return 0;
+        };
+        let before = s.len();
+        s.retain(|sid, _| Some(sid.as_str()) == keep);
+        before - s.len()
     }
 
     /// Close every session (after a credentials change).
@@ -211,17 +385,45 @@ impl Auth {
         stored.is_some_and(|h| ct_eq(h.as_bytes(), sha256_hex(key).as_bytes()))
     }
 
+    /// Note a use of the API key.
+    pub fn api_key_used(&self, ip: Option<IpAddr>, user_agent: Option<String>) {
+        if let Ok(mut u) = self.key_used.lock() {
+            *u = Some(Use {
+                time: now(),
+                ip,
+                user_agent,
+            });
+        }
+    }
+
+    /// The API key's last use in this run.
+    pub fn api_key_use(&self) -> Option<Use> {
+        self.key_used.lock().ok().and_then(|u| u.clone())
+    }
+
     /// Make a new API key (replacing any old one). Returns the key and the
     /// credentials to persist.
     pub fn rotate_api_key(&self) -> std::io::Result<(String, Credentials)> {
         let key = format!("urtd_{}", hex(&random_bytes::<24>()?));
-        let creds = self.update(|c| c.api_key_hash = Some(sha256_hex(&key)));
+        let creds = self.update(|c| {
+            c.api_key_hash = Some(sha256_hex(&key));
+            c.api_key_created = Some(now());
+        });
+        if let Ok(mut u) = self.key_used.lock() {
+            *u = None;
+        }
         Ok((key, creds))
     }
 
     /// Remove the API key. Returns the credentials to persist.
     pub fn delete_api_key(&self) -> Credentials {
-        self.update(|c| c.api_key_hash = None)
+        if let Ok(mut u) = self.key_used.lock() {
+            *u = None;
+        }
+        self.update(|c| {
+            c.api_key_hash = None;
+            c.api_key_created = None;
+        })
     }
 
     /// Whether no password is stored yet (first-run setup is open).
@@ -346,17 +548,53 @@ mod tests {
     fn bans_and_sessions() {
         let auth = Auth::new(Credentials::default());
         let ip: IpAddr = "10.0.0.1".parse().unwrap();
-        assert!(!auth.record_failure(ip, 2, Duration::from_secs(60)));
-        assert!(auth.record_failure(ip, 2, Duration::from_secs(60)));
+        let min = Duration::from_secs(60);
+        assert!(!auth.record_failure(ip, 2, min, None));
+        assert_eq!(auth.failed_logins()[0].count, 1);
+        assert_eq!(auth.failed_logins()[0].banned_until, None);
+        assert!(auth.record_failure(ip, 2, min, user_agent(Some("curl/8.9"))));
         assert!(auth.is_banned(ip));
-        auth.clear_failures(ip);
+        let f = &auth.failed_logins()[0];
+        assert!(f.banned_until.unwrap() >= now() + 59);
+        assert_eq!(f.user_agent.as_deref(), Some("curl/8.9"));
+        assert!(auth.clear_failures(ip));
+        assert!(!auth.clear_failures(ip));
         assert!(!auth.is_banned(ip));
+        assert!(auth.failed_logins().is_empty());
 
-        let sid = auth.new_session().unwrap();
-        assert!(auth.touch_session(&sid, Duration::from_secs(60)));
+        let sid = auth.new_session(Some(ip), None).unwrap();
+        assert!(auth.touch_session(&sid, min, None));
         auth.end_session(&sid);
-        assert!(!auth.touch_session(&sid, Duration::from_secs(60)));
-        let sid = auth.new_session().unwrap();
-        assert!(!auth.touch_session(&sid, Duration::ZERO));
+        assert!(!auth.touch_session(&sid, min, None));
+        let sid = auth.new_session(None, None).unwrap();
+        assert!(!auth.touch_session(&sid, Duration::ZERO, None));
+
+        // Listed by a public id, ended by it or with the others.
+        let a = auth
+            .new_session(Some(ip), user_agent(Some("Firefox")))
+            .unwrap();
+        let b = auth.new_session(None, None).unwrap();
+        let c = auth.new_session(None, None).unwrap();
+        let ids: Vec<String> = auth.sessions(min).into_iter().map(|s| s.id).collect();
+        assert_eq!(ids.len(), 3);
+        assert!(
+            !ids.iter()
+                .any(|id| a.contains(id.as_str()) || id.len() != 16)
+        );
+        assert!(auth.end_session_by_id(&session_id(&b)));
+        assert!(!auth.end_session_by_id(&session_id(&b)));
+        assert_eq!(auth.end_other_sessions(Some(&a)), 1);
+        assert!(!auth.touch_session(&c, min, None));
+        let left = auth.sessions(min);
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].last.user_agent.as_deref(), Some("Firefox"));
+    }
+
+    #[test]
+    fn user_agents_are_bounded_text() {
+        assert_eq!(user_agent(None), None);
+        assert_eq!(user_agent(Some("  ")), None);
+        assert_eq!(user_agent(Some("a\u{7}b\n")).as_deref(), Some("ab"));
+        assert_eq!(user_agent(Some(&"x".repeat(500))).unwrap().len(), 200);
     }
 }

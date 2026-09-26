@@ -476,11 +476,104 @@
         "tags": [
           "app"
         ],
-        "summary": "Restart the daemon: shut it down gracefully (trackers are told, state is\nsaved), then the process starts again with the same arguments, so\nsettings that apply after a restart (`restart_required`) take effect.\nThe API is away for the few seconds that takes.",
+        "summary": "Restart the daemon: shut it down gracefully (trackers are told, state is\nsaved), then the process starts again with the same arguments, so\nsettings that apply after a restart (`restart_required`) take effect.\nThe API is away for the few seconds that takes. `when=idle` waits until\nno torrent is checking or moving and none is receiving data\n(`restart_waiting` in `GET /app` until then).",
         "operationId": "restart",
+        "parameters": [
+          {
+            "name": "when",
+            "in": "query",
+            "description": "When; default `now`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/RestartWhen"
+            }
+          }
+        ],
         "responses": {
           "202": {
-            "description": "Restarting."
+            "description": "Restarting, or waiting to."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Call off a restart that waits for the torrents to be idle.",
+        "operationId": "cancel_restart",
+        "responses": {
+          "204": {
+            "description": "No restart waits (any that did is called off)."
           },
           "400": {
             "description": "Malformed request or invalid value.",
@@ -565,6 +658,188 @@
         "responses": {
           "202": {
             "description": "Shutting down."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/system": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "The machine the daemon runs on: CPUs, kernel, memory, the open-file\nlimit and how many are open, and the default save path's file system.",
+        "operationId": "get_system_info",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/account": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "The login's user name, and the API key (when it was made, its last use).",
+        "operationId": "get_account",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
           },
           "400": {
             "description": "Malformed request or invalid value.",
@@ -738,6 +1013,286 @@
         "responses": {
           "204": {
             "description": "Deleted."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/bans": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Addresses with failed logins since their last success, most recent\nfirst: those banned from the API (`api_max_auth_failures` reached, for\n`api_ban_duration`) and those on their way.",
+        "operationId": "list_login_bans",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LoginBan"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/bans/{address}": {
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Lift an address's ban and forget its failed logins.",
+        "operationId": "unban_login",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "description": "The address.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Forgotten."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/check": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "How the daemon sees this request: the client through the proxies\n(`api_trusted_proxies`), the host check (`api_allowed_hosts`), the\nauthentication, and the cross-origin check (`api_csrf_protection`). A\nPOST, so a browser sends its `Origin` as with any change; a request the\nchecks refuse gets their error instead.",
+        "operationId": "check_request",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestCheck"
+                }
+              }
+            }
           },
           "400": {
             "description": "Malformed request or invalid value.",
@@ -1021,6 +1576,277 @@
         "responses": {
           "204": {
             "description": "Logged out."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/sessions": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "The login sessions open now, most recently used first. They live in the\ndaemon's memory: a restart ends them.",
+        "operationId": "list_sessions",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LoginSession"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "End every login session but this request's.",
+        "operationId": "end_other_sessions",
+        "responses": {
+          "204": {
+            "description": "Ended."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/sessions/{id}": {
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "End a login session (its client has to log in again).",
+        "operationId": "end_session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The session's id.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Ended."
           },
           "400": {
             "description": "Malformed request or invalid value.",
@@ -4823,6 +5649,88 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Delete every statistic: traffic, days, the timeline and recording\nperiods of every torrent, removed ones included (the file shrinks).\nSettings stay; recording goes on if it is on.",
+        "operationId": "delete_stats",
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/stats/geo": {
@@ -5370,6 +6278,90 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/removed": {
+      "delete": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Delete the history of every torrent removed from the session\n(`removed` in `GET /stats`).",
+        "operationId": "delete_removed_stats",
+        "responses": {
+          "204": {
+            "description": "Deleted."
           },
           "400": {
             "description": "Malformed request or invalid value.",
@@ -12452,6 +13444,31 @@
   },
   "components": {
     "schemas": {
+      "Account": {
+        "type": "object",
+        "description": "The login and the API key (`GET /auth/account`).",
+        "required": [
+          "username",
+          "api_key"
+        ],
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "The user name."
+          },
+          "api_key": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ApiKeyInfo",
+                "description": "The API key; `null` = none."
+              }
+            ]
+          }
+        }
+      },
       "AddFailure": {
         "type": "object",
         "description": "A source that could not be added.",
@@ -12829,6 +13846,36 @@
         },
         "additionalProperties": false
       },
+      "ApiKeyInfo": {
+        "type": "object",
+        "description": "The API key (never the key itself).",
+        "required": [
+          "created",
+          "last_used"
+        ],
+        "properties": {
+          "created": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When it was made, unix seconds; `null` for keys made before 0.14.0.",
+            "minimum": 0
+          },
+          "last_used": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ClientUse",
+                "description": "Its last use since the daemon started; `null` = none."
+              }
+            ]
+          }
+        }
+      },
       "ApiKeyResponse": {
         "type": "object",
         "description": "A new API key (shown once; only its hash is stored).",
@@ -12859,7 +13906,10 @@
           "instance_name",
           "listen_addresses",
           "fetched_trackers",
-          "time_zone"
+          "time_zone",
+          "running",
+          "restart_required_since",
+          "restart_waiting"
         ],
         "properties": {
           "version": {
@@ -12942,8 +13992,35 @@
               "null"
             ],
             "description": "The daemon's system time zone (IANA name): the alternative-limits\nschedule's when it names none. `null` when the system's has no name."
+          },
+          "running": {
+            "$ref": "#/components/schemas/RestartSettings",
+            "description": "The settings that apply after a restart, as the running engine was\nstarted with them (`restart_required` names those saved otherwise)."
+          },
+          "restart_required_since": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When a setting in `restart_required` was last changed, unix seconds;\n`null` when none waits.",
+            "minimum": 0
+          },
+          "restart_waiting": {
+            "type": "boolean",
+            "description": "A restart waits for the torrents to be idle\n(`POST /app/restart?when=idle`)."
           }
         }
+      },
+      "AuthMethod": {
+        "type": "string",
+        "description": "How a request was authenticated.",
+        "enum": [
+          "session",
+          "api_key",
+          "loopback",
+          "whitelist"
+        ]
       },
       "AuthStatus": {
         "type": "object",
@@ -13116,6 +14193,37 @@
           }
         }
       },
+      "ClientUse": {
+        "type": "object",
+        "description": "A use of the API by a client.",
+        "required": [
+          "time",
+          "address",
+          "user_agent"
+        ],
+        "properties": {
+          "time": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When, unix seconds.",
+            "minimum": 0
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The client's address (through trusted proxies, the one they name)."
+          },
+          "user_agent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its `User-Agent` (as the client sent it: text from anyone who can\nreach the daemon)."
+          }
+        }
+      },
       "ConnectionStatus": {
         "type": "string",
         "description": "Whether peers can reach us.",
@@ -13201,6 +14309,17 @@
             "description": "New password (at least 8 characters)."
           }
         }
+      },
+      "CsrfCheck": {
+        "type": "string",
+        "description": "The cross-origin check of a state-changing request.",
+        "enum": [
+          "off",
+          "not_applied",
+          "same_origin",
+          "listed_origin",
+          "no_origin"
+        ]
       },
       "DeleteRequest": {
         "type": "object",
@@ -13551,6 +14670,49 @@
           }
         }
       },
+      "FileSystemInfo": {
+        "type": "object",
+        "description": "A file system.",
+        "required": [
+          "path",
+          "mount_point",
+          "fs_type",
+          "total",
+          "free"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The path looked at: the default save path, or its nearest existing\nparent."
+          },
+          "mount_point": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the file system is mounted; `null` = not known."
+          },
+          "fs_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its type (`ext4`, `xfs`, `btrfs`, `zfs`, `nfs4`, ...); `null` = not\nknown."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Size, bytes.",
+            "minimum": 0
+          },
+          "free": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Free for the daemon, bytes.",
+            "minimum": 0
+          }
+        }
+      },
       "GeoDatabaseInfo": {
         "type": "object",
         "description": "A GeoIP database file.",
@@ -13558,6 +14720,7 @@
           "path",
           "database_type",
           "built",
+          "loaded",
           "error"
         ],
         "properties": {
@@ -13579,6 +14742,15 @@
             ],
             "format": "int64",
             "description": "When it was built, unix seconds; `null` = not loaded.",
+            "minimum": 0
+          },
+          "loaded": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the database in use was read from the file, unix seconds;\n`null` = not loaded.",
             "minimum": 0
           },
           "error": {
@@ -13964,6 +15136,15 @@
           }
         }
       },
+      "HostCheck": {
+        "type": "string",
+        "description": "Why a request's host passed the `Host` check.",
+        "enum": [
+          "none",
+          "address",
+          "allowed"
+        ]
+      },
       "Identity": {
         "type": "string",
         "description": "The identity peers and trackers see (a urtorrent profile).",
@@ -14205,6 +15386,51 @@
           "error"
         ]
       },
+      "LoginBan": {
+        "type": "object",
+        "description": "Failed logins from an address (`GET /auth/bans`).",
+        "required": [
+          "address",
+          "failures",
+          "last_failure",
+          "banned_until",
+          "user_agent"
+        ],
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "The address."
+          },
+          "failures": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Failed logins since the last success (a ban comes at\n`api_max_auth_failures`).",
+            "minimum": 0
+          },
+          "last_failure": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The last failed login, unix seconds.",
+            "minimum": 0
+          },
+          "banned_until": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Banned from the API until then, unix seconds (`api_ban_duration`\nafter the last failure); `null` = not banned.",
+            "minimum": 0
+          },
+          "user_agent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `User-Agent` of the last failed login."
+          }
+        }
+      },
       "LoginRequest": {
         "type": "object",
         "description": "Log in.",
@@ -14220,6 +15446,36 @@
           "password": {
             "type": "string",
             "description": "Password."
+          }
+        }
+      },
+      "LoginSession": {
+        "type": "object",
+        "description": "A login session (`GET /auth/sessions`). Sessions live in the daemon's\nmemory: a restart ends them all.",
+        "required": [
+          "id",
+          "current",
+          "created",
+          "last_used"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Its id (not the cookie, which is never shown)."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "The session of this request."
+          },
+          "created": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was opened (the login), unix seconds.",
+            "minimum": 0
+          },
+          "last_used": {
+            "$ref": "#/components/schemas/ClientUse",
+            "description": "Its last use; `user_agent` is the login's."
           }
         }
       },
@@ -14877,6 +16133,15 @@
           "failed"
         ]
       },
+      "ProxyCheck": {
+        "type": "string",
+        "description": "How a peer's forwarding headers were taken.",
+        "enum": [
+          "none",
+          "trusted",
+          "untrusted"
+        ]
+      },
       "QueueMoveTo": {
         "type": "string",
         "description": "Where to move torrents in the queue.",
@@ -14994,6 +16259,133 @@
             "description": "New path relative to the save path."
           }
         }
+      },
+      "RequestCheck": {
+        "type": "object",
+        "description": "How the daemon sees a request (`POST /auth/check`): its client through\nthe proxies, the host check, the authentication and the cross-origin\ncheck, as the settings apply them.",
+        "required": [
+          "peer",
+          "client",
+          "proxy",
+          "host",
+          "host_check",
+          "https",
+          "auth",
+          "csrf"
+        ],
+        "properties": {
+          "peer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The address the connection comes from."
+          },
+          "client": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The client's address as the daemon uses it for bans,\n`api_bypass_local_auth` and `api_auth_whitelist`: the one a trusted\nproxy forwards, else the peer's."
+          },
+          "proxy": {
+            "$ref": "#/components/schemas/ProxyCheck",
+            "description": "How the peer's forwarding headers were taken."
+          },
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The host the request is for (`X-Forwarded-Host` from a trusted\nproxy, else `Host`)."
+          },
+          "host_check": {
+            "$ref": "#/components/schemas/HostCheck",
+            "description": "Why the host passed."
+          },
+          "https": {
+            "type": "boolean",
+            "description": "A trusted proxy says the client used HTTPS: the session cookie is\n`Secure`."
+          },
+          "auth": {
+            "$ref": "#/components/schemas/AuthMethod",
+            "description": "How the request was authenticated."
+          },
+          "csrf": {
+            "$ref": "#/components/schemas/CsrfCheck",
+            "description": "The cross-origin check of state-changing requests."
+          }
+        }
+      },
+      "RestartSettings": {
+        "type": "object",
+        "description": "The settings that apply after a restart (their meaning is the\nsettings').",
+        "required": [
+          "dht_bootstrap_nodes",
+          "hash_threads",
+          "max_open_files",
+          "max_checking",
+          "piece_extent_affinity",
+          "max_concurrent_announces",
+          "disk_thread",
+          "zero_copy_send"
+        ],
+        "properties": {
+          "dht_bootstrap_nodes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "`dht_bootstrap_nodes`; `null` = the identity's defaults."
+          },
+          "hash_threads": {
+            "type": "integer",
+            "format": "int32",
+            "description": "`hash_threads`.",
+            "minimum": 0
+          },
+          "max_open_files": {
+            "type": "integer",
+            "format": "int32",
+            "description": "`max_open_files`.",
+            "minimum": 0
+          },
+          "max_checking": {
+            "type": "integer",
+            "format": "int32",
+            "description": "`max_checking`.",
+            "minimum": 0
+          },
+          "piece_extent_affinity": {
+            "type": "boolean",
+            "description": "`piece_extent_affinity`."
+          },
+          "max_concurrent_announces": {
+            "type": "integer",
+            "format": "int32",
+            "description": "`max_concurrent_announces`.",
+            "minimum": 0
+          },
+          "disk_thread": {
+            "type": "boolean",
+            "description": "`disk_thread`."
+          },
+          "zero_copy_send": {
+            "type": "boolean",
+            "description": "`zero_copy_send`."
+          }
+        }
+      },
+      "RestartWhen": {
+        "type": "string",
+        "description": "When to restart.",
+        "enum": [
+          "now",
+          "idle"
+        ]
       },
       "RssArticle": {
         "type": "object",
@@ -16757,7 +18149,8 @@
           "torrents",
           "oldest_minute",
           "oldest_hour",
-          "oldest_day"
+          "oldest_day",
+          "removed"
         ],
         "properties": {
           "enabled": {
@@ -16801,6 +18194,12 @@
             ],
             "format": "int64",
             "description": "Oldest day kept, unix seconds; `null` = none.",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Of `torrents`, those removed from the session (their history is\nkept until `stats_day_retention`, or `DELETE /stats/removed`).",
             "minimum": 0
           }
         }
@@ -16924,6 +18323,86 @@
           "transfer": {
             "$ref": "#/components/schemas/TransferInfo",
             "description": "Session-wide transfer state (always sent)."
+          }
+        }
+      },
+      "SystemInfo": {
+        "type": "object",
+        "description": "The machine the daemon runs on (`GET /app/system`).",
+        "required": [
+          "cpus",
+          "cpu_model",
+          "kernel",
+          "memory",
+          "open_files_limit",
+          "open_files_hard_limit",
+          "open_files",
+          "save_path_fs"
+        ],
+        "properties": {
+          "cpus": {
+            "type": "integer",
+            "format": "int32",
+            "description": "CPUs the daemon may use (its affinity and quota considered).",
+            "minimum": 0
+          },
+          "cpu_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The CPU's model name; `null` = not known."
+          },
+          "kernel": {
+            "type": "string",
+            "description": "The kernel's release (`uname -r`)."
+          },
+          "memory": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Memory of the machine, bytes; `null` = not known.",
+            "minimum": 0
+          },
+          "open_files_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How many files the daemon may have open (`ulimit -n`, the soft\nlimit); `null` = no limit.",
+            "minimum": 0
+          },
+          "open_files_hard_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The hard limit the soft one may be raised to; `null` = no limit.",
+            "minimum": 0
+          },
+          "open_files": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Files the daemon has open now: content files, sockets, databases;\n`null` = not known.",
+            "minimum": 0
+          },
+          "save_path_fs": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FileSystemInfo",
+                "description": "The file system of the default save path; `null` when it cannot be\nread."
+              }
+            ]
           }
         }
       },

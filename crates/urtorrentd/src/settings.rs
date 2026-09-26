@@ -740,6 +740,20 @@ impl Settings {
         b
     }
 
+    /// The fields that apply after a restart.
+    pub fn restart_settings(&self) -> crate::model::RestartSettings {
+        crate::model::RestartSettings {
+            dht_bootstrap_nodes: self.dht_bootstrap_nodes.clone(),
+            hash_threads: self.hash_threads,
+            max_open_files: self.max_open_files,
+            max_checking: self.max_checking,
+            piece_extent_affinity: self.piece_extent_affinity,
+            max_concurrent_announces: self.max_concurrent_announces,
+            disk_thread: self.disk_thread,
+            zero_copy_send: self.zero_copy_send,
+        }
+    }
+
     /// The restart-only fields whose value differs from `running`.
     pub fn pending_restart(&self, running: &Settings) -> Vec<String> {
         let a = serde_json::to_value(self).unwrap_or_default();
@@ -950,6 +964,18 @@ mod tests {
             s.pending_restart(&running),
             vec!["hash_threads".to_string()]
         );
+        // `GET /app` shows exactly these as they run.
+        let shown = serde_json::to_value(running.restart_settings()).unwrap();
+        let mut keys: Vec<&str> = shown
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|k| k.as_str())
+            .collect();
+        let mut fields = RESTART_FIELDS.to_vec();
+        keys.sort_unstable();
+        fields.sort_unstable();
+        assert_eq!(keys, fields);
     }
 
     fn at(s: &str) -> jiff::Timestamp {

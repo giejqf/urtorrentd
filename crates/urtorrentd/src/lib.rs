@@ -21,6 +21,7 @@ pub mod settings;
 pub(crate) mod stats;
 pub mod store;
 pub mod sync;
+pub mod system;
 pub mod util;
 pub mod web;
 pub mod webhooks;

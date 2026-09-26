@@ -39,8 +39,8 @@ use utoipa_axum::routes;
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ErrorBody, ErrorCode};
 use crate::model::{
-    DirectoryMode, GeoDimension, GroupKind, PeerDimension, StatsStep, TopMetric, TorrentFilter,
-    TorrentSort, WebhookPayload,
+    DirectoryMode, GeoDimension, GroupKind, PeerDimension, RestartWhen, StatsStep, TopMetric,
+    TorrentFilter, TorrentSort, WebhookPayload,
 };
 use crate::web::{self, WebUi, is_api_path};
 
@@ -202,6 +202,7 @@ Errors always have the `ErrorBody` shape with a stable `code`."
         GeoDimension,
         PeerDimension,
         GroupKind,
+        RestartWhen,
         WebhookPayload
     )),
     tags(
@@ -230,9 +231,16 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(auth::logout))
         .routes(routes!(auth::set_credentials))
         .routes(routes!(auth::rotate_api_key, auth::delete_api_key))
+        .routes(routes!(auth::get_account))
+        .routes(routes!(auth::list_sessions, auth::end_other_sessions))
+        .routes(routes!(auth::end_session))
+        .routes(routes!(auth::list_login_bans))
+        .routes(routes!(auth::unban_login))
+        .routes(routes!(auth::check_request))
         .routes(routes!(app::get_app_info))
+        .routes(routes!(app::get_system_info))
         .routes(routes!(app::shutdown))
-        .routes(routes!(app::restart))
+        .routes(routes!(app::restart, app::cancel_restart))
         .routes(routes!(app::refresh_fetched_trackers))
         .routes(routes!(app::get_watch_folders))
         .routes(routes!(app::get_settings, app::patch_settings))
@@ -293,7 +301,8 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(transfer::ban_peers))
         .routes(routes!(sync::sync))
         .routes(routes!(events::stream_events))
-        .routes(routes!(stats::get_stats_info))
+        .routes(routes!(stats::get_stats_info, stats::delete_stats))
+        .routes(routes!(stats::delete_removed_stats))
         .routes(routes!(stats::get_transfer_stats))
         .routes(routes!(stats::get_torrent_traffic))
         .routes(routes!(stats::get_torrent_days))

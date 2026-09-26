@@ -13,7 +13,8 @@ use super::{Json, Query};
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult};
 use crate::model::{
-    AppInfo, Cookie, DirectoryEntry, DirectoryMode, DirectoryQuery, NetworkInterface, WatchStatus,
+    AppInfo, Cookie, DirectoryEntry, DirectoryMode, DirectoryQuery, NetworkInterface, RestartQuery,
+    RestartWhen, SystemInfo, WatchStatus,
 };
 use crate::settings::{Settings, SettingsPatch};
 use crate::util::blocking;
@@ -43,18 +44,55 @@ pub(crate) async fn get_app_info(State(d): State<Arc<Daemon>>) -> Json<AppInfo> 
         },
         fetched_trackers: d.fetched_trackers_info(),
         time_zone: jiff::tz::TimeZone::system().iana_name().map(str::to_string),
+        running: d.running.restart_settings(),
+        restart_required_since: d.restart_required_since(),
+        restart_waiting: d.restart_waiting(),
     })
+}
+
+/// The machine the daemon runs on: CPUs, kernel, memory, the open-file
+/// limit and how many are open, and the default save path's file system.
+#[utoipa::path(get, path = "/app/system", tag = "app", responses((status = 200, body = SystemInfo)))]
+pub(crate) async fn get_system_info(State(d): State<Arc<Daemon>>) -> ApiResult<Json<SystemInfo>> {
+    let save_path = d.settings().save_path;
+    Ok(Json(
+        blocking(move || Ok(crate::system::info(&save_path))).await?,
+    ))
 }
 
 /// Restart the daemon: shut it down gracefully (trackers are told, state is
 /// saved), then the process starts again with the same arguments, so
 /// settings that apply after a restart (`restart_required`) take effect.
-/// The API is away for the few seconds that takes.
-#[utoipa::path(post, path = "/app/restart", tag = "app", responses((status = 202, description = "Restarting.")))]
-pub(crate) async fn restart(State(d): State<Arc<Daemon>>) -> StatusCode {
-    d.logs.info("restart requested through the API");
-    d.request_restart();
+/// The API is away for the few seconds that takes. `when=idle` waits until
+/// no torrent is checking or moving and none is receiving data
+/// (`restart_waiting` in `GET /app` until then).
+#[utoipa::path(post, path = "/app/restart", tag = "app", params(RestartQuery), responses((status = 202, description = "Restarting, or waiting to.")))]
+pub(crate) async fn restart(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<RestartQuery>,
+) -> StatusCode {
+    match q.when.unwrap_or_default() {
+        RestartWhen::Now => {
+            d.logs.info("restart requested through the API");
+            d.request_restart();
+        }
+        RestartWhen::Idle => {
+            d.logs
+                .info("restart requested through the API for when the torrents are idle");
+            d.request_restart_when_idle();
+        }
+    }
     StatusCode::ACCEPTED
+}
+
+/// Call off a restart that waits for the torrents to be idle.
+#[utoipa::path(delete, path = "/app/restart", tag = "app", responses((status = 204, description = "No restart waits (any that did is called off).")))]
+pub(crate) async fn cancel_restart(State(d): State<Arc<Daemon>>) -> StatusCode {
+    if d.cancel_restart() {
+        d.logs
+            .info("the restart waiting for idle torrents was called off");
+    }
+    StatusCode::NO_CONTENT
 }
 
 /// Fetch the tracker list of `add_trackers_url` now instead of at its next

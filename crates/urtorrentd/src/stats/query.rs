@@ -183,7 +183,33 @@ impl Daemon {
             oldest_minute: info.oldest[0],
             oldest_hour: info.oldest[1],
             oldest_day: info.oldest[2],
+            removed: info.removed,
         })
+    }
+
+    /// Delete every statistic (`DELETE /stats`).
+    pub(crate) async fn clear_stats(&self) -> ApiResult<()> {
+        // Not while recording is switched on or off.
+        let _ops = self.ops.lock().await;
+        let s = self.stats_handle()?;
+        s.clear(now()).await.map_err(ApiError::io)?;
+        self.logs.info("statistics deleted through the API");
+        Ok(())
+    }
+
+    /// Delete the history of removed torrents; returns how many.
+    pub(crate) async fn purge_removed_stats(&self) -> ApiResult<u64> {
+        let (db, _) = self.stats_db().await?;
+        let n = blocking(move || db.purge_removed())
+            .await
+            .map_err(ApiError::io)?;
+        if n > 0 {
+            self.logs.info(format!(
+                "history of {n} removed torrent{} deleted through the API",
+                if n == 1 { "" } else { "s" }
+            ));
+        }
+        Ok(n)
     }
 
     /// Session-wide traffic over time.

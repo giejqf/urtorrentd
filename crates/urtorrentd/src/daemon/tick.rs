@@ -246,6 +246,8 @@ impl Daemon {
         };
         let unix = now();
         let mut hits: Vec<(InfoHash, TorrentId, ShareLimitAction, &'static str)> = Vec::new();
+        // Something a restart would interrupt: a check, a move, data coming in.
+        let mut busy = false;
         {
             let mut st = self.state();
             let settings = st.settings.clone();
@@ -254,6 +256,9 @@ impl Daemon {
                 let Some(e) = st.torrents.get_mut(&s.info_hash) else {
                     continue;
                 };
+                busy |= e.moving
+                    || matches!(s.state, L::Checking | L::QueuedForChecking)
+                    || (s.state == L::Downloading && s.download_rate > 0);
                 if e.baseline.is_none() {
                     e.baseline = Some((s.downloaded, s.uploaded));
                     if e.resume_restored {
@@ -312,6 +317,11 @@ impl Daemon {
                     .collect();
                 stats.observe(unix, &samples, session_stats.as_ref());
             }
+        }
+        if !busy && self.cancel_restart() {
+            self.logs
+                .info("restarting: no torrent is checking, moving or receiving data");
+            self.request_restart();
         }
         for (hash, id, action, why) in hits {
             let name = self.name_of(&hash);

@@ -16,7 +16,7 @@ use maxminddb::{PathElement, Reader, path};
 use serde_json::Value;
 
 use crate::model::{GeoDatabaseInfo, GeoIpInfo};
-use crate::util::normalize_ip;
+use crate::util::{normalize_ip, now};
 
 /// Where an address is, as far as the databases know.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
@@ -57,6 +57,8 @@ struct Slot {
     reader: Option<Arc<Reader<Vec<u8>>>>,
     stamp: Option<Stamp>,
     error: Option<String>,
+    /// When `reader` was read, unix seconds.
+    loaded: Option<u64>,
 }
 
 impl Slot {
@@ -69,12 +71,14 @@ impl Slot {
                 reader: Some(Arc::new(r)),
                 stamp,
                 error: None,
+                loaded: Some(now()),
             },
             Err(e) => Slot {
                 path,
                 reader: None,
                 stamp,
                 error: Some(e),
+                loaded: None,
             },
         }
     }
@@ -92,6 +96,7 @@ impl Slot {
             Ok(r) => {
                 self.reader = Some(Arc::new(r));
                 self.error = None;
+                self.loaded = Some(crate::util::now());
                 Some(format!("GeoIP database {} reloaded", self.path.display()))
             }
             Err(e) => {
@@ -110,6 +115,7 @@ impl Slot {
                 .as_ref()
                 .map(|r| r.metadata().database_type.clone()),
             built: self.reader.as_ref().map(|r| r.metadata().build_epoch),
+            loaded: self.loaded,
             error: self.error.clone(),
         }
     }

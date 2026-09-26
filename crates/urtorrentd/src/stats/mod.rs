@@ -516,6 +516,30 @@ impl Stats {
         }
     }
 
+    /// Delete every statistic (`DELETE /stats`), written or not. Counters
+    /// go on from the last observation, so nothing counts twice.
+    pub(crate) async fn clear(&self, now: u64) -> io::Result<()> {
+        let _order = self.flush_lock.lock().await;
+        let recording = {
+            let mut a = self.acc();
+            a.traffic.clear();
+            a.days.clear();
+            a.session.clear();
+            a.events.clear();
+            a.peer_traffic.clear();
+            a.announces.clear();
+            a.scrapes.clear();
+            a.counted.clear();
+            a.asn_names.clear();
+            a.asn_pending.clear();
+            a.period.is_some()
+        };
+        let db = self.db.clone();
+        let period = blocking(move || db.clear(now, recording)).await?;
+        self.acc().period = period;
+        Ok(())
+    }
+
     /// Write what is pending and end the recording period (shutdown).
     pub(crate) async fn stop(&self, now: u64, retention: Retention) -> io::Result<()> {
         self.flush(now, Flush::All, retention).await?;

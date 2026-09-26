@@ -50,8 +50,9 @@ base64 = "0.22"
 # The daemon's state: one SQLite database (ADR 0004); SQLite is compiled in.
 rusqlite = { version = "0.40", default-features = false, features = ["bundled", "cache", "fallible_uint"] }
 maxminddb = { version = "0.32", default-features = false }
-# statvfs for free disk space, without unsafe code.
-rustix = { version = "1", features = ["fs"] }
+# statvfs for free disk space; uname, sysinfo and getrlimit for GET /app/system;
+# all without unsafe code.
+rustix = { version = "1", features = ["fs", "process", "system"] }
 
 [dev-dependencies]
 tempfile = "3"

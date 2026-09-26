@@ -193,6 +193,10 @@ pub struct Daemon {
     shutdown_requested: watch::Sender<bool>,
     /// The shutdown asked for is a restart (`POST /app/restart`).
     restart: std::sync::atomic::AtomicBool,
+    /// A restart waits for the torrents to be idle (`?when=idle`).
+    restart_when_idle: std::sync::atomic::AtomicBool,
+    /// When a setting that applies after a restart was last changed.
+    restart_changed: Mutex<Option<u64>>,
     closed: watch::Sender<bool>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
 }
@@ -322,6 +326,8 @@ impl Daemon {
             file_index: filesearch::FileIndex::default(),
             shutdown_requested: watch::channel(false).0,
             restart: std::sync::atomic::AtomicBool::new(false),
+            restart_when_idle: std::sync::atomic::AtomicBool::new(false),
+            restart_changed: Mutex::new(None),
             closed: watch::channel(false).0,
             tasks: Mutex::new(Vec::new()),
         });
@@ -510,6 +516,12 @@ impl Daemon {
             let (s, v) = (self.store.clone(), new.clone());
             blocking(move || s.save(store::SETTINGS, &v)).await?;
         }
+        if !new.pending_restart(&old).is_empty() {
+            *self
+                .restart_changed
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Some(now());
+        }
         let save_path_changed = old.save_path != new.save_path;
         if (&old.geoip_database, &old.geoip_asn_database)
             != (&new.geoip_database, &new.geoip_asn_database)
@@ -655,6 +667,37 @@ impl Daemon {
     /// Whether the shutdown asked for is a restart.
     pub fn restart_requested(&self) -> bool {
         self.restart.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Restart once the torrents are idle (the tick looks).
+    pub(crate) fn request_restart_when_idle(&self) {
+        self.restart_when_idle
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Call off a restart waiting for idle torrents; returns whether one
+    /// was waiting.
+    pub(crate) fn cancel_restart(&self) -> bool {
+        self.restart_when_idle
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Whether a restart waits for idle torrents.
+    pub(crate) fn restart_waiting(&self) -> bool {
+        self.restart_when_idle
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// When a setting waiting for a restart was last changed, while one
+    /// waits.
+    pub(crate) fn restart_required_since(&self) -> Option<u64> {
+        if self.settings().pending_restart(&self.running).is_empty() {
+            return None;
+        }
+        *self
+            .restart_changed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     /// Watch for a shutdown request (open event streams end on it, so the

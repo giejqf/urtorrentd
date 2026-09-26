@@ -119,6 +119,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `POST /app/fetched-trackers/refresh` fetches the `add_trackers_url` list
   at once instead of at its daily turn; `fetched_trackers.fetching` in
   `GET /app` says a fetch is under way.
+- `GET /auth/account` (the user name, when the API key was made and its
+  last use), `GET /auth/sessions` (login sessions with their address,
+  user agent and last use; `DELETE` ends one, or every other), and
+  `GET /auth/bans` (addresses with failed logins and their bans;
+  `DELETE /auth/bans/{address}` lifts one).
+- `POST /auth/check` says how the daemon sees the request: the client
+  through the proxies, the host check, the authentication and the
+  cross-origin check, for setting up a reverse proxy.
+- `GET /app` shows the settings that apply after a restart as the engine
+  runs them (`running`), since when one waits
+  (`restart_required_since`), and a restart waiting for idle torrents
+  (`restart_waiting`): `POST /app/restart?when=idle` restarts once nothing
+  is checking, moving or receiving data, and `DELETE /app/restart` calls it
+  off.
+- `GET /app/system`: CPUs, kernel, memory, the open-file limit and how
+  many files are open, and the default save path's file system.
+- `DELETE /stats` deletes every statistic, and `DELETE /stats/removed` the
+  history of removed torrents (counted by `removed` in `GET /stats`); the
+  file shrinks. The GeoIP databases say when they were read (`loaded`).
 
 ### Changed
 
@@ -143,6 +162,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A webhook delivery that got no answer recorded the error with the
   webhook's URL in it, and URLs often carry a token; the error is kept
   without it now.
+- Clients that need no login (`api_bypass_local_auth`,
+  `api_auth_whitelist`) now pass the cross-origin check like login
+  sessions: a web page on another origin could otherwise make their
+  browser change things on the daemon, a shutdown included, without being
+  able to read the answers. Scripts send no `Origin` and are not affected.
 
 ## [0.13.0] - 2026-09-24
 

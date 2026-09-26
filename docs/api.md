@@ -340,6 +340,37 @@ sampled every 2 s, so a short connection may not show. If `stats.db` cannot
 be opened, the daemon runs without statistics and `/stats` answers
 `503 unavailable`.
 
+## Sign-in and security
+
+Login sessions and failed logins live in the daemon's memory (a restart
+ends the sessions and forgets the failures). Sessions are listed by an id
+that is not their cookie; the API key is never shown after it is made.
+
+```sh
+# Who is signed in, and from where
+curl -s -b jar localhost:8080/api/v1/auth/sessions
+# [{"id":"3f1c0a9b2d4e5f60","current":true,"created":1790000000,
+#   "last_used":{"time":1790003600,"address":"10.66.0.2","user_agent":"Mozilla/5.0 ..."}}]
+# End every other session; lift a login ban
+curl -s -b jar -X DELETE localhost:8080/api/v1/auth/sessions
+curl -s -b jar -X DELETE localhost:8080/api/v1/auth/bans/203.0.113.99
+```
+
+`POST /auth/check` shows how the settings apply to the request that asks,
+the way to see whether a reverse proxy is set up right:
+
+```sh
+curl -s -X POST -H 'Authorization: Bearer urtd_...' https://torrents.example.com/api/v1/auth/check
+# {"peer":"127.0.0.1","client":"198.51.100.7","proxy":"trusted","host":"torrents.example.com",
+#  "host_check":"allowed","https":true,"auth":"api_key","csrf":"not_applied"}
+```
+
+`proxy` is `untrusted` when forwarding headers come from an address not in
+`api_trusted_proxies` (they are ignored). The cross-origin check applies to
+every state-changing request but those with the API key, clients that need
+no login included; `csrf` says why this one passed. It is a POST so that a
+browser sends its `Origin`; a request the checks refuse gets their error.
+
 ## Endpoints
 
 | Method | Path | What |
@@ -350,9 +381,16 @@ be opened, the daemon runs without statistics and `/stats` answers
 | POST | `/auth/logout` | End the session |
 | PUT | `/auth/credentials` | Change user name and password (ends every session) |
 | POST, DELETE | `/auth/api-key` | Create (rotate) or delete the API key |
-| GET | `/app` | Version, library, pid, start time, data dir, default save path, peer port, settings waiting for a restart, the system time zone |
+| GET | `/auth/account` | The user name; when the API key was made and its last use (never the key) |
+| GET, DELETE | `/auth/sessions` | Login sessions (opened, last use: time, address, user agent; which one is this request's); end every other one |
+| DELETE | `/auth/sessions/{id}` | End one login session |
+| GET | `/auth/bans` | Addresses with failed logins since their last success, and their bans |
+| DELETE | `/auth/bans/{address}` | Lift a ban and forget the failures |
+| POST | `/auth/check` | How the daemon sees this request ([Sign-in and security](#sign-in-and-security)) |
+| GET | `/app` | Version, library, pid, start time, data dir, default save path, peer port, settings waiting for a restart (since when, and their running values), a restart waiting for idle torrents, the system time zone |
+| GET | `/app/system` | The machine: CPUs, kernel, memory, the open-file limit and how many are open, the default save path's file system (type, size, free) |
 | POST | `/app/shutdown` | Graceful shutdown |
-| POST | `/app/restart` | Graceful shutdown, then the same binary starts again in the same process (settings in `restart_required` take effect) |
+| POST, DELETE | `/app/restart` | Graceful shutdown, then the same binary starts again in the same process (settings in `restart_required` take effect); `?when=idle` waits until no torrent is checking, moving or receiving data; `DELETE` calls a waiting restart off |
 | POST | `/app/fetched-trackers/refresh` | Fetch the `add_trackers_url` list now rather than at its daily turn (202; 409 when it is not set); `GET /app` → `fetched_trackers.fetching` while it runs |
 | GET, PATCH | `/settings` | All settings; change some ([settings.md](settings.md)) |
 | GET | `/fs/directory` | List a directory (for choosing paths) |
@@ -408,7 +446,8 @@ be opened, the daemon runs without statistics and `/stats` answers
 | POST | `/webhooks/{id}/test` | Deliver a `test` event now |
 | GET | `/webhooks/{id}/deliveries/{delivery}` | What one of the last 20 deliveries sent (its payload) |
 | POST | `/webhooks/{id}/deliveries/{delivery}/redeliver` | Send it again now, once: same payload and delivery id, fresh timestamp and signature |
-| GET | `/stats` | What the statistics database holds: size, torrents, oldest bucket per step |
+| GET, DELETE | `/stats` | What the statistics database holds: size, torrents (and how many were removed), oldest bucket per step; delete everything recorded (the file shrinks; recording goes on) |
+| DELETE | `/stats/removed` | Delete the history of every torrent removed from the session |
 | GET | `/stats/transfer` | Session traffic over time, with the recording periods |
 | GET | `/stats/torrents/{hash}/traffic` | A torrent's traffic over time (minute, hour or day buckets) |
 | GET | `/stats/torrents/{hash}/days` | A torrent's days: bytes, running and seeding time, all-time counters, ratio, swarm size |

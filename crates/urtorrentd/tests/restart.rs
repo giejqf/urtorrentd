@@ -626,3 +626,75 @@ async fn binary_restarts_through_the_api() {
     assert_eq!(r.status().as_u16(), 202);
     assert!(wait_exit(&mut child, 30).await.success());
 }
+
+/// `POST /app/restart?when=idle` waits while data comes in, can be called
+/// off, and restarts once the download is done.
+#[tokio::test]
+async fn a_restart_can_wait_for_idle_torrents() {
+    // Slow enough to be downloading for a while.
+    let seeder = TestDaemon::start(47, |s| s.upload_limit = Some(100_000)).await;
+    let leecher = TestDaemon::start(48, |_| {}).await;
+    let f = fixture(
+        "slow.bin",
+        &[("slow.bin", 1_000_000)],
+        16_384,
+        None,
+        false,
+        23,
+    );
+    f.write_to(&seeder.save_path());
+    let hash = seeder.add(&f, json!({})).await;
+    seeder
+        .wait_for(&hash, "seeding", 30, |x| x["state"] == "seeding")
+        .await;
+    leecher.add(&f, json!({})).await;
+    let (s, _) = leecher
+        .post(
+            "/api/v1/torrents/peers",
+            json!({"hashes": [hash.clone()], "peers": [seeder.peer_addr()]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    leecher
+        .wait_for(&hash, "data coming in", 30, |x| {
+            x["download_rate"].as_u64().unwrap() > 0
+        })
+        .await;
+
+    let (s, _) = leecher
+        .post("/api/v1/app/restart?when=idle", json!(null))
+        .await;
+    assert_eq!(s, StatusCode::ACCEPTED);
+    assert_eq!(leecher.get("/api/v1/app").await["restart_waiting"], true);
+    // Two ticks while downloading: still waiting.
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let t = leecher.torrent(&hash).await;
+    assert_eq!(t["complete"], false, "the download ended too soon: {t}");
+    assert!(!leecher.daemon.restart_requested());
+    assert_eq!(leecher.get("/api/v1/app").await["restart_waiting"], true);
+
+    // Called off, and asked for again.
+    let (s, _) = leecher
+        .call(Method::DELETE, "/api/v1/app/restart", None)
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert_eq!(leecher.get("/api/v1/app").await["restart_waiting"], false);
+    let (s, _) = leecher
+        .post("/api/v1/app/restart?when=idle", json!(null))
+        .await;
+    assert_eq!(s, StatusCode::ACCEPTED);
+
+    leecher
+        .wait_for(&hash, "download", 60, |x| x["complete"] == true)
+        .await;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !leecher.daemon.restart_requested() {
+        assert!(Instant::now() < deadline, "no restart once idle");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(leecher.get("/api/v1/app").await["restart_waiting"], false);
+    let log = leecher.get("/api/v1/log").await.to_string();
+    assert!(log.contains("restarting: no torrent is checking"), "{log}");
+    leecher.stop().await;
+    seeder.stop().await;
+}
