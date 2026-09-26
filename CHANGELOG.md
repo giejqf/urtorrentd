@@ -101,6 +101,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - List rows carry `slow`: running for a minute below 2 KiB/s both ways,
   the state in which a queued torrent holds no slot unless
   `count_slow_torrents` (urtorrent 0.13.5).
+- `GET /watch-folders`: when each watch folder was last read, why one
+  cannot be, and the last files they took with what became of each
+  (added, already there, rejected).
+- Webhooks keep what their last deliveries sent:
+  `GET /webhooks/{id}/deliveries/{delivery}` reads it, and
+  `.../redeliver` sends it again (same payload and delivery id).
 - Peer-log entries say who banned or unbanned the address (`source`:
   `engine` or `settings`) and, for the engine's bans, on which torrent
   (`torrent`).
@@ -128,6 +134,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on loopback that was not listed as trusted exempted every client it
   relayed while `api_bypass_local_auth` was on. The daemon logs a warning
   the first time.
+- A webhook delivery that got no answer recorded the error with the
+  webhook's URL in it, and URLs often carry a token; the error is kept
+  without it now.
 
 ## [0.13.0] - 2026-09-24
 

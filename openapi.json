@@ -11524,6 +11524,97 @@
         }
       }
     },
+    "/api/v1/watch-folders": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "The watch folders (`watch_folders`): when each was last read, why one\ncannot be, and the last files they took with what became of them. They\nare read every 2 seconds; a file is taken once it has not changed for 3.",
+        "operationId": "get_watch_folders",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/webhooks": {
       "get": {
         "tags": [
@@ -11951,6 +12042,232 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Webhook"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}/deliveries/{delivery}": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "What one of a webhook's last deliveries sent (kept with the last 20, not\nacross restarts).",
+        "operationId": "get_webhook_delivery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Webhook id.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "delivery",
+            "in": "path",
+            "description": "Delivery id (`X-Urtorrentd-Delivery`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookPayload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}/deliveries/{delivery}/redeliver": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Send one of a webhook's last deliveries again, now and once (no\nretries): the same payload and delivery id, a fresh timestamp and\nsignature. It is listed as a new delivery.",
+        "operationId": "redeliver_webhook_delivery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Webhook id.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "delivery",
+            "in": "path",
+            "description": "Delivery id (`X-Urtorrentd-Delivery`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDelivery"
                 }
               }
             }
@@ -18444,6 +18761,124 @@
           }
         },
         "additionalProperties": false
+      },
+      "WatchFolderStatus": {
+        "type": "object",
+        "description": "A watch folder's standing.",
+        "required": [
+          "path",
+          "scanned",
+          "error"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The folder (as in `watch_folders`)."
+          },
+          "scanned": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When it was last read, unix seconds; `null` = not yet.",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last read failed (not there, no permission); `null` = it did not."
+          }
+        }
+      },
+      "WatchOutcome": {
+        "type": "string",
+        "description": "What became of a file in a watch folder.",
+        "enum": [
+          "added",
+          "duplicate",
+          "rejected"
+        ]
+      },
+      "WatchPickup": {
+        "type": "object",
+        "description": "A file a watch folder took.",
+        "required": [
+          "time",
+          "folder",
+          "file",
+          "outcome",
+          "hash",
+          "name",
+          "error"
+        ],
+        "properties": {
+          "time": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When, unix seconds.",
+            "minimum": 0
+          },
+          "folder": {
+            "type": "string",
+            "description": "The watch folder."
+          },
+          "file": {
+            "type": "string",
+            "description": "The file (absolute path)."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/WatchOutcome",
+            "description": "What became of it."
+          },
+          "hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The torrent's info-hash; `null` when the file could not be read."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The torrent's name when it was added."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it was rejected, or why the file could not be renamed or deleted."
+          }
+        }
+      },
+      "WatchStatus": {
+        "type": "object",
+        "description": "The watch folders' standing and what their files became.",
+        "required": [
+          "folders",
+          "recent"
+        ],
+        "properties": {
+          "folders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WatchFolderStatus"
+            },
+            "description": "Every folder of `watch_folders`, in its order."
+          },
+          "recent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WatchPickup"
+            },
+            "description": "The last files taken (since the start, at most 100), newest first."
+          }
+        }
       },
       "Webhook": {
         "type": "object",

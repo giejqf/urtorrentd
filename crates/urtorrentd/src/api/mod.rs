@@ -234,6 +234,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(app::shutdown))
         .routes(routes!(app::restart))
         .routes(routes!(app::refresh_fetched_trackers))
+        .routes(routes!(app::get_watch_folders))
         .routes(routes!(app::get_settings, app::patch_settings))
         .routes(routes!(app::list_directory))
         .routes(routes!(app::get_cookies, app::set_cookies))
@@ -311,6 +312,8 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
             webhooks::delete_webhook
         ))
         .routes(routes!(webhooks::test_webhook))
+        .routes(routes!(webhooks::get_webhook_delivery))
+        .routes(routes!(webhooks::redeliver_webhook_delivery))
         .routes(routes!(rss::list_rss_feeds, rss::add_rss_feed))
         .routes(routes!(
             rss::get_rss_feed,

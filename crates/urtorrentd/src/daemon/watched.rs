@@ -10,7 +10,7 @@
 //! These files are the daemon's input, not torrent content (AGENTS.md rule
 //! 5 is about the engine's files).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -18,8 +18,9 @@ use std::time::{Duration, SystemTime};
 use super::Daemon;
 use super::add::{MAX_TORRENT_FILE, Parsed, parse_magnet, parse_metainfo};
 use crate::error::{ApiError, ApiResult, ErrorCode};
+use crate::model::{WatchFolderStatus, WatchOutcome, WatchPickup, WatchStatus};
 use crate::settings::{AfterAdd, WatchFolder};
-use crate::util::blocking;
+use crate::util::{blocking, hex, now};
 
 /// A file is taken once it has not changed for this long.
 const SETTLE: Duration = Duration::from_secs(3);
@@ -29,6 +30,8 @@ const MAX_DEPTH: usize = 8;
 const PER_SCAN: usize = 64;
 /// A `.magnet` file larger than this is not a magnet link.
 const MAX_MAGNET_FILE: u64 = 64 * 1024;
+/// Pickups remembered (`GET /watch-folders`).
+const KEEP_PICKUPS: usize = 100;
 
 /// A file as it was when handled: path, size, modification time.
 type FileKey = (PathBuf, u64, Option<SystemTime>);
@@ -41,6 +44,10 @@ pub(crate) struct WatchState {
     stuck: HashSet<FileKey>,
     /// The last error reading each folder.
     errors: HashMap<String, String>,
+    /// When each folder was last read, unix seconds.
+    scanned: HashMap<String, u64>,
+    /// What the folders' files became, oldest first.
+    recent: VecDeque<WatchPickup>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,14 +194,36 @@ impl Daemon {
         let Ok(found) = blocking(move || Ok(scan(&list, &stuck, SystemTime::now()))).await else {
             return;
         };
+        let read_at = now();
+        {
+            let mut st = self.watch_state();
+            for f in &folders {
+                if !found.errors.iter().any(|(p, _)| p == &f.path) {
+                    st.scanned.insert(f.path.clone(), read_at);
+                }
+            }
+            st.scanned
+                .retain(|p, _| folders.iter().any(|f| &f.path == p));
+        }
         self.watch_folder_errors(&folders, found.errors);
         for f in found.found {
             let folder = &folders[f.folder];
             let path = f.key.0.clone();
             let shown = path.display().to_string();
-            let result = match parse(f.kind, f.bytes) {
+            let parsed = parse(f.kind, f.bytes);
+            let hash = parsed.as_ref().ok().map(|p| hex(&p.hash));
+            let result = match parsed {
                 Ok(p) => self.add_one(p, &folder.options).await,
                 Err(e) => Err(e),
+            };
+            let mut pickup = WatchPickup {
+                time: now(),
+                folder: folder.path.clone(),
+                file: shown.clone(),
+                outcome: WatchOutcome::Added,
+                hash,
+                name: None,
+                error: None,
             };
             let target = match &result {
                 Ok(added) => {
@@ -202,15 +231,19 @@ impl Daemon {
                         "added {} from the watch folder ({shown})",
                         added.name
                     ));
+                    pickup.name = Some(added.name.clone());
                     (folder.after_add == AfterAdd::Rename).then(|| with_suffix(&path, ".added"))
                 }
                 Err(e) if e.code == ErrorCode::Duplicate => {
                     self.logs.info(format!("{shown}: {}", e.message));
+                    pickup.outcome = WatchOutcome::Duplicate;
                     (folder.after_add == AfterAdd::Rename).then(|| with_suffix(&path, ".added"))
                 }
                 Err(e) => {
                     self.logs
                         .warn(format!("{shown} could not be added: {}", e.message));
+                    pickup.outcome = WatchOutcome::Rejected;
+                    pickup.error = Some(e.message.clone());
                     Some(with_suffix(&path, ".rejected"))
                 }
             };
@@ -220,15 +253,42 @@ impl Daemon {
                 None => std::fs::remove_file(&from),
             })
             .await;
+            let mut st = self.watch_state();
             if let Err(e) = done {
                 self.logs.warn(format!(
                     "{shown}: {e}; it is not taken again until it changes"
                 ));
-                self.watch_state().stuck.insert(f.key);
+                pickup.error = Some(match pickup.error.take() {
+                    Some(why) => format!("{why}; then {e}"),
+                    None => format!("{e}; not taken again until it changes"),
+                });
+                st.stuck.insert(f.key);
+            }
+            st.recent.push_back(pickup);
+            while st.recent.len() > KEEP_PICKUPS {
+                st.recent.pop_front();
             }
         }
         // Forget stuck files that are gone or changed.
         self.watch_state().stuck.retain(|k| found.seen.contains(k));
+    }
+
+    /// Each watch folder's standing, and what their files became
+    /// (`GET /watch-folders`).
+    pub(crate) fn watch_status(&self) -> WatchStatus {
+        let folders = self.settings().watch_folders;
+        let st = self.watch_state();
+        WatchStatus {
+            folders: folders
+                .iter()
+                .map(|f| WatchFolderStatus {
+                    path: f.path.clone(),
+                    scanned: st.scanned.get(&f.path).copied(),
+                    error: st.errors.get(&f.path).cloned(),
+                })
+                .collect(),
+            recent: st.recent.iter().rev().cloned().collect(),
+        }
     }
 
     fn watch_state(&self) -> std::sync::MutexGuard<'_, WatchState> {

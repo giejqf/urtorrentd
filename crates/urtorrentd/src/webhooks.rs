@@ -6,8 +6,9 @@
 //! never starts a process. Each event a webhook subscribes to is a `POST`
 //! of a [`WebhookPayload`] (typed in the schema), optionally signed with
 //! HMAC-SHA256. Redirects are not followed. Deliveries run in the
-//! background and are retried when there is no answer, 429 or 5xx; they are
-//! not kept across restarts.
+//! background and are retried when there is no answer, 429 or 5xx; the last
+//! ones are kept with what they sent, so one can be sent again, but not
+//! across restarts.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
@@ -25,7 +26,7 @@ use crate::util::{hex, now, random_bytes};
 
 /// Webhooks at most.
 pub const MAX_WEBHOOKS: usize = 32;
-/// Deliveries remembered per webhook.
+/// Deliveries remembered per webhook, each with its payload.
 const KEEP_DELIVERIES: usize = 20;
 /// Waits before the retries.
 const RETRIES: [Duration; 3] = [
@@ -116,7 +117,7 @@ pub fn signature(secret: &str, timestamp: u64, body: &[u8]) -> String {
 #[derive(Debug)]
 pub struct Webhooks {
     hooks: RwLock<Vec<StoredWebhook>>,
-    deliveries: Mutex<HashMap<u32, VecDeque<WebhookDelivery>>>,
+    deliveries: Mutex<HashMap<u32, VecDeque<(WebhookDelivery, WebhookPayload)>>>,
     client: reqwest::Client,
 }
 
@@ -151,7 +152,7 @@ impl Webhooks {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .get(&h.id)
-            .map(|d| d.iter().cloned().collect())
+            .map(|d| d.iter().map(|(d, _)| d.clone()).collect())
             .unwrap_or_default();
         Webhook {
             id: h.id,
@@ -279,7 +280,7 @@ impl Webhooks {
             let payload = payload.clone();
             tokio::spawn(async move {
                 let d = this.deliver(&hook, &payload, true).await;
-                this.remember(hook.id, d);
+                this.remember(hook.id, d, payload);
             });
         }
     }
@@ -293,17 +294,45 @@ impl Webhooks {
             .ok_or_else(|| ApiError::not_found(format!("no webhook {id}")))?;
         let payload = Self::payload(WebhookEvent::Test, None, None, None);
         let d = self.deliver(&hook, &payload, false).await;
-        self.remember(id, d.clone());
+        self.remember(id, d.clone(), payload);
         Ok(d)
     }
 
-    fn remember(&self, id: u32, d: WebhookDelivery) {
+    /// What one of a webhook's last deliveries sent.
+    pub fn sent(&self, id: u32, delivery: &str) -> ApiResult<WebhookPayload> {
+        self.get(id)?;
+        self.deliveries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&id)
+            .and_then(|list| list.iter().find(|(d, _)| d.id == delivery))
+            .map(|(_, p)| p.clone())
+            .ok_or_else(|| ApiError::not_found(format!("no delivery {delivery:?} of webhook {id}")))
+    }
+
+    /// Send one of a webhook's last deliveries again, now and once: the
+    /// same payload and delivery id (receivers can tell it is the same
+    /// event), a fresh timestamp and signature.
+    pub async fn redeliver(&self, id: u32, delivery: &str) -> ApiResult<WebhookDelivery> {
+        let payload = self.sent(id, delivery)?;
+        let hook = self
+            .hooks()
+            .into_iter()
+            .find(|h| h.id == id)
+            .ok_or_else(|| ApiError::not_found(format!("no webhook {id}")))?;
+        let mut d = self.deliver(&hook, &payload, false).await;
+        d.time = now();
+        self.remember(id, d.clone(), payload);
+        Ok(d)
+    }
+
+    fn remember(&self, id: u32, d: WebhookDelivery, payload: WebhookPayload) {
         if !self.hooks().iter().any(|h| h.id == id) {
             return;
         }
         let mut all = self.deliveries.lock().unwrap_or_else(|e| e.into_inner());
         let list = all.entry(id).or_default();
-        list.push_front(d);
+        list.push_front((d, payload));
         list.truncate(KEEP_DELIVERIES);
     }
 
@@ -360,7 +389,8 @@ impl Webhooks {
                 }
                 Err(e) => {
                     out.status = None;
-                    out.error = Some(e.to_string());
+                    // Without the URL: webhook URLs often carry a token.
+                    out.error = Some(e.without_url().to_string());
                 }
             }
         }

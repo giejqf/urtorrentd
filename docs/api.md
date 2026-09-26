@@ -358,6 +358,7 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET | `/fs/directory` | List a directory (for choosing paths) |
 | GET, PUT | `/app/cookies` | The cookie jar for the daemon's own HTTP requests |
 | GET | `/app/interfaces` | Network interfaces and their addresses |
+| GET | `/watch-folders` | The watch folders' standing (last read, why one cannot be read) and the last 100 files they took, with what became of each (added, duplicate, rejected) |
 | GET, POST | `/torrents` | The list (filter, category, tag, tracker, hashes, private, search, sort, paging); add torrents |
 | GET | `/torrents/count` | How many torrents |
 | GET | `/torrents/hashes` | The info-hashes of the list, filtered, sorted and paged as `GET /torrents` ([Search](#search)) |
@@ -405,6 +406,8 @@ be opened, the daemon runs without statistics and `/stats` answers
 | GET, POST | `/webhooks` | Webhooks with their last deliveries; add one |
 | GET, PATCH, DELETE | `/webhooks/{id}` | One webhook; change it; remove it |
 | POST | `/webhooks/{id}/test` | Deliver a `test` event now |
+| GET | `/webhooks/{id}/deliveries/{delivery}` | What one of the last 20 deliveries sent (its payload) |
+| POST | `/webhooks/{id}/deliveries/{delivery}/redeliver` | Send it again now, once: same payload and delivery id, fresh timestamp and signature |
 | GET | `/stats` | What the statistics database holds: size, torrents, oldest bucket per step |
 | GET | `/stats/transfer` | Session traffic over time, with the recording periods |
 | GET | `/stats/torrents/{hash}/traffic` | A torrent's traffic over time (minute, hour or day buckets) |

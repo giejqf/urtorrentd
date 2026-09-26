@@ -2576,3 +2576,61 @@ pub struct FileSearch {
     /// This page of them.
     pub files: Vec<FileMatch>,
 }
+
+/// What became of a file in a watch folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WatchOutcome {
+    /// Added as a new torrent.
+    Added,
+    /// The torrent was here already (its trackers merged when
+    /// `merge_trackers` allows).
+    Duplicate,
+    /// Not added (not a torrent, or refused); the file was renamed
+    /// `.rejected`.
+    Rejected,
+}
+
+/// A file a watch folder took.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WatchPickup {
+    /// When, unix seconds.
+    pub time: u64,
+    /// The watch folder.
+    pub folder: String,
+    /// The file (absolute path).
+    pub file: String,
+    /// What became of it.
+    pub outcome: WatchOutcome,
+    /// The torrent's info-hash; `null` when the file could not be read.
+    #[schema(required = true)]
+    pub hash: Option<String>,
+    /// The torrent's name when it was added.
+    #[schema(required = true)]
+    pub name: Option<String>,
+    /// Why it was rejected, or why the file could not be renamed or deleted.
+    #[schema(required = true)]
+    pub error: Option<String>,
+}
+
+/// A watch folder's standing.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WatchFolderStatus {
+    /// The folder (as in `watch_folders`).
+    pub path: String,
+    /// When it was last read, unix seconds; `null` = not yet.
+    #[schema(required = true)]
+    pub scanned: Option<u64>,
+    /// Why the last read failed (not there, no permission); `null` = it did not.
+    #[schema(required = true)]
+    pub error: Option<String>,
+}
+
+/// The watch folders' standing and what their files became.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WatchStatus {
+    /// Every folder of `watch_folders`, in its order.
+    pub folders: Vec<WatchFolderStatus>,
+    /// The last files taken (since the start, at most 100), newest first.
+    pub recent: Vec<WatchPickup>,
+}

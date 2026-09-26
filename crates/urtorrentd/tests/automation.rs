@@ -186,6 +186,32 @@ async fn watch_folders_add_what_is_dropped_in_them() {
     let log = t.get("/api/v1/log").await.to_string();
     assert!(log.contains("broken.torrent could not be added"), "{log}");
     assert!(log.contains("already added"), "{log}");
+    // The same, as the folders' standing and their pickups.
+    let st = t.get("/api/v1/watch-folders").await;
+    assert!(st["folders"][0]["scanned"].is_u64(), "{st}");
+    assert_eq!(st["folders"][0]["error"], Value::Null);
+    let outcome = |file: &str| {
+        st["recent"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["file"].as_str().unwrap().ends_with(file))
+            .cloned()
+            .unwrap_or_else(|| panic!("no pickup of {file}: {st}"))
+    };
+    let dropped = outcome("dropped.torrent");
+    assert_eq!(dropped["outcome"], "added");
+    assert_eq!(dropped["hash"], f.hash.as_str());
+    assert_eq!(dropped["name"], "dropped.iso");
+    let broken = outcome("broken.torrent");
+    assert_eq!(broken["outcome"], "rejected");
+    assert_eq!(broken["hash"], Value::Null);
+    assert!(broken["error"].is_string(), "{broken}");
+    assert_eq!(outcome("again.torrent")["outcome"], "duplicate");
+    assert_eq!(
+        st["recent"][0]["file"],
+        a.join("again.torrent").display().to_string()
+    );
 
     // Subfolders of a recursive folder; deleted once added.
     let g = fixture("deep.iso", &[("deep.iso", 30_000)], 16_384, None, false, 82);
@@ -212,10 +238,15 @@ async fn watch_folders_add_what_is_dropped_in_them() {
     let gone = dirs.path().join("gone");
     let (s, _) = patch(&t, json!({"watch_folders": [{"path": gone}]})).await;
     assert_eq!(s, StatusCode::OK);
+    let said = format!("watch folder {}", gone.display());
     wait_get(&t, "/api/v1/log", "the folder error", |v| {
-        v.to_string().contains("watch folder")
+        v.to_string().contains(&said)
     })
     .await;
+    let st = t.get("/api/v1/watch-folders").await;
+    assert_eq!(st["folders"].as_array().unwrap().len(), 1);
+    assert!(st["folders"][0]["error"].is_string(), "{st}");
+    assert_eq!(st["folders"][0]["scanned"], Value::Null);
     for bad in [
         json!([{"path": "relative/dir"}]),
         json!([{"path": "/w"}, {"path": "/w"}]),

@@ -15,7 +15,7 @@ use utoipa::IntoParams;
 use super::{Json, Path, no_content};
 use crate::daemon::Daemon;
 use crate::error::ApiResult;
-use crate::model::{Webhook, WebhookDelivery, WebhookPatch, WebhookRequest};
+use crate::model::{Webhook, WebhookDelivery, WebhookPatch, WebhookPayload, WebhookRequest};
 
 /// The `{id}` path parameter.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
@@ -23,6 +23,16 @@ use crate::model::{Webhook, WebhookDelivery, WebhookPatch, WebhookRequest};
 pub struct WebhookPath {
     /// Webhook id.
     pub id: u32,
+}
+
+/// The `{id}` and `{delivery}` path parameters.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct DeliveryPath {
+    /// Webhook id.
+    pub id: u32,
+    /// Delivery id (`X-Urtorrentd-Delivery`).
+    pub delivery: String,
 }
 
 /// Every webhook, with its last deliveries.
@@ -84,4 +94,25 @@ pub(crate) async fn test_webhook(
     Path(p): Path<WebhookPath>,
 ) -> ApiResult<Json<WebhookDelivery>> {
     Ok(Json(d.webhooks.test(p.id).await?))
+}
+
+/// What one of a webhook's last deliveries sent (kept with the last 20, not
+/// across restarts).
+#[utoipa::path(get, path = "/webhooks/{id}/deliveries/{delivery}", tag = "webhooks", params(DeliveryPath), responses((status = 200, body = WebhookPayload)))]
+pub(crate) async fn get_webhook_delivery(
+    State(d): State<Arc<Daemon>>,
+    Path(p): Path<DeliveryPath>,
+) -> ApiResult<Json<WebhookPayload>> {
+    Ok(Json(d.webhooks.sent(p.id, &p.delivery)?))
+}
+
+/// Send one of a webhook's last deliveries again, now and once (no
+/// retries): the same payload and delivery id, a fresh timestamp and
+/// signature. It is listed as a new delivery.
+#[utoipa::path(post, path = "/webhooks/{id}/deliveries/{delivery}/redeliver", tag = "webhooks", params(DeliveryPath), responses((status = 200, body = WebhookDelivery)))]
+pub(crate) async fn redeliver_webhook_delivery(
+    State(d): State<Arc<Daemon>>,
+    Path(p): Path<DeliveryPath>,
+) -> ApiResult<Json<WebhookDelivery>> {
+    Ok(Json(d.webhooks.redeliver(p.id, &p.delivery).await?))
 }

@@ -221,6 +221,50 @@ async fn torrent_events_are_posted_to_webhooks() {
     assert_eq!(flaky["deliveries"][0]["status"], 200);
     assert_eq!(flaky["has_secret"], false);
 
+    // What a delivery sent can be read back, and sent again as it was.
+    let hook_now = leecher.get(&format!("/api/v1/webhooks/{id}")).await;
+    let delivery = hook_now["deliveries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["event"] == "removed")
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let sent = leecher
+        .get(&format!("/api/v1/webhooks/{id}/deliveries/{delivery}"))
+        .await;
+    assert_eq!(sent, removed);
+    let before = got.lock().unwrap().len();
+    let (s, d) = leecher
+        .post(
+            &format!("/api/v1/webhooks/{id}/deliveries/{delivery}/redeliver"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{d}");
+    assert_eq!(d["status"], 200, "{d}");
+    assert_eq!(d["id"], delivery.as_str());
+    {
+        let g = got.lock().unwrap();
+        assert_eq!(g.len(), before + 1);
+        let (_, headers, body, raw) = g.last().unwrap();
+        assert_eq!(body, &removed);
+        assert_eq!(headers["x-urtorrentd-delivery"], delivery.as_str());
+        verify(headers, raw, "s3cret");
+    }
+    let listed = leecher.get(&format!("/api/v1/webhooks/{id}")).await;
+    assert_eq!(listed["deliveries"][0]["id"], delivery.as_str());
+    let (s, _) = leecher
+        .call(
+            Method::GET,
+            &format!("/api/v1/webhooks/{id}/deliveries/nope"),
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+
     // Redirects are not followed, nor retried.
     let (_, moved) = leecher
         .post(

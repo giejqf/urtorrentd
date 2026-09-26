@@ -13,7 +13,7 @@ use super::{Json, Query};
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult};
 use crate::model::{
-    AppInfo, Cookie, DirectoryEntry, DirectoryMode, DirectoryQuery, NetworkInterface,
+    AppInfo, Cookie, DirectoryEntry, DirectoryMode, DirectoryQuery, NetworkInterface, WatchStatus,
 };
 use crate::settings::{Settings, SettingsPatch};
 use crate::util::blocking;
@@ -72,6 +72,14 @@ pub(crate) async fn refresh_fetched_trackers(
 ) -> ApiResult<StatusCode> {
     d.refresh_tracker_list()?;
     Ok(StatusCode::ACCEPTED)
+}
+
+/// The watch folders (`watch_folders`): when each was last read, why one
+/// cannot be, and the last files they took with what became of them. They
+/// are read every 2 seconds; a file is taken once it has not changed for 3.
+#[utoipa::path(get, path = "/watch-folders", tag = "app", responses((status = 200, body = WatchStatus)))]
+pub(crate) async fn get_watch_folders(State(d): State<Arc<Daemon>>) -> Json<WatchStatus> {
+    Json(d.watch_status())
 }
 
 /// Shut the daemon down gracefully (trackers are told, state is saved).
