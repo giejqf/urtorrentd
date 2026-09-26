@@ -7,6 +7,7 @@
 //! urtorrent 0.12), plus two caches that only change on edits: tracker URLs
 //! for magnet links and the content path (AGENTS.md 4.4).
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use urtorrent::{InfoHash, TorrentId, TorrentStatus};
@@ -15,8 +16,9 @@ use super::{ContentLayoutInfo, Daemon, Entry, State};
 use crate::error::ApiResult;
 use crate::model::{
     ConnectionStatus, TorrentDetail, TorrentErrorKind, TorrentFilter, TorrentListQuery,
-    TorrentSort, TorrentState, TorrentSummary, TransferInfo,
+    TorrentSort, TorrentState, TorrentSummary, TrackerHost, TransferInfo,
 };
+use crate::stats::db::tracker_host;
 use crate::util::{blocking, hex, now, percent_encode};
 
 /// Share ratio: uploaded over downloaded. A torrent that downloaded less than
@@ -142,10 +144,7 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
     let name = r.name.clone().unwrap_or_else(|| s.name.clone());
     let urls = e.tracker_urls.clone().unwrap_or_default();
     let mut tracker_hosts: Vec<String> = Vec::new();
-    for host in urls
-        .iter()
-        .filter_map(|u| crate::stats::db::tracker_host(u))
-    {
+    for host in urls.iter().filter_map(|u| tracker_host(u)) {
         if !tracker_hosts.contains(&host) {
             tracker_hosts.push(host);
         }
@@ -309,7 +308,7 @@ impl Daemon {
         for (h, id) in tracker_ids {
             if let Ok(list) = self.session.trackers(id).await {
                 let urls: Vec<String> = list.into_iter().map(|t| t.url).collect();
-                self.set_cache(h, |e| e.tracker_urls = Some(urls));
+                self.set_cache(h, |e| e.set_tracker_urls(urls));
             }
         }
         for (h, id) in content_ids {
@@ -338,6 +337,69 @@ impl Daemon {
             .collect();
         rows.sort_by_key(|r| r.queue_position);
         Ok(rows)
+    }
+
+    /// Every tracker host across the torrents, as it stands now: most
+    /// torrents first.
+    pub(crate) async fn tracker_hosts(&self) -> ApiResult<Vec<TrackerHost>> {
+        use urtorrent::TorrentState as L;
+        let statuses = self.session.statuses().await?;
+        self.refresh_caches(&statuses).await;
+        let st = self.state();
+        let mut hosts: BTreeMap<String, TrackerHost> = BTreeMap::new();
+        for s in &statuses {
+            let Some(e) = st.torrents.get(&s.info_hash) else {
+                continue;
+            };
+            let hash = hex(&s.info_hash);
+            // Only these announce: a stopped or queued torrent's last
+            // failure is not a tracker failing now.
+            let running = matches!(s.state, L::FetchingMetadata | L::Downloading | L::Seeding);
+            let working = s.working_tracker.as_deref().and_then(tracker_host);
+            let mut seen: Vec<String> = Vec::new();
+            for url in e.tracker_urls.iter().flatten() {
+                let Some(host) = tracker_host(url) else {
+                    continue;
+                };
+                let works = working.as_deref() == Some(host.as_str());
+                let h = hosts.entry(host.clone()).or_insert_with(|| TrackerHost {
+                    host: host.clone(),
+                    torrents: 0,
+                    private: 0,
+                    working: 0,
+                    failing: Vec::new(),
+                    fails: 0,
+                    error: None,
+                    failing_since: None,
+                    last_failure: None,
+                });
+                if !seen.contains(&host) {
+                    seen.push(host);
+                    h.torrents += 1;
+                    h.private += u32::from(s.private);
+                    h.working += u32::from(works);
+                }
+                let Some(f) = e.tracker_failures.get(url).filter(|_| running && !works) else {
+                    continue;
+                };
+                if !h.failing.contains(&hash) {
+                    h.failing.push(hash.clone());
+                }
+                h.fails = h.fails.max(f.fails);
+                if h.last_failure.is_none_or(|l| f.last >= l) {
+                    h.last_failure = Some(f.last);
+                    h.error = Some(f.error.clone());
+                }
+                h.failing_since = Some(h.failing_since.map_or(f.since, |x| x.min(f.since)));
+            }
+        }
+        let mut out: Vec<TrackerHost> = hosts.into_values().collect();
+        out.sort_by(|a, b| {
+            b.torrents
+                .cmp(&a.torrents)
+                .then_with(|| a.host.cmp(&b.host))
+        });
+        Ok(out)
     }
 
     /// The torrent list with filters, sorting and paging.
@@ -397,7 +459,7 @@ impl Daemon {
             .torrents
             .get_mut(&hash)
             .ok_or_else(|| crate::error::ApiError::torrent_not_found(&hex(&hash)))?;
-        e.tracker_urls = Some(s.trackers.iter().map(|t| t.url.clone()).collect());
+        e.set_tracker_urls(s.trackers.iter().map(|t| t.url.clone()).collect());
         if let Some(layout) = layout_of(&files) {
             e.content = Some(layout);
         }

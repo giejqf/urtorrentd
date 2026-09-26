@@ -12,11 +12,13 @@ use super::{Json, Query};
 use crate::daemon::{Daemon, MoveTo};
 use crate::error::{ApiError, ApiResult};
 use crate::model::{
-    AddPeersRequest, AddTorrentsRequest, AddTorrentsResponse, BulkResult, CategoryRequest,
-    CountResponse, DeleteRequest, DownloadPathRequest, FileSearch, FileSearchQuery, HashesRequest,
-    LimitsRequest, LocationRequest, ParseTorrentRequest, QueueRequest, ShareLimitsRequest,
-    TagsRequest, ToggleRequest, TorrentListQuery, TorrentMetadata, TorrentSummary,
+    AddPeersRequest, AddTorrentsRequest, AddTorrentsResponse, AddTrackersBulkRequest, BulkResult,
+    CategoryRequest, CountResponse, DeleteRequest, DownloadPathRequest, FileSearch,
+    FileSearchQuery, HashesRequest, LimitsRequest, LocationRequest, ParseTorrentRequest,
+    QueueRequest, RemoveTrackerHostsRequest, ShareLimitsRequest, TagsRequest, ToggleRequest,
+    TorrentListQuery, TorrentMetadata, TorrentSummary, TrackerHost,
 };
+use crate::settings::valid_tracker_url;
 
 /// The torrent list, filtered, sorted and paged.
 #[utoipa::path(get, path = "/torrents", tag = "torrents", params(TorrentListQuery), responses((status = 200, body = Vec<TorrentSummary>)))]
@@ -133,6 +135,64 @@ pub(crate) async fn reannounce_torrents(
             Ok(dd.session.force_reannounce(id).await?)
         })
         .await?,
+    ))
+}
+
+/// Tracker hosts across the torrents, as they stand now: how many torrents
+/// have a tracker on each and how many work with it, and the running ones
+/// whose announces to it fail, with the latest error. Hosts only, never
+/// URLs (private trackers' URLs carry passkeys). Failures are known from
+/// the announces of this run.
+#[utoipa::path(get, path = "/torrents/trackers", tag = "torrents", responses((status = 200, body = Vec<TrackerHost>)))]
+pub(crate) async fn list_tracker_hosts(
+    State(d): State<Arc<Daemon>>,
+) -> ApiResult<Json<Vec<TrackerHost>>> {
+    Ok(Json(d.tracker_hosts().await?))
+}
+
+/// Add trackers to torrents: each gets them in a new tier after its last,
+/// unless `tier` is given. An explicit request: the daemon adds trackers to
+/// private torrents only when asked like this.
+#[utoipa::path(post, path = "/torrents/trackers", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn add_trackers_to_torrents(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<AddTrackersBulkRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    if req.urls.is_empty() {
+        return Err(ApiError::bad_request("no tracker URL"));
+    }
+    if let Some(u) = req.urls.iter().find(|u| !valid_tracker_url(u)) {
+        return Err(ApiError::bad_request(format!(
+            "{u:?} is not an http, https or udp URL"
+        )));
+    }
+    let (urls, tier) = (&req.urls, req.tier);
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| d.add_trackers(h, id, urls, tier))
+            .await?,
+    ))
+}
+
+/// Remove every tracker on some hosts from torrents (a tracker that stopped
+/// working for good); torrents with none are left as they are.
+#[utoipa::path(post, path = "/torrents/trackers/remove", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn remove_tracker_hosts(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<RemoveTrackerHostsRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let hosts: Vec<String> = req
+        .hosts
+        .iter()
+        .map(|h| h.trim().to_ascii_lowercase())
+        .filter(|h| !h.is_empty())
+        .collect();
+    if hosts.is_empty() {
+        return Err(ApiError::bad_request("no host"));
+    }
+    let hosts = &hosts;
+    Ok(Json(
+        d.bulk(&req.hashes, |h, id| d.remove_tracker_hosts(h, id, hosts))
+            .await?,
     ))
 }
 

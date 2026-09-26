@@ -775,6 +775,24 @@ impl Daemon {
         Ok(())
     }
 
+    /// Remove every tracker on these hosts (lowercase); a torrent with none
+    /// is left as it is.
+    pub(crate) async fn remove_tracker_hosts(
+        &self,
+        hash: InfoHash,
+        id: TorrentId,
+        hosts: &[String],
+    ) -> ApiResult<()> {
+        let existing = self.session.trackers(id).await?;
+        for t in existing {
+            if crate::stats::db::tracker_host(&t.url).is_some_and(|h| hosts.contains(&h)) {
+                self.session.remove_tracker(id, t.url).await?;
+            }
+        }
+        self.invalidate_trackers(hash);
+        Ok(())
+    }
+
     /// Replace a tracker's URL, keeping its tier.
     pub(crate) async fn edit_tracker(
         &self,

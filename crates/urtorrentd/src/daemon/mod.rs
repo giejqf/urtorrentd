@@ -113,6 +113,22 @@ pub(crate) struct Entry {
     pub has_trackers: bool,
     /// When it was last scraped for the statistics.
     pub last_scrape: Option<Instant>,
+    /// Its trackers whose last announce failed, by URL (from the engine's
+    /// events; an answer removes the tracker).
+    pub tracker_failures: HashMap<String, TrackerFailure>,
+}
+
+/// A tracker whose last announce failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TrackerFailure {
+    /// Announces failed since the last answer.
+    pub fails: u32,
+    /// The last error.
+    pub error: String,
+    /// The first of these failures, unix seconds.
+    pub since: u64,
+    /// The last one, unix seconds.
+    pub last: u64,
 }
 
 impl Entry {
@@ -131,7 +147,15 @@ impl Entry {
             resume_restored: false,
             has_trackers: false,
             last_scrape: None,
+            tracker_failures: HashMap::new(),
         }
+    }
+
+    /// The tracker list as the engine has it now; failures of trackers no
+    /// longer on it are dropped.
+    pub(crate) fn set_tracker_urls(&mut self, urls: Vec<String>) {
+        self.tracker_failures.retain(|u, _| urls.contains(u));
+        self.tracker_urls = Some(urls);
     }
 }
 

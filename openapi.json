@@ -7325,6 +7325,15 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "description": "Also return each tracker's buckets (`points`); default false.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -10363,6 +10372,300 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/TagsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/torrents/trackers": {
+      "get": {
+        "tags": [
+          "torrents"
+        ],
+        "summary": "Tracker hosts across the torrents, as they stand now: how many torrents\nhave a tracker on each and how many work with it, and the running ones\nwhose announces to it fail, with the latest error. Hosts only, never\nURLs (private trackers' URLs carry passkeys). Failures are known from\nthe announces of this run.",
+        "operationId": "list_tracker_hosts",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrackerHost"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "torrents"
+        ],
+        "summary": "Add trackers to torrents: each gets them in a new tier after its last,\nunless `tier` is given. An explicit request: the daemon adds trackers to\nprivate torrents only when asked like this.",
+        "operationId": "add_trackers_to_torrents",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddTrackersBulkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/torrents/trackers/remove": {
+      "post": {
+        "tags": [
+          "torrents"
+        ],
+        "summary": "Remove every tracker on some hosts from torrents (a tracker that stopped\nworking for good); torrents with none are left as they are.",
+        "operationId": "remove_tracker_hosts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveTrackerHostsRequest"
               }
             }
           },
@@ -13940,6 +14243,35 @@
           }
         }
       },
+      "AddTrackersBulkRequest": {
+        "type": "object",
+        "description": "Add trackers to torrents.",
+        "required": [
+          "hashes",
+          "urls"
+        ],
+        "properties": {
+          "hashes": {
+            "$ref": "#/components/schemas/Hashes",
+            "description": "Target torrents."
+          },
+          "urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Announce URLs (a torrent that has one already keeps it where it is)."
+          },
+          "tier": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Tier; absent = a new tier after each torrent's last.",
+            "minimum": 0
+          }
+        }
+      },
       "AddTrackersRequest": {
         "type": "object",
         "description": "Add trackers.",
@@ -16467,6 +16799,27 @@
           }
         ],
         "description": "A per-torrent ratio limit."
+      },
+      "RemoveTrackerHostsRequest": {
+        "type": "object",
+        "description": "Remove every tracker on some hosts from torrents.",
+        "required": [
+          "hashes",
+          "hosts"
+        ],
+        "properties": {
+          "hashes": {
+            "$ref": "#/components/schemas/Hashes",
+            "description": "Target torrents."
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Hosts, as `GET /torrents/trackers` lists them (`tracker.example.org`)."
+          }
+        }
       },
       "RenameRequest": {
         "type": "object",
@@ -19951,6 +20304,83 @@
           }
         }
       },
+      "TrackerHost": {
+        "type": "object",
+        "description": "A tracker host across the session's torrents, as it stands now. Only\nthe host is shown: private trackers' URLs carry passkeys.",
+        "required": [
+          "host",
+          "torrents",
+          "private",
+          "working",
+          "failing",
+          "fails",
+          "error",
+          "failing_since",
+          "last_failure"
+        ],
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "The host (`tracker.example.org`)."
+          },
+          "torrents": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Torrents with a tracker on this host.",
+            "minimum": 0
+          },
+          "private": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Of those, the private ones.",
+            "minimum": 0
+          },
+          "working": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Torrents working with it now (their working tracker is on this host).",
+            "minimum": 0
+          },
+          "failing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Running torrents whose last announce to it failed (info-hashes)."
+          },
+          "fails": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The most announces failed in a row, for one of them; 0 when none\nfails.",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The latest error; `null` when none fails."
+          },
+          "failing_since": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the oldest of these runs of failures began, unix seconds.",
+            "minimum": 0
+          },
+          "last_failure": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The latest failure, unix seconds.",
+            "minimum": 0
+          }
+        }
+      },
       "TrackerInfo": {
         "type": "object",
         "description": "One tracker.",
@@ -20043,6 +20473,57 @@
           }
         }
       },
+      "TrackerPoint": {
+        "type": "object",
+        "description": "A tracker's bucket.",
+        "required": [
+          "t",
+          "host",
+          "downloaded",
+          "uploaded",
+          "announces",
+          "announce_errors"
+        ],
+        "properties": {
+          "t": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bucket start, unix seconds.",
+            "minimum": 0
+          },
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tracker's host; `null` = no working tracker."
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes downloaded by the torrents working with it.",
+            "minimum": 0
+          },
+          "uploaded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Payload bytes uploaded by the torrents working with it.",
+            "minimum": 0
+          },
+          "announces": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Announces it answered.",
+            "minimum": 0
+          },
+          "announce_errors": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Announces that failed.",
+            "minimum": 0
+          }
+        }
+      },
       "TrackerRow": {
         "type": "object",
         "description": "A tracker (by host) over a range.",
@@ -20101,7 +20582,8 @@
           "from",
           "to",
           "step",
-          "rows"
+          "rows",
+          "points"
         ],
         "properties": {
           "from": {
@@ -20126,6 +20608,13 @@
               "$ref": "#/components/schemas/TrackerRow"
             },
             "description": "Trackers, highest first."
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrackerPoint"
+            },
+            "description": "Their buckets, oldest first (`series=true`)."
           }
         }
       },

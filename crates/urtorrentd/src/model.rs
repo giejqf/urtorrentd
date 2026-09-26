@@ -856,6 +856,55 @@ pub struct AddTrackersRequest {
     pub tier: Option<usize>,
 }
 
+/// Add trackers to torrents.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct AddTrackersBulkRequest {
+    /// Target torrents.
+    pub hashes: Hashes,
+    /// Announce URLs (a torrent that has one already keeps it where it is).
+    pub urls: Vec<String>,
+    /// Tier; absent = a new tier after each torrent's last.
+    #[serde(default)]
+    pub tier: Option<usize>,
+}
+
+/// Remove every tracker on some hosts from torrents.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct RemoveTrackerHostsRequest {
+    /// Target torrents.
+    pub hashes: Hashes,
+    /// Hosts, as `GET /torrents/trackers` lists them (`tracker.example.org`).
+    pub hosts: Vec<String>,
+}
+
+/// A tracker host across the session's torrents, as it stands now. Only
+/// the host is shown: private trackers' URLs carry passkeys.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct TrackerHost {
+    /// The host (`tracker.example.org`).
+    pub host: String,
+    /// Torrents with a tracker on this host.
+    pub torrents: u32,
+    /// Of those, the private ones.
+    pub private: u32,
+    /// Torrents working with it now (their working tracker is on this host).
+    pub working: u32,
+    /// Running torrents whose last announce to it failed (info-hashes).
+    pub failing: Vec<String>,
+    /// The most announces failed in a row, for one of them; 0 when none
+    /// fails.
+    pub fails: u32,
+    /// The latest error; `null` when none fails.
+    #[schema(required = true)]
+    pub error: Option<String>,
+    /// When the oldest of these runs of failures began, unix seconds.
+    #[schema(required = true)]
+    pub failing_since: Option<u64>,
+    /// The latest failure, unix seconds.
+    #[schema(required = true)]
+    pub last_failure: Option<u64>,
+}
+
 /// URLs to remove.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UrlsRequest {
@@ -2210,6 +2259,8 @@ pub struct TrackerQuery {
     pub by: Option<TopMetric>,
     /// At most this many trackers (1 to 250); default 50.
     pub limit: Option<u32>,
+    /// Also return each tracker's buckets (`points`); default false.
+    pub series: Option<bool>,
 }
 
 /// A tracker (by host) over a range.
@@ -2245,6 +2296,26 @@ pub struct TrackerStats {
     pub step: StatsStep,
     /// Trackers, highest first.
     pub rows: Vec<TrackerRow>,
+    /// Their buckets, oldest first (`series=true`).
+    pub points: Vec<TrackerPoint>,
+}
+
+/// A tracker's bucket.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct TrackerPoint {
+    /// Bucket start, unix seconds.
+    pub t: u64,
+    /// The tracker's host; `null` = no working tracker.
+    #[schema(required = true)]
+    pub host: Option<String>,
+    /// Payload bytes downloaded by the torrents working with it.
+    pub downloaded: u64,
+    /// Payload bytes uploaded by the torrents working with it.
+    pub uploaded: u64,
+    /// Announces it answered.
+    pub announces: u64,
+    /// Announces that failed.
+    pub announce_errors: u64,
 }
 
 /// Query of the idle-seed report.

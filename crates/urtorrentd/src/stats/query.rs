@@ -17,8 +17,8 @@ use crate::model::{
     GroupQuery, GroupRow, GroupStats, IdleQuery, IdleSeed, IdleSeeds, PeerBreakdown, PeerDimension,
     PeerPoint, PeerQuery, PeerRow, StatsInfo, StatsPeriod, StatsRangeQuery, StatsStep,
     TimelineEvent, TimelineQuery, TopMetric, TopQuery, TopTorrent, TopTorrents, TorrentDay,
-    TorrentDays, TorrentTraffic, TrackerQuery, TrackerRow, TrackerStats, TrafficPoint,
-    TransferPoint, TransferStats,
+    TorrentDays, TorrentTraffic, TrackerPoint, TrackerQuery, TrackerRow, TrackerStats,
+    TrafficPoint, TransferPoint, TransferStats,
 };
 use crate::util::{blocking, hex, now, parse_hash};
 
@@ -681,9 +681,12 @@ impl Daemon {
         let steps = [StatsStep::Hour, StatsStep::Day];
         let step = pick_step(&steps, q.step, from, to, t, &self.stats_retention(), false)?;
         let limit = check_limit(q.limit, 50, 250)?;
+        let series = q.series.unwrap_or(false);
+        check_series(series, from, to, step, limit)?;
         let by_upload = q.by.unwrap_or(TopMetric::Uploaded) == TopMetric::Uploaded;
         let (db, _) = self.stats_db().await?;
-        let (traffic, announces) = blocking(move || db.trackers(step, from, to))
+        let db2 = db.clone();
+        let (traffic, announces) = blocking(move || db2.trackers(step, from, to))
             .await
             .map_err(ApiError::io)?;
         let mut rows: BTreeMap<Option<String>, TrackerRow> = BTreeMap::new();
@@ -727,11 +730,32 @@ impl Daemon {
                 .then(a.host.cmp(&b.host))
         });
         rows.truncate(limit as usize);
+        let points = if series {
+            let hosts: Vec<Option<String>> = rows.iter().map(|r| r.host.clone()).collect();
+            blocking(move || db.tracker_series(step, from, to, &hosts))
+                .await
+                .map_err(ApiError::io)?
+        } else {
+            Vec::new()
+        };
         Ok(TrackerStats {
             from,
             to,
             step,
             rows,
+            points: points
+                .into_iter()
+                .map(
+                    |(t, host, downloaded, uploaded, announces, announce_errors)| TrackerPoint {
+                        t,
+                        host,
+                        downloaded,
+                        uploaded,
+                        announces,
+                        announce_errors,
+                    },
+                )
+                .collect(),
         })
     }
 

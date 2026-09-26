@@ -278,6 +278,11 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(torrent::set_file_priority))
         .routes(routes!(torrent::rename_file))
         .routes(routes!(torrent::rename_folder))
+        .routes(routes!(
+            torrents::list_tracker_hosts,
+            torrents::add_trackers_to_torrents
+        ))
+        .routes(routes!(torrents::remove_tracker_hosts))
         .routes(routes!(torrent::list_trackers, torrent::add_trackers))
         .routes(routes!(torrent::remove_trackers))
         .routes(routes!(torrent::edit_tracker))

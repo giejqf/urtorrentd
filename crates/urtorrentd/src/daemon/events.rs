@@ -10,7 +10,7 @@ use std::sync::{Arc, Weak};
 
 use urtorrent::{ErrorKind, Event, EventStream, InfoHash, TorrentId};
 
-use super::{Daemon, ResumeSave};
+use super::{Daemon, ResumeSave, TrackerFailure};
 use crate::log::LogTopic;
 use crate::log::{LogLevel, PeerLogSource};
 use crate::model::TimelineKind;
@@ -108,14 +108,36 @@ impl Daemon {
                     stats.peer_closed(now(), h, &PeerSample::of(&info), &|ip| self.geo.lookup(ip));
                 }
             }
-            Event::TrackerReply { url, .. } => {
+            Event::TrackerReply { id, url, .. } => {
                 if let Ok(stats) = &self.stats {
                     stats.announce(now(), &url, true);
                 }
+                if let Some(h) = self.hash_of(id)
+                    && let Some(e) = self.state().torrents.get_mut(&h)
+                {
+                    e.tracker_failures.remove(&url);
+                }
             }
-            Event::TrackerError { url, .. } => {
+            Event::TrackerError { id, url, error } => {
+                let t = now();
                 if let Ok(stats) = &self.stats {
-                    stats.announce(now(), &url, false);
+                    stats.announce(t, &url, false);
+                }
+                if let Some(h) = self.hash_of(id)
+                    && let Some(e) = self.state().torrents.get_mut(&h)
+                {
+                    let f = e
+                        .tracker_failures
+                        .entry(url)
+                        .or_insert_with(|| TrackerFailure {
+                            fails: 0,
+                            error: String::new(),
+                            since: t,
+                            last: t,
+                        });
+                    f.fails = f.fails.saturating_add(1);
+                    f.error = error;
+                    f.last = t;
                 }
             }
             Event::ScrapeReply {
@@ -148,6 +170,9 @@ impl Daemon {
                     for e in st.torrents.values_mut() {
                         e.tracker_urls = None;
                         e.content = None;
+                        // An answer may be among the dropped events: the
+                        // next failure brings a tracker back.
+                        e.tracker_failures.clear();
                     }
                 }
                 self.clear_file_index();

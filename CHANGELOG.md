@@ -165,6 +165,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DELETE /stats` deletes every statistic, and `DELETE /stats/removed` the
   history of removed torrents (counted by `removed` in `GET /stats`); the
   file shrinks. The GeoIP databases say when they were read (`loaded`).
+- `GET /torrents/trackers`: every tracker host across the torrents as it
+  stands now: how many torrents have a tracker on it (and how many of them
+  are private), how many work with it, and the running torrents whose
+  announces to it fail, with the latest error, the most failures in a row
+  and since when. Hosts only, never URLs.
+- `POST /torrents/trackers` adds trackers to many torrents at once, and
+  `POST /torrents/trackers/remove` removes every tracker on some hosts from
+  them.
+- `GET /stats/trackers?series=true`: each tracker's buckets (traffic of
+  its torrents, announces answered and failed), like `/stats/groups`.
 
 ### Changed
 

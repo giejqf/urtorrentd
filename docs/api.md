@@ -247,6 +247,29 @@ With a secret, `X-Urtorrentd-Signature: sha256=<hex>` is the HMAC-SHA256 of
 not followed; no answer, 429 and 5xx are retried after 2 s, 10 s and 60 s.
 `GET /webhooks` shows each webhook's last 20 deliveries (since the start).
 
+## Trackers across torrents
+
+`GET /torrents/trackers` sums up every tracker host the torrents use, as it
+stands now. A running torrent is `failing` on a host when its last announce
+there failed and it does not work with another tracker on that host. The
+failures come from this run's announces: after a restart a host shows as
+failing again once an announce to it fails.
+
+```sh
+GET /api/v1/torrents/trackers
+[{"host": "tracker.example.org", "torrents": 4, "private": 4, "working": 3,
+  "failing": ["0123...cdef"], "fails": 7, "error": "connection timed out",
+  "failing_since": 1790200000, "last_failure": 1790203300}, ...]
+# Stop using a dead tracker, or give torrents more trackers, in bulk
+POST /api/v1/torrents/trackers/remove  {"hashes": ["0123...cdef"], "hosts": ["tracker.example.org"]}
+POST /api/v1/torrents/trackers         {"hashes": ["0123...cdef"], "urls": ["udp://open.example:6969/announce"]}
+```
+
+Both answer with a `BulkResult`. Removing takes hosts, not URLs, so a
+client never needs a private tracker's URL. The daemon never adds trackers to
+private torrents by itself (AGENTS.md rule 2), but a request like this one
+is the user's choice.
+
 ## Statistics ([ADR 0005](adr/0005-statistics.md))
 
 The daemon records history in `<data dir>/stats.db` (settings:
@@ -318,9 +341,11 @@ take `series=true` like `/stats/geo`):
 ```sh
 GET /api/v1/stats/groups?group=category&from=1787000000
 GET /api/v1/stats/groups?group=tag               # a torrent counts in each of its tags
-GET /api/v1/stats/trackers?step=day&from=1787000000
+GET /api/v1/stats/trackers?step=day&from=1787000000&series=true
 {"rows": [{"host": "tracker.example.org", "uploaded": 9663676416, "downloaded": 0, "torrents": 12,
-           "announces": 1310, "announce_errors": 4}, ...]}
+           "announces": 1310, "announce_errors": 4}, ...],
+ "points": [{"t": 1787011200, "host": "tracker.example.org", "uploaded": 1073741824, "downloaded": 0,
+             "announces": 187, "announce_errors": 0}, ...]}
 ```
 
 Groups follow each torrent's category and tags as they are now (or were when
@@ -420,6 +445,8 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | GET, PATCH | `/torrents/{hash}` | Everything about one torrent; change its name or comment |
 | GET | `/torrents/{hash}/files` | Files with progress, priority, piece range, availability |
 | POST | `/torrents/{hash}/files/priority`, `/files/rename`, `/folders/rename` | File priorities and renames |
+| GET, POST | `/torrents/trackers` | Tracker hosts across the torrents now: torrents on each, working, failing with the latest error ([Trackers](#trackers-across-torrents)); add trackers to many torrents |
+| POST | `/torrents/trackers/remove` | Remove every tracker on some hosts from many torrents |
 | GET, POST | `/torrents/{hash}/trackers` | Trackers (with a row per listen socket) and DHT / PEX / LSD sources; add trackers |
 | POST | `/torrents/{hash}/trackers/remove`, `/trackers/edit` | Remove or replace trackers |
 | GET, POST | `/torrents/{hash}/webseeds` | Web seeds; add |
@@ -464,7 +491,7 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | GET | `/stats/geo` | Peer traffic by country or autonomous system, per torrent or overall, optionally as a series |
 | GET | `/stats/peers` | Peer traffic by client, discovery source, transport, encryption, IP version or direction |
 | GET | `/stats/groups` | Traffic by category or tag |
-| GET | `/stats/trackers` | Per tracker host: traffic of its torrents, announces answered and failed |
+| GET | `/stats/trackers` | Per tracker host: traffic of its torrents, announces answered and failed, optionally as a series |
 | GET | `/stats/idle-seeds` | Complete torrents by what they uploaded in the last days relative to their size, least first |
 | GET | `/stats/timeline` | What happened to torrents (added, finished, moved, errors, state changes, removed) |
 

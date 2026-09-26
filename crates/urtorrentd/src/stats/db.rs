@@ -7,7 +7,7 @@
 //! `synchronous = NORMAL`. Every write is an additive upsert: partial
 //! buckets from several flushes, or from two runs within one minute, add up.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
@@ -262,6 +262,9 @@ pub type HostAnnounces = (String, u64, u64);
 
 /// A group's bucket: `(t, key, downloaded, uploaded)`.
 pub type KeyBucket = (u64, Option<String>, u64, u64);
+
+/// A tracker's bucket: `(t, host, down, up, replies, errors)`.
+pub type HostBucket = (u64, Option<String>, u64, u64, u64, u64);
 
 /// A torrent the database knows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1530,6 +1533,84 @@ impl StatsDb {
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(db_err)?;
         Ok((traffic, announces))
+    }
+
+    /// The buckets of some trackers (`None` = no working tracker), oldest
+    /// first: the traffic of the torrents working with each, and its
+    /// announces.
+    pub fn tracker_series(
+        &self,
+        step: StatsStep,
+        from: u64,
+        to: u64,
+        hosts: &[Option<String>],
+    ) -> io::Result<Vec<HostBucket>> {
+        if hosts.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.reader();
+        let (table, step_filter) = Self::source(step);
+        let named: Vec<&String> = hosts.iter().flatten().collect();
+        let wanted = serde_json::to_string(&named).unwrap_or_else(|_| "[]".into());
+        let none = hosts.iter().any(Option::is_none);
+        let sql = format!(
+            "SELECT x.t, tr.tracker AS k, sum(x.downloaded), sum(x.uploaded)
+             FROM {table} x JOIN torrents tr ON tr.id = x.torrent
+             WHERE x.t BETWEEN :from AND :to {step_filter}
+               AND (k IN (SELECT value FROM json_each(:keys)) OR (:none AND k IS NULL))
+             GROUP BY x.t, k"
+        );
+        let secs = step.secs();
+        let mut p: Vec<(&str, &dyn rusqlite::ToSql)> = vec![
+            (":from", &from),
+            (":to", &to),
+            (":keys", &wanted),
+            (":none", &none),
+        ];
+        if !step_filter.is_empty() {
+            p.push((":step", &secs));
+        }
+        let mut out: BTreeMap<(u64, Option<String>), HostBucket> = BTreeMap::new();
+        let mut stmt = conn.prepare_cached(&sql).map_err(db_err)?;
+        let traffic = stmt
+            .query_map(p.as_slice(), |r| {
+                Ok((
+                    r.get::<_, u64>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, u64>(2)?,
+                    r.get::<_, u64>(3)?,
+                ))
+            })
+            .map_err(db_err)?;
+        for row in traffic {
+            let (t, k, down, up) = row.map_err(db_err)?;
+            out.insert((t, k.clone()), (t, k, down, up, 0, 0));
+        }
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT t, host, replies, errors FROM announces
+                 WHERE step = ?1 AND t BETWEEN ?2 AND ?3
+                   AND host IN (SELECT value FROM json_each(?4))",
+            )
+            .map_err(db_err)?;
+        let announces = stmt
+            .query_map(params![step.secs(), from, to, wanted], |r| {
+                Ok((
+                    r.get::<_, u64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, u64>(2)?,
+                    r.get::<_, u64>(3)?,
+                ))
+            })
+            .map_err(db_err)?;
+        for row in announces {
+            let (t, host, replies, errors) = row.map_err(db_err)?;
+            let k = Some(host);
+            let b = out.entry((t, k.clone())).or_insert((t, k, 0, 0, 0, 0));
+            b.4 += replies;
+            b.5 += errors;
+        }
+        Ok(out.into_values().collect())
     }
 
     /// Per torrent (hex hash), the bytes uploaded and seconds seeding on the

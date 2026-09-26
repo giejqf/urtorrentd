@@ -6,7 +6,15 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 ## Open
 
-Nothing.
+- **The announce interval and the response time of tracker replies**, for
+  the Trackers report (the web UI's Stats › Trackers: the interval trackers
+  ask for, and trackers that answer slowly). `Event::TrackerReply` carries
+  the URL and the peer count only; `TrackerStatus` has the time to the next
+  announce but not the interval the tracker asked for. The daemon sees the
+  reply event and not the request, so it cannot time an announce itself.
+  Wanted: the `interval` (and `min interval`) of the reply, and how long the
+  announce took from request to reply, in the event. In the meantime the
+  report shows neither.
 
 ## Resolved upstream
 

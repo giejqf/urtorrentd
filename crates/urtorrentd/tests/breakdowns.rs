@@ -4,8 +4,9 @@
 //! Statistics breakdowns (0.7.0) on real engines: peer traffic by client,
 //! source, transport, encryption, IP version and direction; traffic by
 //! category, tag and tracker with the trackers' announces; completed
-//! downloads from scrapes; the idle-seed report. A local HTTP tracker
-//! answers announces and scrapes.
+//! downloads from scrapes; the idle-seed report; tracker hosts now, with
+//! trackers added and removed in bulk. A local HTTP tracker answers
+//! announces and scrapes.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, missing_docs)]
 
@@ -220,6 +221,118 @@ async fn traffic_broken_down_by_peer_group_and_tracker() {
     assert_eq!(working["torrents"], 1);
     assert_eq!(row(&v, "host", "localhost").unwrap()["uploaded"], 0);
     assert!(!v.to_string().contains("/announce"), "hosts only: {v}");
+
+    // The same per bucket: the upload, and the announces answered and failed.
+    let v = seeder
+        .get("/api/v1/stats/trackers?step=hour&series=true")
+        .await;
+    let sum = |host: &str, field: &str| {
+        v["points"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["host"] == host)
+            .map(|p| p[field].as_u64().unwrap())
+            .sum::<u64>()
+    };
+    let working = row(&v, "host", "127.0.0.1").unwrap();
+    assert_eq!(sum("127.0.0.1", "uploaded"), up, "{v}");
+    assert_eq!(
+        Some(sum("127.0.0.1", "announces")),
+        working["announces"].as_u64()
+    );
+    assert!(sum("localhost", "announce_errors") >= 1, "{v}");
+    assert_eq!(sum("localhost", "uploaded"), 0);
+
+    // Now, by host: who works with which tracker, and what fails.
+    let v = wait_get(
+        &seeder,
+        "/api/v1/torrents/trackers",
+        "a failing tracker",
+        |v| {
+            v.as_array()
+                .unwrap()
+                .iter()
+                .any(|h| h["host"] == "localhost" && h["failing"] == json!([idle_hash]))
+        },
+    )
+    .await;
+    let host = |v: &Value, name: &str| {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .find(|h| h["host"] == name)
+            .cloned()
+    };
+    let ok = host(&v, "127.0.0.1").unwrap();
+    assert_eq!(
+        (&ok["torrents"], &ok["private"], &ok["working"]),
+        (&json!(1), &json!(0), &json!(1)),
+        "{v}"
+    );
+    assert_eq!(ok["failing"], json!([]));
+    assert_eq!(ok["error"], Value::Null);
+    let bad = host(&v, "localhost").unwrap();
+    assert_eq!(bad["working"], 0);
+    assert!(bad["fails"].as_u64() >= Some(1), "{v}");
+    assert!(bad["error"].as_str().is_some_and(|e| !e.is_empty()), "{v}");
+    assert!(bad["failing_since"].as_u64() <= bad["last_failure"].as_u64());
+    assert!(!v.to_string().contains("/announce"), "hosts only: {v}");
+
+    // In bulk: the failing host removed, the working tracker added.
+    let (s, r) = seeder
+        .post(
+            "/api/v1/torrents/trackers/remove",
+            json!({"hashes": [idle_hash.clone()], "hosts": ["LOCALHOST"]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{r}");
+    assert_eq!(r["applied"], json!([idle_hash.clone()]));
+    let (s, r) = seeder
+        .post(
+            "/api/v1/torrents/trackers",
+            json!({"hashes": "all", "urls": [announce.clone()]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{r}");
+    assert_eq!(r["applied"].as_array().unwrap().len(), 2, "{r}");
+    let (s, _) = seeder
+        .post(
+            "/api/v1/torrents/reannounce",
+            json!({"hashes": [idle_hash.clone()]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let v = wait_get(
+        &seeder,
+        "/api/v1/torrents/trackers",
+        "both torrents on the working tracker",
+        |v| host(v, "127.0.0.1").is_some_and(|h| h["working"] == 2),
+    )
+    .await;
+    assert_eq!(
+        v.as_array().unwrap().len(),
+        1,
+        "the other host is gone: {v}"
+    );
+    assert_eq!(host(&v, "127.0.0.1").unwrap()["torrents"], 2);
+    for (path, body) in [
+        (
+            "/api/v1/torrents/trackers",
+            json!({"hashes": "all", "urls": ["ftp://tracker.example/announce"]}),
+        ),
+        (
+            "/api/v1/torrents/trackers",
+            json!({"hashes": "all", "urls": []}),
+        ),
+        (
+            "/api/v1/torrents/trackers/remove",
+            json!({"hashes": "all", "hosts": [" "]}),
+        ),
+    ] {
+        let (s, v) = seeder.post(path, body).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{path}: {v}");
+    }
 
     // The scrape's completed downloads, and the swarm at its largest.
     let days = wait_get(
