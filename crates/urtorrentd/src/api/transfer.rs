@@ -9,10 +9,10 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::http::StatusCode;
 
-use super::{Json, no_content};
+use super::{Json, Query, no_content};
 use crate::daemon::{Daemon, parse_peer_ip};
 use crate::error::{ApiError, ApiResult};
-use crate::model::{AltSpeedRequest, BanRequest, TransferInfo};
+use crate::model::{AltSpeedRequest, BanRequest, PeersNow, PeersQuery, TransferInfo};
 use crate::settings::SettingsPatch;
 
 /// Session-wide transfer state.
@@ -21,6 +21,18 @@ pub(crate) async fn get_transfer_info(
     State(d): State<Arc<Daemon>>,
 ) -> ApiResult<Json<TransferInfo>> {
     Ok(Json(d.transfer_info().await?))
+}
+
+/// Peers across the torrents, located: the peers of every torrent moving
+/// data, as the daemon samples them every 10 s (idle torrents' connections
+/// are left out), or every peer of one torrent now (`hash`). With where the
+/// daemon itself is (its external address, located).
+#[utoipa::path(get, path = "/transfer/peers", tag = "transfer", params(PeersQuery), responses((status = 200, body = PeersNow)))]
+pub(crate) async fn list_transfer_peers(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<PeersQuery>,
+) -> ApiResult<Json<PeersNow>> {
+    Ok(Json(d.peers_now(q.hash.as_deref()).await?))
 }
 
 /// Switch between the normal and the alternative speed limits.

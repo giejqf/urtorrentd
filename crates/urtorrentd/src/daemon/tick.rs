@@ -5,6 +5,7 @@
 //! due, changed records, and the all-time totals. Policy only: it reads
 //! snapshots and calls public operations.
 
+use std::collections::HashSet;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
@@ -12,11 +13,12 @@ use urtorrent::{InfoHash, TorrentId, TorrentState as L, TorrentStatus};
 
 use super::{Daemon, ResumeSave};
 use crate::log::LogTopic;
+use crate::model::TorrentPeer;
 use crate::settings::{Settings, SettingsPatch, ShareLimitAction};
 use crate::stats::peers::{PEER_SAMPLE_EVERY, PeerSample};
 use crate::stats::{Flush, Sample};
 use crate::store::{RatioLimit, ShareLimits, TimeLimit};
-use crate::util::now;
+use crate::util::{hex, now};
 
 const TICK: Duration = Duration::from_secs(2);
 /// Totals are saved every this many ticks (and at shutdown).
@@ -220,27 +222,38 @@ impl Daemon {
         }
     }
 
-    /// Sample the peers of the torrents that moved data since the last
-    /// sample, for the statistics by place.
+    /// Sample the peers of the torrents moving data now or since the last
+    /// sample: for the statistics by place, and for the peers across
+    /// torrents (`GET /transfer/peers`).
     async fn sample_peers(&self) {
-        let Ok(stats) = &self.stats else {
-            return;
+        let active: HashSet<InfoHash> = match &self.stats {
+            Ok(stats) => stats.take_active().into_iter().collect(),
+            Err(_) => HashSet::new(),
         };
-        let hashes = stats.take_active();
-        let ids: Vec<(InfoHash, TorrentId)> = {
+        let ids: Vec<(InfoHash, TorrentId, usize)> = {
             let st = self.state();
-            hashes
+            st.torrents
                 .iter()
-                .filter_map(|h| st.torrents.get(h).map(|e| (*h, e.id)))
+                .filter(|(h, e)| e.flowing || active.contains(*h))
+                .map(|(h, e)| (*h, e.id, e.pieces_total))
                 .collect()
         };
-        for (hash, id) in ids {
+        let mut live = Vec::new();
+        for (hash, id, pieces) in ids {
             let Ok(peers) = self.session.peers(id).await else {
                 continue;
             };
-            let samples: Vec<PeerSample> = peers.iter().map(PeerSample::of).collect();
-            stats.observe_peers(now(), hash, &samples, &|ip| self.geo.lookup(ip));
+            if let Ok(stats) = &self.stats {
+                let samples: Vec<PeerSample> = peers.iter().map(PeerSample::of).collect();
+                stats.observe_peers(now(), hash, &samples, &|ip| self.geo.lookup(ip));
+            }
+            let h = hex(&hash);
+            live.extend(peers.iter().map(|p| TorrentPeer {
+                hash: h.clone(),
+                peer: self.peer_info(p, pieces),
+            }));
         }
+        self.state().live_peers = Some((now(), live));
     }
 
     async fn tick_once(self: &Arc<Self>) {
@@ -278,6 +291,8 @@ impl Daemon {
                     e.name = Some(s.name.clone());
                 }
                 e.has_trackers = s.trackers_count > 0;
+                e.flowing = s.download_rate > 0 || s.upload_rate > 0;
+                e.pieces_total = s.pieces_total;
                 let limits = effective_limits(
                     e.record.share_limits,
                     e.record

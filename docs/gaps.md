@@ -61,10 +61,13 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 ## Considered, not needed
 
-- **Peers of many torrents in one call**, for the statistics by place. The
-  daemon calls `peers(id)` every 10 s for each torrent that moved data since
-  the last sample (idle torrents cost nothing). Background work bounded by
-  the active torrents, not a list endpoint; ask if it shows in a profile.
+- **Peers of many torrents in one call**, for the statistics by place and
+  the peers across torrents (`GET /transfer/peers`). The daemon calls
+  `peers(id)` every 10 s for each torrent moving data (idle torrents cost
+  nothing) and serves the list from that sample, so a request costs no
+  engine call. Background work bounded by the active torrents, not a list
+  endpoint; ask if it shows in a profile, or if the list should also hold
+  the connections of idle torrents.
 
 - **Tracker URLs in `statuses()` rows**, for the trackers in list rows'
   `magnet_uri`. The daemon caches each torrent's URLs, filled once from

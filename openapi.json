@@ -13016,6 +13016,108 @@
         }
       }
     },
+    "/api/v1/transfer/peers": {
+      "get": {
+        "tags": [
+          "transfer"
+        ],
+        "summary": "Peers across the torrents, located: the peers of every torrent moving\ndata, as the daemon samples them every 10 s (idle torrents' connections\nare left out), or every peer of one torrent now (`hash`). With where the\ndaemon itself is (its external address, located).",
+        "operationId": "list_transfer_peers",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "query",
+            "description": "One torrent (info-hash): all its peers, now. Default: the peers of\nevery torrent moving data, as last sampled.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeersNow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/watch-folders": {
       "get": {
         "tags": [
@@ -16519,6 +16621,44 @@
           "other"
         ]
       },
+      "PeersNow": {
+        "type": "object",
+        "description": "Peers across the torrents, and where the daemon itself is.",
+        "required": [
+          "sampled",
+          "here",
+          "peers"
+        ],
+        "properties": {
+          "sampled": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the list was taken, unix seconds; `null` = not yet (the first\nsample is taken within 10 s of the start).",
+            "minimum": 0
+          },
+          "here": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Place",
+                "description": "Where the daemon is: its external address (as trackers and peers\nreport it) in the GeoIP databases; `null` = no external address\nknown yet."
+              }
+            ]
+          },
+          "peers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TorrentPeer"
+            },
+            "description": "The peers."
+          }
+        }
+      },
       "PieceState": {
         "type": "string",
         "description": "A piece's standing.",
@@ -16561,6 +16701,40 @@
               "minimum": 0
             },
             "description": "Download priority of each piece (0 = skipped, 1..=7), in piece order."
+          }
+        }
+      },
+      "Place": {
+        "type": "object",
+        "description": "Where an address is, by the GeoIP databases.",
+        "required": [
+          "country",
+          "asn",
+          "as_org"
+        ],
+        "properties": {
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Country (ISO 3166-1 alpha-2); `null` = not in the database."
+          },
+          "asn": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Autonomous system number; `null` = unknown.",
+            "minimum": 0
+          },
+          "as_org": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The autonomous system's organization; `null` = unknown."
           }
         }
       },
@@ -19669,6 +19843,27 @@
           }
         },
         "additionalProperties": false
+      },
+      "TorrentPeer": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PeerInfo",
+            "description": "The peer."
+          },
+          {
+            "type": "object",
+            "required": [
+              "hash"
+            ],
+            "properties": {
+              "hash": {
+                "type": "string",
+                "description": "The torrent (info-hash)."
+              }
+            }
+          }
+        ],
+        "description": "A peer and the torrent it is connected for."
       },
       "TorrentSort": {
         "type": "string",

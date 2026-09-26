@@ -32,7 +32,8 @@ fn located(country: &str, asn: u32, org: &str) -> Location {
     }
 }
 
-/// A GeoLite2-style pair: loopback is in New Zealand, AS64500.
+/// A GeoLite2-style pair: loopback is in New Zealand, AS64500;
+/// 203.0.113.0/24 (documentation addresses) in the United Kingdom.
 fn write_loopback_dbs(dir: &Path, epoch: u64) -> (String, String) {
     let country = dir.join("country.mmdb");
     let asn = dir.join("asn.mmdb");
@@ -43,6 +44,7 @@ fn write_loopback_dbs(dir: &Path, epoch: u64) -> (String, String) {
         epoch,
         vec![
             ("127.0.0.0/8", mmdb::country("NZ", "New Zealand")),
+            ("203.0.113.0/24", mmdb::country("GB", "United Kingdom")),
             ("2001:db8::/32", mmdb::country("DE", "Germany")),
         ],
     );
@@ -207,6 +209,22 @@ async fn peers_are_located_and_their_traffic_adds_up() {
     assert_eq!(peers[0]["country"], "NZ", "{peers}");
     assert_eq!(peers[0]["asn"], 64_500);
     assert_eq!(peers[0]["as_org"], "Test Net");
+    // Across torrents: the sample of those moving data, located; one
+    // torrent's, now. No external address is known: `here` is null.
+    let v = wait_get(&seeder, "/api/v1/transfer/peers", "a sampled peer", |v| {
+        !v["peers"].as_array().unwrap().is_empty()
+    })
+    .await;
+    assert_eq!(v["peers"][0]["hash"], hash.as_str(), "{v}");
+    assert_eq!(v["peers"][0]["country"], "NZ");
+    assert!(v["peers"][0]["upload_rate"].as_u64().is_some());
+    assert!(v["sampled"].as_u64().is_some());
+    assert_eq!(v["here"], Value::Null);
+    let v = seeder
+        .get(&format!("/api/v1/transfer/peers?hash={hash}"))
+        .await;
+    assert_eq!(v["peers"][0]["hash"], hash.as_str(), "{v}");
+    assert_eq!(v["peers"][0]["as_org"], "Test Net");
     let lp = leecher.get(&format!("/api/v1/torrents/{hash}/peers")).await;
     if let Some(p) = lp.as_array().unwrap().first() {
         assert_eq!(p["country"], Value::Null, "no database on the leecher: {p}");
@@ -287,6 +305,62 @@ async fn peers_are_located_and_their_traffic_adds_up() {
     assert_eq!(s, StatusCode::NOT_FOUND);
     leecher.stop().await;
     seeder.stop().await;
+}
+
+/// A tracker that tells each announce our external address is
+/// 203.0.113.7 (BEP 24), with no peers.
+async fn tracker_seeing_us_at_203_0_113_7() -> std::net::SocketAddr {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = axum::Router::new().route(
+        "/announce",
+        axum::routing::get(|| async {
+            let mut body = b"d11:external ip4:".to_vec();
+            body.extend([203, 0, 113, 7]);
+            body.extend(b"8:intervali1800e5:peers0:e");
+            body
+        }),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    addr
+}
+
+#[tokio::test]
+async fn the_daemon_is_placed_by_its_external_address() {
+    let dbs = tempfile::tempdir().unwrap();
+    let (country, asn) = write_loopback_dbs(dbs.path(), 1_700_000_000);
+    let t = TestDaemon::start(67, |s| {
+        s.geoip_database = Some(country.clone());
+        s.geoip_asn_database = Some(asn.clone());
+    })
+    .await;
+    let tracker = tracker_seeing_us_at_203_0_113_7().await;
+    let f = fixture(
+        "placed.bin",
+        &[("placed.bin", 100_000)],
+        16_384,
+        Some(&format!("http://{tracker}/announce")),
+        false,
+        43,
+    );
+    f.write_to(&t.save_path());
+    t.add(&f, json!({})).await;
+    let v = wait_get(&t, "/api/v1/transfer/peers", "an external address", |v| {
+        v["here"] != Value::Null
+    })
+    .await;
+    assert_eq!(
+        v["here"],
+        json!({"country": "GB", "asn": null, "as_org": null}),
+        "{v}"
+    );
+    assert_eq!(
+        t.get("/api/v1/transfer").await["external_v4"],
+        "203.0.113.7"
+    );
+    t.stop().await;
 }
 
 #[tokio::test]

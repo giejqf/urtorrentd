@@ -183,6 +183,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   them.
 - `GET /stats/trackers?series=true`: each tracker's buckets (traffic of
   its torrents, announces answered and failed), like `/stats/groups`.
+- `GET /transfer/peers`: the peers across torrents, located: those of every
+  torrent moving data as sampled every 10 s (now also while statistics
+  recording is off), or every peer of one torrent now; with where the
+  daemon itself is (its external address in the GeoIP databases).
 
 ### Changed
 

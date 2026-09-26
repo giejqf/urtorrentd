@@ -1012,6 +1012,55 @@ pub struct PeerInfo {
     pub as_org: Option<String>,
 }
 
+/// A peer and the torrent it is connected for.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TorrentPeer {
+    /// The torrent (info-hash).
+    pub hash: String,
+    /// The peer.
+    #[serde(flatten)]
+    pub peer: PeerInfo,
+}
+
+/// Where an address is, by the GeoIP databases.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct Place {
+    /// Country (ISO 3166-1 alpha-2); `null` = not in the database.
+    #[schema(required = true)]
+    pub country: Option<String>,
+    /// Autonomous system number; `null` = unknown.
+    #[schema(required = true)]
+    pub asn: Option<u32>,
+    /// The autonomous system's organization; `null` = unknown.
+    #[schema(required = true)]
+    pub as_org: Option<String>,
+}
+
+/// Which peers `GET /transfer/peers` lists.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct PeersQuery {
+    /// One torrent (info-hash): all its peers, now. Default: the peers of
+    /// every torrent moving data, as last sampled.
+    pub hash: Option<String>,
+}
+
+/// Peers across the torrents, and where the daemon itself is.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PeersNow {
+    /// When the list was taken, unix seconds; `null` = not yet (the first
+    /// sample is taken within 10 s of the start).
+    #[schema(required = true)]
+    pub sampled: Option<u64>,
+    /// Where the daemon is: its external address (as trackers and peers
+    /// report it) in the GeoIP databases; `null` = no external address
+    /// known yet.
+    #[schema(required = true)]
+    pub here: Option<Place>,
+    /// The peers.
+    pub peers: Vec<TorrentPeer>,
+}
+
 /// A piece's standing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]

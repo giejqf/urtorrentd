@@ -302,6 +302,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(categories::list_tags, categories::create_tags))
         .routes(routes!(categories::delete_tags))
         .routes(routes!(transfer::get_transfer_info))
+        .routes(routes!(transfer::list_transfer_peers))
         .routes(routes!(transfer::set_alt_speed))
         .routes(routes!(transfer::ban_peers))
         .routes(routes!(sync::sync))

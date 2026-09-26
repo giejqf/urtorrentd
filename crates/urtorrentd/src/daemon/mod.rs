@@ -116,6 +116,10 @@ pub(crate) struct Entry {
     /// Its trackers whose last announce failed, by URL (from the engine's
     /// events; an answer removes the tracker).
     pub tracker_failures: HashMap<String, TrackerFailure>,
+    /// Payload moved at the last tick (its peers are sampled).
+    pub flowing: bool,
+    /// Its pieces, as of the last tick (for the peers' progress).
+    pub pieces_total: usize,
 }
 
 /// A tracker whose last announce failed.
@@ -148,6 +152,8 @@ impl Entry {
             has_trackers: false,
             last_scrape: None,
             tracker_failures: HashMap::new(),
+            flowing: false,
+            pieces_total: 0,
         }
     }
 
@@ -176,6 +182,9 @@ pub(crate) struct State {
     /// Whether the alternative-limits window was open at the last look;
     /// `None` = not looked yet (the next look applies it).
     pub scheduled: Option<bool>,
+    /// The peers of the torrents moving data, as last sampled (unix
+    /// seconds); `None` before the first sample.
+    pub live_peers: Option<(u64, Vec<crate::model::TorrentPeer>)>,
 }
 
 /// Torrents found by a bulk selection, and the hashes not found.
@@ -331,6 +340,7 @@ impl Daemon {
                 categories,
                 tags,
                 incoming_seen: false,
+                live_peers: None,
                 base_totals: totals,
                 previews: HashMap::new(),
                 scheduled: None,

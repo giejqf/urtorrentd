@@ -872,58 +872,106 @@ impl Daemon {
     /// Connected peers.
     pub(crate) async fn peers(&self, id: TorrentId) -> ApiResult<Vec<model::PeerInfo>> {
         let status = self.session.status(id).await?;
-        let total = status.pieces_total.max(1) as f64;
         Ok(self
             .session
             .peers(id)
             .await?
-            .into_iter()
-            .map(|p| {
-                let loc = self.geo.lookup(p.addr.ip());
-                (p, loc)
-            })
-            .map(|(p, loc)| model::PeerInfo {
-                country: loc.country,
-                asn: loc.asn,
-                as_org: loc.as_org,
-                address: p.addr.to_string(),
-                source: match p.source {
-                    urtorrent::PeerSource::Tracker => model::PeerSource::Tracker,
-                    urtorrent::PeerSource::Manual => model::PeerSource::Manual,
-                    urtorrent::PeerSource::Pex => model::PeerSource::Pex,
-                    urtorrent::PeerSource::Lsd => model::PeerSource::Lsd,
-                    urtorrent::PeerSource::Incoming => model::PeerSource::Incoming,
-                    urtorrent::PeerSource::Dht => model::PeerSource::Dht,
-                    urtorrent::PeerSource::Resume => model::PeerSource::Resume,
-                },
-                incoming: p.incoming,
-                transport: match p.transport {
-                    urtorrent::PeerTransport::Tcp => model::PeerTransport::Tcp,
-                    urtorrent::PeerTransport::Utp => model::PeerTransport::Utp,
-                    _ => model::PeerTransport::Other,
-                },
-                encrypted: p.encrypted,
-                client: p.client.clone(),
-                peer_id: p.peer_id.map(|id| hex(&id)),
-                progress: if p.is_seed {
-                    1.0
-                } else {
-                    (p.pieces as f64 / total).min(1.0)
-                },
-                is_seed: p.is_seed,
-                upload_only: p.upload_only,
-                downloaded: p.downloaded,
-                uploaded: p.uploaded,
-                download_rate: p.download_rate,
-                upload_rate: p.upload_rate,
-                peer_choking: p.peer_choking,
-                am_choking: p.am_choking,
-                peer_interested: p.peer_interested,
-                am_interested: p.am_interested,
-                outstanding_requests: p.outstanding,
-                connected_for: p.connected_for.as_secs(),
-            })
+            .iter()
+            .map(|p| self.peer_info(p, status.pieces_total))
             .collect())
+    }
+
+    /// Peers across the torrents (the last sample), or one torrent's now;
+    /// and where the daemon is.
+    pub(crate) async fn peers_now(&self, hash: Option<&str>) -> ApiResult<model::PeersNow> {
+        let stats = self.session.stats().await?;
+        let here = stats
+            .external_v4
+            .or(stats.external_v6)
+            .map(|ip| self.geo.lookup(ip))
+            .map(|l| model::Place {
+                country: l.country,
+                asn: l.asn,
+                as_org: l.as_org,
+            });
+        let (sampled, peers) = match hash {
+            Some(hash) => {
+                let (h, id) = self.resolve(hash)?;
+                let h = hex(&h);
+                let peers = self.peers(id).await?;
+                (
+                    Some(crate::util::now()),
+                    peers
+                        .into_iter()
+                        .map(|peer| model::TorrentPeer {
+                            hash: h.clone(),
+                            peer,
+                        })
+                        .collect(),
+                )
+            }
+            None => match self.state().live_peers.clone() {
+                Some((t, peers)) => (Some(t), peers),
+                None => (None, Vec::new()),
+            },
+        };
+        Ok(model::PeersNow {
+            sampled,
+            here,
+            peers,
+        })
+    }
+
+    /// A peer as the API shows it, located (`pieces_total`: the torrent's
+    /// pieces, for its progress).
+    pub(crate) fn peer_info(
+        &self,
+        p: &urtorrent::PeerInfo,
+        pieces_total: usize,
+    ) -> model::PeerInfo {
+        let total = pieces_total.max(1) as f64;
+        let loc = self.geo.lookup(p.addr.ip());
+        model::PeerInfo {
+            country: loc.country,
+            asn: loc.asn,
+            as_org: loc.as_org,
+            address: p.addr.to_string(),
+            source: match p.source {
+                urtorrent::PeerSource::Tracker => model::PeerSource::Tracker,
+                urtorrent::PeerSource::Manual => model::PeerSource::Manual,
+                urtorrent::PeerSource::Pex => model::PeerSource::Pex,
+                urtorrent::PeerSource::Lsd => model::PeerSource::Lsd,
+                urtorrent::PeerSource::Incoming => model::PeerSource::Incoming,
+                urtorrent::PeerSource::Dht => model::PeerSource::Dht,
+                urtorrent::PeerSource::Resume => model::PeerSource::Resume,
+            },
+            incoming: p.incoming,
+            transport: match p.transport {
+                urtorrent::PeerTransport::Tcp => model::PeerTransport::Tcp,
+                urtorrent::PeerTransport::Utp => model::PeerTransport::Utp,
+                _ => model::PeerTransport::Other,
+            },
+            encrypted: p.encrypted,
+            client: p.client.clone(),
+            peer_id: p.peer_id.map(|id| hex(&id)),
+            progress: if p.is_seed {
+                1.0
+            } else {
+                (p.pieces as f64 / total).min(1.0)
+            },
+            is_seed: p.is_seed,
+            upload_only: p.upload_only,
+            downloaded: p.downloaded,
+            uploaded: p.uploaded,
+            download_rate: p.download_rate,
+            upload_rate: p.upload_rate,
+            peer_choking: p.peer_choking,
+            am_choking: p.am_choking,
+            peer_interested: p.peer_interested,
+            am_interested: p.am_interested,
+            outstanding_requests: p.outstanding,
+            connected_for: p.connected_for.as_secs(),
+        }
     }
 
     /// Piece states and availability.

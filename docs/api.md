@@ -315,6 +315,20 @@ GET /api/v1/stats/geo?hash=<hash>&from=1789593600&dim=country&limit=5&series=tru
 GET /api/v1/stats/geo?dim=asn&by=downloaded
 ```
 
+The peers connected now, across torrents, come from `GET /transfer/peers`:
+the peers of every torrent moving data, as the daemon samples them every
+10 s for these statistics (whether or not recording is on), each with its
+torrent's `hash`; `?hash=` gives every peer of one torrent now, idle ones
+included. `here` places the daemon itself: its external address, as
+trackers and peers report it (`external_v4` in `GET /transfer`), in the same
+databases; `null` until an address is known.
+
+```sh
+GET /api/v1/transfer/peers
+{"sampled": 1790000000, "here": {"country": "GB", "asn": 64500, "as_org": "Example Net"},
+ "peers": [{"hash": "...", "address": "203.0.113.9:51413", "country": "DE", "download_rate": 1048576, ...}]}
+```
+
 Rows plus `unattributed` add up to the torrents' traffic over the range.
 `unattributed` holds what no peer accounts for: web seeds, a connection whose
 end was missed, and the last seconds of a running transfer (peers are sampled
@@ -460,6 +474,7 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | POST | `/tags/remove` | Delete tags (also from torrents) |
 | GET | `/transfer` | Rates, session and all-time totals, limits in force, connectivity, DHT nodes, external addresses, free space |
 | PUT | `/transfer/alt-speed` | Switch to or from the alternative limits |
+| GET | `/transfer/peers` | Peers across the torrents moving data (sampled every 10 s), or all of one torrent's now; located, with where the daemon is ([By place](#by-place)) |
 | POST | `/transfer/bans` | Ban peer addresses |
 | GET | `/sync` | Incremental updates: everything, then changes since `rev` |
 | GET | `/events` | The same updates pushed as server-sent events |
