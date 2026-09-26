@@ -5,7 +5,7 @@
 // its folders with what is unread and whether it works, the download rules
 // with what they would take, and when the next refresh is due. Feeds and
 // folders are added, changed and removed from here; a rule is made here
-// and edited in the screen's panel.
+// and edited in the rule dialog.
 
 import { useSearchParams } from "@solidjs/router";
 import { createQuery } from "@tanstack/solid-query";
@@ -47,6 +47,8 @@ export interface RssParams {
   feed?: string;
   folder?: string;
   rule?: string;
+  /** The chosen rule's dialog is open. */
+  edit?: string;
   show?: string;
   q?: string;
   [key: string]: string | undefined;
@@ -125,7 +127,7 @@ export default function RssSidebar(props: { onNavigate?: () => void }) {
   };
 
   const go = (p: Partial<RssParams>) => {
-    setParams({ feed: undefined, folder: undefined, rule: undefined, ...p });
+    setParams({ feed: undefined, folder: undefined, rule: undefined, edit: undefined, ...p });
     props.onNavigate?.();
   };
 
@@ -165,7 +167,7 @@ export default function RssSidebar(props: { onNavigate?: () => void }) {
         ),
         "The rule could not be made.",
       );
-      if (made) go({ rule: made.name });
+      if (made) go({ rule: made.name, edit: "1" });
     }
   };
   const onRemove = async () => {

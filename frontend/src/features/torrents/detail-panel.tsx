@@ -60,6 +60,7 @@ import { progressLine, trackerTone } from "./detail/parts";
 import { PeersTab } from "./detail/peers-tab";
 import { TrackersTab } from "./detail/trackers-tab";
 import { PiecesChart } from "./pieces-chart";
+import { useTorrentDialogs } from "./torrent-dialogs";
 
 type TorrentSummary = Schemas["TorrentSummary"];
 
@@ -302,6 +303,7 @@ function exportTorrent(t: TorrentSummary) {
 
 /** The header's "more" menu: the actions that do not have a button. */
 function MoreMenu(props: { torrent: TorrentSummary; onDelete: () => void }) {
+  const dialogs = useTorrentDialogs();
   const h = () => [props.torrent.hash];
   return (
     <DropdownMenu>
@@ -358,8 +360,15 @@ function MoreMenu(props: { torrent: TorrentSummary; onDelete: () => void }) {
           </DropdownMenuItem>
         </Show>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => dialogs.move([props.torrent.hash])}>
+          Move content…
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => dialogs.shareLimits([props.torrent.hash])}>
+          Share limits…
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem class="text-danger" onSelect={() => props.onDelete()}>
-          Delete…
+          Remove…
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -537,7 +546,7 @@ function TorrentTabs(props: { torrent: TorrentSummary; tab: Tab; onTab: (tab: Ta
 
 export function DetailPanel(props: {
   torrent: TorrentSummary;
-  onDelete: (hashes: string[]) => void;
+  onDelete: (hashes: readonly string[]) => void;
   class?: string;
 }) {
   const [params, setParams] = useSearchParams<{ tab?: string }>();

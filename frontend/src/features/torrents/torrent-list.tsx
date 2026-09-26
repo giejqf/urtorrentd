@@ -4,9 +4,12 @@
 // The design's list (AGENTS.md 6.2, 6.3): 40px rows under 32px state
 // headers, virtualized so 10 000 torrents cost only the rows on screen. A
 // listbox: arrows and j/k move, Shift extends, Space starts or stops,
-// Enter opens, Delete asks.
+// Enter opens, Delete asks. Each row's box adds it to the selection or
+// takes it out (shown on hover, and on every row while several are
+// chosen); it is the option's own state, so it is not a control of its own.
 
 import { createVirtualizer } from "@tanstack/solid-virtual";
+import Check from "lucide-solid/icons/check";
 import { createEffect, Index, type JSX, Match, on, Show, Switch } from "solid-js";
 
 import type { Schemas } from "~/api/client";
@@ -61,7 +64,9 @@ function Row(props: {
   t: TorrentSummary;
   selected: boolean;
   focused: boolean;
+  checkboxes: boolean;
   onPointer: (e: MouseEvent) => void;
+  onToggle: () => void;
 }) {
   const look = () => stateLook(props.t);
   const tags = () => tagSummary(props.t.tags);
@@ -71,13 +76,31 @@ function Row(props: {
       role="option"
       aria-selected={props.selected}
       class={cn(
-        "grid h-10 w-full cursor-pointer grid-cols-[20px_minmax(0,1fr)_64px_84px_48px_56px_88px] items-center gap-3 border-b border-row-divider px-4 text-left select-none",
+        "group grid h-10 w-full cursor-pointer grid-cols-[16px_20px_minmax(0,1fr)_64px_84px_48px_56px_88px] items-center gap-3 border-b border-row-divider px-4 text-left select-none",
         props.selected ? "bg-accent" : "hover:bg-muted",
         props.focused && "shadow-[inset_2px_0_0_var(--brand)]",
       )}
       onClick={(e) => props.onPointer(e)}
       onContextMenu={(e) => props.onPointer(e)}
     >
+      <span
+        aria-hidden="true"
+        class={cn(
+          "flex size-3.5 items-center justify-center rounded-sm border transition-opacity",
+          props.selected
+            ? "border-primary bg-primary text-primary-foreground"
+            : "border-border-strong bg-background",
+          !props.checkboxes && !props.selected && "opacity-0 group-hover:opacity-100",
+        )}
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onToggle();
+        }}
+      >
+        <Show when={props.selected}>
+          <Check size={10} stroke-width={3.5} />
+        </Show>
+      </span>
       <ProgressRing
         progress={props.t.has_metadata ? props.t.progress : 0}
         class={toneStroke[look().tone]}
@@ -142,6 +165,8 @@ export function TorrentList(props: {
   items: readonly ListItem[];
   torrents: Record<string, TorrentSummary>;
   selected: ReadonlySet<string>;
+  /** Every row shows its box (several are chosen). */
+  checkboxes: boolean;
   focus: string | null;
   onSelect: (hash: string, mode: SelectMode) => void;
   onKey: (e: KeyboardEvent) => void;
@@ -184,22 +209,21 @@ export function TorrentList(props: {
   const mode = (e: MouseEvent): SelectMode =>
     e.shiftKey ? "range" : e.metaKey || e.ctrlKey ? "toggle" : "one";
 
+  // One scroller for good: the virtualizer watches it from the start, and
+  // an empty list (a search) shows its message inside it.
   return (
-    <Show
-      when={props.items.length > 0}
-      fallback={<div class="min-h-0 flex-1 overflow-auto">{props.empty}</div>}
-    >
-      <div
-        ref={scroller}
-        class="relative min-h-0 flex-1 overflow-auto outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--ring)]"
-        role="listbox"
-        aria-label="Torrents"
-        aria-multiselectable="true"
-        aria-activedescendant={props.focus ? `row-${props.focus}` : undefined}
-        tabindex="0"
-        onKeyDown={(e) => props.onKey(e)}
-      >
-        <div class="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+    <div ref={scroller} class="relative flex min-h-0 flex-1 flex-col overflow-auto">
+      <Show when={props.items.length > 0} fallback={props.empty}>
+        <div
+          class="relative w-full flex-none outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--ring)]"
+          style={{ height: `${virtualizer.getTotalSize()}px` }}
+          role="listbox"
+          aria-label="Torrents"
+          aria-multiselectable="true"
+          aria-activedescendant={props.focus ? `row-${props.focus}` : undefined}
+          tabindex="0"
+          onKeyDown={(e) => props.onKey(e)}
+        >
           <Index each={virtualizer.getVirtualItems()}>
             {(v) => {
               const item = () => props.items[v().index];
@@ -228,6 +252,8 @@ export function TorrentList(props: {
                           t={t()}
                           selected={props.selected.has(t().hash)}
                           focused={props.focus === t().hash}
+                          checkboxes={props.checkboxes}
+                          onToggle={() => props.onSelect(t().hash, "toggle")}
                           onPointer={(e) => {
                             if (e.type === "contextmenu" && props.selected.has(t().hash)) return;
                             props.onSelect(t().hash, e.type === "contextmenu" ? "one" : mode(e));
@@ -241,7 +267,7 @@ export function TorrentList(props: {
             }}
           </Index>
         </div>
-      </div>
-    </Show>
+      </Show>
+    </div>
   );
 }

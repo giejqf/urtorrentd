@@ -45,10 +45,10 @@ test("add a magnet, see it wait for metadata, delete it", async ({ signedIn: pag
   await expectAccessible(page);
 
   await details.getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  await page.getByRole("menuitem", { name: "Remove…" }).click();
   const confirm = page.getByRole("alertdialog");
-  await expect(confirm).toContainText("Delete tails-amd64-6.20.img?");
-  await confirm.getByRole("button", { name: "Delete" }).click();
+  await expect(confirm).toContainText("Remove tails-amd64-6.20.img?");
+  await confirm.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(row).toHaveCount(0);
   await expect(page.getByText("No torrents yet")).toBeVisible();
   await expect(page).toHaveURL(/\/torrents$/);
@@ -237,7 +237,10 @@ test("filters count as the daemon's do; search, keys and bulk actions", async ({
     ]);
   }).toPass({ timeout: 10_000 });
   await page.keyboard.press("Delete");
-  await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: /^Remove/ })
+    .click();
   await expect(list.getByRole("option")).toHaveCount(1);
   const { data } = await daemon.api.GET("/api/v1/torrents");
   expect(data?.map((t) => t.name)).toEqual(["debian-13.1.0-amd64-DVD-1.iso"]);

@@ -106,14 +106,20 @@ test("rss: feeds, articles, a rule and its dry run", async ({ signedIn: page, da
     const prompt = page.getByRole("dialog", { name: "New rule" });
     await prompt.getByLabel("Rule name").fill("Ubuntu");
     await prompt.getByRole("button", { name: "Make" }).click();
-    await expect(page.getByRole("heading", { name: "Rule · Ubuntu", level: 1 })).toBeVisible();
-    const editor = page.getByRole("form", { name: "Rule Ubuntu" });
-    await expect(editor).toContainText("Its filters take 0 of the articles kept");
+    const ruleDialog = page.getByRole("dialog", { name: "Edit rule — Ubuntu" });
+    const editor = ruleDialog.getByRole("form", { name: "Rule Ubuntu" });
+    const dryRun = ruleDialog.getByRole("region", { name: "Matches right now" });
+    await expect(dryRun).toContainText("Choose a feed");
     await editor.getByLabel("Must contain").fill("ubuntu*");
     await editor.getByText("Linux ISOs", { exact: true }).click();
+    // The rule as typed, before saving: what it would add, and why not the others.
+    await expect(dryRun).toContainText("1 would be added");
+    await expect(dryRun).toContainText("does not match: ubuntu*");
     await expectAccessible(page);
-    await editor.getByRole("button", { name: "Save rule" }).click();
-    await expect(editor).toContainText("Its filters take 1 of the articles kept");
+    await ruleDialog.getByRole("button", { name: "Save rule" }).click();
+    await expect(ruleDialog).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Rule · Ubuntu", level: 1 })).toBeVisible();
+    await expect(page.getByText("Its filters take 1 of the articles kept")).toBeVisible();
     await expect(list.getByRole("button")).toHaveCount(1);
     const rules = (await daemon.api.GET("/api/v1/rss/rules")).data ?? [];
     expect(rules[0]).toMatchObject({ name: "Ubuntu", must_contain: "ubuntu*", feeds: [1] });
@@ -126,6 +132,10 @@ test("rss: feeds, articles, a rule and its dry run", async ({ signedIn: page, da
     await expect(panel).toContainText("Matches “Ubuntu”");
     await expect(panel).toContainText("Would be added as");
     await panel.getByRole("button", { name: "Edit rule" }).click();
+    await page
+      .getByRole("dialog", { name: "Edit rule — Ubuntu" })
+      .getByRole("button", { name: "Cancel" })
+      .click();
     await expect(page.getByRole("heading", { name: "Rule · Ubuntu", level: 1 })).toBeVisible();
 
     // Feeds: refresh, mark read, rename, remove.

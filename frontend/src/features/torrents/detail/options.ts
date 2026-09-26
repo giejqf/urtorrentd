@@ -100,18 +100,26 @@ function timeDraft(l: Schemas["TimeLimit"]): { mode: Mode; text: string; unit: T
   return { mode: "limit", text: t.text, unit: t.unit };
 }
 
-/** The draft a torrent's options give. */
-export function optionsDraft(t: Row): OptionsDraft {
-  const seeding = timeDraft(t.share_limits.seeding_time);
-  const inactive = timeDraft(t.share_limits.inactive_seeding_time);
-  const r = t.share_limits.ratio;
+/** The share limits part of a draft. */
+export type ShareDraft = Pick<
+  OptionsDraft,
+  | "ratio_mode"
+  | "ratio"
+  | "seeding_mode"
+  | "seeding"
+  | "seeding_unit"
+  | "inactive_mode"
+  | "inactive"
+  | "inactive_unit"
+  | "action"
+>;
+
+/** A draft of share limits. */
+export function shareDraft(l: Schemas["ShareLimits"]): ShareDraft {
+  const seeding = timeDraft(l.seeding_time);
+  const inactive = timeDraft(l.inactive_seeding_time);
+  const r = l.ratio;
   return {
-    name: t.name,
-    comment: t.comment ?? "",
-    download_limit: kbText(t.download_limit),
-    upload_limit: kbText(t.upload_limit),
-    max_connections: countText(t.max_connections),
-    max_uploads: countText(t.max_uploads),
     ratio_mode: r.mode,
     ratio: r.mode === "limit" ? ratioText(r.value) : "",
     seeding_mode: seeding.mode,
@@ -120,7 +128,46 @@ export function optionsDraft(t: Row): OptionsDraft {
     inactive_mode: inactive.mode,
     inactive: inactive.text,
     inactive_unit: inactive.unit,
-    action: t.share_limits.action ?? "global",
+    action: l.action ?? "global",
+  };
+}
+
+/** The share limits a draft gives, or what is wrong with it. */
+export function shareLimitsOf(d: ShareDraft): {
+  limits: Schemas["ShareLimits"] | null;
+  errors: Partial<Record<"ratio" | "seeding" | "inactive", string>>;
+} {
+  const ratio = ratioLimit(d.ratio_mode, d.ratio);
+  const seeding = timeLimit(d.seeding_mode, d.seeding, d.seeding_unit);
+  const inactive = timeLimit(d.inactive_mode, d.inactive, d.inactive_unit);
+  const errors: Partial<Record<"ratio" | "seeding" | "inactive", string>> = {};
+  if (!ratio) errors.ratio = "A ratio such as 2 or 1.5.";
+  if (!seeding) errors.seeding = "A time such as 14 days.";
+  if (!inactive) errors.inactive = "A time such as 2 days.";
+  return {
+    limits:
+      ratio && seeding && inactive
+        ? {
+            ratio,
+            seeding_time: seeding,
+            inactive_seeding_time: inactive,
+            action: d.action === "global" ? null : d.action,
+          }
+        : null,
+    errors,
+  };
+}
+
+/** The draft a torrent's options give. */
+export function optionsDraft(t: Row): OptionsDraft {
+  return {
+    name: t.name,
+    comment: t.comment ?? "",
+    download_limit: kbText(t.download_limit),
+    upload_limit: kbText(t.upload_limit),
+    max_connections: countText(t.max_connections),
+    max_uploads: countText(t.max_uploads),
+    ...shareDraft(t.share_limits),
     sequential: t.sequential,
     first_last: t.first_last_piece_priority,
     auto_management: t.auto_management,

@@ -9,7 +9,9 @@ torrents screen and the add dialog, and the RSS screen, as the mockups have them
 settings section (Downloads, Speed, Queue & share limits, Connection, BitTorrent, Banned
 addresses, Watch folders, RSS, Webhooks, Statistics & GeoIP, Security & API, Engine, About) and
 the Log screen. W6 has every Stats report: Overview, Trackers, Peers & geo, Idle seeds and
-Timeline. W3 has the detail panel's tabs: Files, Peers, Trackers, History and Options.
+Timeline. W3 has the detail panel's tabs (Files, Peers, Trackers, History, Options), several
+torrents at once (the panel, the selection bar, the context menu and its keys), and the move,
+remove, share limits and folder dialogs. RSS rules are edited in the designed rule dialog.
 Section 10 has the milestones.
 
 ## 1. What this is
@@ -126,7 +128,8 @@ frontend/
       prefs.ts          UI preferences in /client-data (4.2)
     components/
       ui/               shadcn primitives from solid-ui, restyled to the tokens; our code now
-      *.tsx             shared pieces: progress ring, status dot, kbd, empty state, pieces chart
+      *.tsx             shared pieces: progress ring, status dot, kbd, empty state, the folder
+                        dialog behind every Browse (folder-picker.tsx; folder-paths.ts)
     features/           one folder per area, following the API's groups
       auth/             the session (auth.tsx), first-run setup, sign-in
       shell/            the signed-in gate (protected.tsx), the live store (live.tsx), sidebar,
@@ -135,8 +138,12 @@ frontend/
                         detail panel (detail-panel.tsx: the header, the tabs, the Overview),
                         pieces (pieces.ts), detail/ (the tabs: Files with files.ts, Peers,
                         Trackers and web seeds with trackers.ts, History with history.ts,
-                        Options with options.ts, the draft's model), add/ (the dialog, its
-                        sources and previews, form.ts), delete, actions
+                        Options with options.ts, the draft's model, share-fields.tsx), several
+                        at once (bulk.ts, bulk-panel.tsx: the panel and the selection bar;
+                        row-menu.tsx: the context menu), the dialogs (torrent-dialogs.tsx
+                        opens them: remove in delete-dialog.tsx with removal.ts, move in
+                        move-dialog.tsx with move.ts, share-limits-dialog.tsx), add/ (the
+                        dialog, its sources and previews, form.ts), actions
       settings/         the settings screens: navigation (nav.tsx), the page frame with the
                         restart banner (frame.tsx, restart.tsx), rows, fields and the save bar
                         (controls.tsx), the draft, save and leave logic every page shares
@@ -153,8 +160,9 @@ frontend/
                         Engine (engine.tsx; engine-form.ts) and About (about.tsx;
                         about-view.ts)
       rss/              the RSS screen (rss.tsx): its sidebar sections (sidebar.tsx: feeds in
-                        folders, rules), the article panel, the rule editor (rule-editor.tsx;
-                        rule-form.ts), feed dialogs, the shared queries (data.ts), view.ts
+                        folders, rules), the article panel, the rule dialog and the rule's
+                        summary (rule-dialog.tsx; rule-form.ts), feed dialogs, the shared
+                        queries (data.ts), view.ts
       log/              the Log screen (log.tsx): its sidebar sections (sidebar.tsx: levels,
                         topics), the shared log query (use-log.ts), view.ts
       stats/            the Stats screen: Overview (overview.tsx; view.ts), Trackers
@@ -436,6 +444,13 @@ locally.
   (`MainFiles.dc.html` and the others, the Overview being `Torrents-html.zip`'s panel): the
   file tree with priorities, the peers, trackers and web seeds, the seeding days and the last
   day's traffic, and the options saved as one draft.
+- `Bulk_selection__context_menu-html.zip` (`MainBulk.dc.html`): several torrents chosen: the
+  panel that acts on all of them, the selection bar over the list, the rows' context menu with
+  its keys.
+- `Dialog___move_content-html.zip`, `Dialog___remove_torrents-html.zip`,
+  `Dialog___choose_folder-html.zip`, `Dialog___RSS_rule_editor-html.zip`: the move
+  (`DialogMove.dc.html`), remove (`DialogDelete.dc.html`), folder (`DialogDirectory.dc.html`)
+  and rule (`DialogRule.dc.html`) dialogs.
 
 They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
@@ -526,6 +541,10 @@ on sign-in.
     properties; pieces and availability; transfer; trackers. Files, Peers, Trackers, History and
     Options name the torrent small at their top. The Options draft lives with the panel, so a
     switch of tab keeps it; leaving the torrent with it unsaved asks first.
+  - Several chosen: the panel acts on all of them (figures, actions, the queue, what to set for
+    all), a bar floats over the list (start, stop, recheck, category, tags, queue, remove), and
+    every row shows its box. The single torrent's panel stays mounted underneath, so its draft
+    outlasts the multi-selection.
 - **Narrower screens.** The artboards are 1440×900 only, so the smaller layouts are ours to
   design in the same language:
   - 1024–1279px: the detail panel becomes a sheet over the list.
@@ -539,13 +558,17 @@ on sign-in.
   | Shift | Extend the selection |
   | ⌘A | Select all shown |
   | Enter | Open |
-  | Space | Start or stop |
-  | Delete | Delete (asks first) |
+  | Space or S | Start or stop |
+  | ⇧F | Force start |
+  | R / A | Recheck / reannounce |
+  | L / M | Share limits / move (dialogs) |
+  | ⌘C | Copy the magnet links |
+  | Delete or ⌫ | Remove (asks first) |
   | / | Search |
   | ⌘K | Open the palette |
 
-  ⌘-click and Shift-click select several rows, and a context menu on rows offers the bulk
-  actions.
+  ⌘-click and Shift-click select several rows (so does a row's box), and a context menu on
+  rows offers the bulk actions with these keys beside them.
 - **Accessibility.** Kobalte provides roles and focus management. Keep focus rings visible.
   Colour is never the only signal: every state has a label next to its dot. Text meets WCAG AA.
   Respect `prefers-reduced-motion`.
@@ -631,7 +654,16 @@ These are the known differences. Resolve each as noted, never by faking.
 | RSS: "Would be added as" with the rule's category, tags, save path | The rule's `add_options`, and the daemon's path rules | As shown, with when it starts; the save path as the daemon decides it (category, automatic management). |
 | RSS: Download | The rule's options belong to the rule | The add dialog with the article's torrent: the user chooses how it is added. |
 | RSS: "⋯" in the article header | Nothing to put there | Left out; a feed's and a folder's actions are on their menus in the sidebar. |
-| RSS: feeds, folders and rules being added or edited | Not designed | The sidebar's "+" (a feed, a folder, a rule) and each row's menu (refresh, mark read, edit, rename, remove); a chosen rule is edited in the panel, beside the list of what it would take. |
+| RSS: feeds and folders being added or edited | Not designed | The sidebar's "+" (a feed, a folder, a rule) and each row's menu (refresh, mark read, edit, rename, remove). A new rule opens the rule dialog; a chosen rule shows its summary beside the list of what it would take, with Edit rule. |
+| RSS › rule dialog: "Matches right now · GET …/matches · dry run", "excluded by must not contain: beta", "already taken" | `GET /rss/rules/{name}/matches` is the saved rule's; `POST /rss/dry-run` (added for the UI) is the rule as typed: every article with `take`, `taken` (a rule added it already) or `filtered` and why | The rule as typed, asked again as typing settles, with the daemon's reasons; a bad expression shows the daemon's error. The dialog's open state is in the URL (`?rule=…&edit=1`). |
+| RSS › rule dialog: "PUT /rss/rules/{name} · runs over its feeds' articles at once when auto-download is on", Start "Stopped / Running / Default", Save path "follow category" | `rss_auto_download`; `add_options.stopped`; the daemon's path rules | Whether auto-download is on, said; Start "Stopped / Started / Default"; an empty save path shows where it goes (the category's). |
+| Choose a folder: "New folder" | No operation makes a directory; the engine makes a missing folder when content goes there | Left out; typing a path that does not exist is allowed, and the dialog says it is made then. |
+| Choose a folder: "1.21 TB free of 4.0 TB", "4 items", "writable" / "read-only" | `GET /fs/file-system` and `writable` / `entries` on `GET /fs/directory` (added for the UI; entries counted up to 1 000) | As shown ("1,000+ items" past the count). A click chooses a row, a second click or a double-click opens it; a path that does not exist opens at its nearest parent. |
+| Move content: "Save path — moves now if the torrent is complete; otherwise applies when it finishes" | `POST /torrents/location` (changed for the UI): the content moves now, except an incomplete torrent's in its download path, which goes on completion | Said as the daemon does it, with Now and After for one torrent; several at once too. Download path moves partial files now, and clearing it sends them to the save path. |
+| Move content: "/mnt/fast · 412 GB free · same file system as the download path, so the move is a rename" | `GET /fs/file-system` for the typed path and for where the content is now (mount points) | As shown; "another file system: the files are copied" otherwise (the library renames or copies). |
+| Remove: "Frees 18.6 GB", "It stays selected because you chose it explicitly", "POST /torrents/delete · statistics history is kept" | Rows' `completed` (verified bytes) and `content_path` | "Deletes 18.6 GB downloaded under …" (verified bytes; what is on disk can differ); kept ones are named ("They go too, since you chose them"); "Statistics keep their history". Removing tells the trackers (the library sends `stopped`). The actions are named Remove, as the designs do. |
+| Several chosen: "Avg ratio", "Share limits Global / ∞ / Own…", "Upload limit mixed" | Rows' `ratio`, `share_limits`, `upload_limit` | The mean of the ratios known; Global and ∞ apply at once, Own… opens a Share limits dialog (not designed: the Options rows); a value the torrents do not share shows as mixed, and a typed limit applies on Enter. |
+| Context menu: S, ⇧F, R, A, L, M, ⌘C, ⌫; "Download .torrent", "Open in Stats" | — | The same keys work in the list. Download .torrent for one torrent with metadata; Open in Stats opens its Timeline. |
 | RSS: the description | HTML from the feed | Its text: tags dropped, entities decoded, never rendered (rule 6). |
 | RSS: "14 auto-added" | `downloaded` on the articles kept | Counted from them. |
 | Log: "About" topics (Trackers, Peers, Torrents, RSS, Webhooks, Settings, Daemon, Tracker list) and "Open torrent" | `topic` and `torrent` on every entry (added for the UI) | The daemon's topics: torrents, trackers, RSS, watch folders, webhooks, settings, sign-in, network, statistics, daemon. Peers are the peer log's (Settings › Banned addresses). |
@@ -689,7 +721,7 @@ These are the known differences. Resolve each as noted, never by faking.
 | History: "Open in Stats" | The reports that take one torrent are Timeline and Peers & geo | "Open in Timeline". Delete history asks first (`DELETE /stats/torrents/{hash}`). |
 | Options: "Peer connections 200", "Upload slots global" | `max_connections` is the cap in force; `max_uploads` `null` = the global budget; `null` in a request = the default | The cap in force; emptied, the torrent goes back to the settings' per-torrent default. |
 | Options: share limits "Global" with a dimmed value | A torrent's `global` limits defer to its category's, then the settings' | The value Global stands for shown in the field (from the draft's category); typing a value makes the limit Own. "When reached" names the inherited action ("Global · stop"). |
-| Options: "Browse", "Move content…" | `POST /torrents/location` moves the content and turns automatic management off | Browse is the folder icon in the field. While automatic management is on the path is the category's; "Move content…" turns it off and focuses the path, and saving moves the content there. |
+| Options: "Browse", "Move content…" | `POST /torrents/location` moves the content and turns automatic management off | Browse is the folder icon in the field (the folder dialog). While automatic management is on the path is the category's. "Move content…" opens the Move content dialog; a save path typed with automatic management off moves the content when saved. |
 | Options: no download path | `download_path` on the row; `POST /torrents/download-path` | A Download path row while the torrent is incomplete (or has one). |
 | Options: "1 unsaved change · Discard · Save" | One call per kind of change | As shown, Ctrl/⌘ S too; the calls go one by one and the first failure stops them, shown in the footer. No toast (it would cover the footer). |
 
@@ -853,8 +885,10 @@ Each milestone ends with its end-to-end tests green.
   categories and tags. Done so far: the detail panel's tabs as designed: Files (the tree with
   priorities, renames, the pieces each file spans), Peers, Trackers and web seeds (editing,
   the trackers new public torrents get), History and Options (name, comment, limits, share
-  limits, behaviour, category, tags, save and download paths, as one draft). Left: piece
-  hashes, and managing tags on their own (creating and deleting them).
+  limits, behaviour, category, tags, save and download paths, as one draft); several torrents
+  at once (the panel, the selection bar, the context menu and keys); the move, remove, share
+  limits and folder dialogs. Left: piece hashes, and managing tags on their own (creating and
+  deleting them).
 - **W4 Settings.** Every settings group, security (credentials, API key), webhooks, watch
   folders and the alternative-limits schedule. Transfer limits and the alternative-limits
   switch. The main and peer logs. Done so far: the settings navigation and frame, the restart
@@ -876,8 +910,8 @@ Each milestone ends with its end-to-end tests green.
   The Log screen: the main log by day with its levels and topics, one entry with its torrent,
   following, export.
 - **W5 RSS** (done). Folders, feeds, articles, and rules with their matches: the RSS screen as
-  designed, with feeds, folders and rules managed from its sidebar and a rule edited beside
-  what it would take.
+  designed, with feeds, folders and rules managed from its sidebar and a rule edited in the
+  designed dialog beside a dry run of the rule as typed.
 - **W6 Statistics.** Traffic over time, seeding days, rankings, the timeline, places,
   breakdowns and idle seeds (uPlot). Done so far: the Overview (the range's traffic against
   the one before, the transfer rate, top torrents, traffic by category, peers by client or

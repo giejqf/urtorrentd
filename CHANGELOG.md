@@ -120,6 +120,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   last day's traffic, and deletes the torrent's history. Options saves the
   name, comment, limits, share limits, behaviour, category, tags and
   location as one draft, and asks before leaving it unsaved.
+- Web UI: several torrents at once, as designed: a panel that acts on all of
+  them (figures, actions, the queue, category, tags, upload limit, share
+  limits, location, automatic management), a selection bar over the list,
+  a box on each row, and a context menu whose keys work in the list (S,
+  ⇧F, R, A, L, M, ⌘C, ⌫). The designed dialogs: Remove (the torrents named,
+  those tagged keep said, what deleting the files deletes and where), Move
+  content (save or download path, free space there, rename or copy, now or
+  on completion), Choose a folder (free space, what each folder holds,
+  whether the daemon can write in it) behind every Browse, and a Share
+  limits dialog. RSS rules are edited in the designed rule dialog beside a
+  dry run of the rule as typed, with why each article is left out.
 - `POST /rss/dry-run`: a rule as being edited, unsaved, over its feeds'
   articles: each one's verdict (`take`, `taken` by a rule already,
   `filtered`) and why the filters leave it.

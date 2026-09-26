@@ -66,6 +66,30 @@ export const actions = {
     run("Tags", () =>
       unwrap(api.POST("/api/v1/torrents/tags", { body: { ...body(h), mode, tags } })),
     ),
+  location: (h: readonly string[], path: string) =>
+    run("Move", () =>
+      unwrap(api.POST("/api/v1/torrents/location", { body: { ...body(h), path } })),
+    ),
+  downloadPath: (h: readonly string[], path: string | null) =>
+    run("Download path", () =>
+      unwrap(api.POST("/api/v1/torrents/download-path", { body: { ...body(h), path } })),
+    ),
+  autoManagement: (h: readonly string[], value: boolean) =>
+    run("Automatic management", () =>
+      unwrap(api.POST("/api/v1/torrents/auto-management", { body: { ...body(h), value } })),
+    ),
+  limits: (h: readonly string[], limits: Omit<Schemas["LimitsRequest"], "hashes">) =>
+    run("Limits", () =>
+      unwrap(api.POST("/api/v1/torrents/limits", { body: { ...body(h), ...limits } })),
+    ),
+  shareLimits: (h: readonly string[], shareLimits: Schemas["ShareLimits"]) =>
+    run("Share limits", () =>
+      unwrap(
+        api.POST("/api/v1/torrents/share-limits", {
+          body: { ...body(h), share_limits: shareLimits },
+        }),
+      ),
+    ),
   remove: (h: readonly string[], deleteFiles: boolean) =>
     run("Delete", () =>
       unwrap(

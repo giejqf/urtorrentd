@@ -270,11 +270,6 @@ export default function IdleSeeds() {
       <DeleteDialog
         hashes={deleting()?.hashes ?? []}
         files={deleting()?.files}
-        label={
-          deleting()?.hashes.length === 1
-            ? (seeds().find((s) => s.hash === deleting()?.hashes[0])?.name ?? "1 torrent")
-            : `${deleting()?.hashes.length ?? 0} torrents`
-        }
         onClose={(deleted) => {
           setDeleting(null);
           if (deleted) {

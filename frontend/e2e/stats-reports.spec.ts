@@ -157,7 +157,7 @@ test("stats: peers & geo, idle seeds, timeline", async ({
     await bar.getByRole("button", { name: "Remove, keep files" }).click();
     await page
       .getByRole("alertdialog")
-      .getByRole("button", { name: "Delete", exact: true })
+      .getByRole("button", { name: "Remove", exact: true })
       .click();
     await expect
       .poll(async () => (await daemon.api.GET("/api/v1/torrents")).data?.map((t) => t.name).sort())

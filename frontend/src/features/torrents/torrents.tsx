@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 urtorrentd contributors
 
-// The torrents screen (AGENTS.md 6.3): the list and one torrent's details.
+// The torrents screen (AGENTS.md 6.3): the list and one torrent's details,
+// or with several chosen, the panel and bar that act on all of them.
 // Filters, search and the open torrent live in the URL; the list is the
 // live store filtered, sorted and grouped in memos (4.3); search uses the
 // daemon's matching (4.4).
@@ -14,14 +15,9 @@ import Plus from "lucide-solid/icons/plus";
 import { createEffect, createMemo, createSignal, For, Match, on, Show, Switch } from "solid-js";
 
 import { api, type Schemas, unwrap } from "~/api/client";
+import { PromptDialog } from "~/components/prompt-dialog";
 import { Button } from "~/components/ui/button";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "~/components/ui/context-menu";
+import { ContextMenu, ContextMenuTrigger } from "~/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -43,11 +39,14 @@ import { formatCount } from "~/lib/format";
 import { FILTERS } from "~/lib/torrent";
 import { usePref } from "~/lib/prefs";
 import { useWide } from "~/lib/use-wide";
+import { cn } from "~/lib/utils";
 
 import { actions, copy, isRunning } from "./actions";
 import { AddDialog } from "./add/add-dialog";
-import { DeleteDialog } from "./delete-dialog";
+import { BulkPanel, SelectionBar } from "./bulk-panel";
 import { DetailPanel } from "./detail-panel";
+import { RowMenu } from "./row-menu";
+import { TorrentDialogsProvider, useTorrentDialogs } from "./torrent-dialogs";
 import { type SelectMode, TorrentList } from "./torrent-list";
 import {
   DEFAULT_DISPLAY,
@@ -108,7 +107,24 @@ function LoadingRows() {
 }
 
 export default function Torrents() {
+  const params = useParams<{ hash?: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  return (
+    <TorrentDialogsProvider
+      onRemoved={(gone) => {
+        if (params.hash && gone.includes(params.hash))
+          navigate(`/torrents${location.search}`, { scroll: false });
+      }}
+    >
+      <Screen />
+    </TorrentDialogsProvider>
+  );
+}
+
+function Screen() {
   const live = useLive();
+  const dialogs = useTorrentDialogs();
   const params = useParams<{ hash?: string }>();
   const [search, setSearch] = useSearchParams<FilterParams>();
   const navigate = useNavigate();
@@ -116,7 +132,7 @@ export default function Torrents() {
   const wide = useWide();
   const [display, setDisplay] = usePref("torrents.display", DEFAULT_DISPLAY, isDisplay);
   const [adding, setAdding] = createSignal(false);
-  const [deleting, setDeleting] = createSignal<string[]>([]);
+  const [prompt, setPrompt] = createSignal<"category" | "tag" | null>(null);
 
   // The daemon's search: which info-hashes match (AGENTS.md 4.4).
   const q = () => search.q?.trim() ?? "";
@@ -168,14 +184,19 @@ export default function Torrents() {
     if (f) s.add(f);
     return s;
   });
+  // A torrent opened alone (a plain click) is picked once the URL says so:
+  // picking it first would show two chosen, and the panel's unsaved
+  // options would go before the question about leaving them.
+  let pendingOne: string | null = null;
   createEffect(
     on(
       () => params.hash,
       (h) => {
-        if (h && !picked().has(h)) {
+        if (h && (h === pendingOne || !picked().has(h))) {
           setPicked(new Set([h]));
           anchor = h;
         }
+        pendingOne = null;
       },
     ),
   );
@@ -200,8 +221,12 @@ export default function Torrents() {
       setPicked(new Set(order().slice(from, (ends[1] ?? from) + 1)));
       open(hash);
       return;
-    } else {
+    } else if (hash === focus()) {
       setPicked(new Set([hash]));
+    } else {
+      pendingOne = hash;
+      open(hash);
+      return;
     }
     anchor = hash;
     open(hash);
@@ -226,66 +251,79 @@ export default function Torrents() {
     void (anyRunning ? actions.stop(hashes) : actions.start(hashes));
   };
 
+  const clear = () => {
+    setPicked(new Set<string>());
+    open(null);
+  };
+  const copyMagnets = () =>
+    void copy(
+      chosen()
+        .map((h) => live.state.torrents[h]?.magnet_uri ?? "")
+        .filter((m) => m !== "")
+        .join("\n"),
+      selection().size === 1 ? "Magnet link" : "Magnet links",
+    );
+
+  // The keys the context menu shows (S, ⇧F, R, A, L, M, ⌘C, ⌫) and the list's own.
   const onKey = (e: KeyboardEvent) => {
     const key = e.key;
+    const mod = e.metaKey || e.ctrlKey;
     if (key === "ArrowDown" || key === "j") move(1, e.shiftKey);
     else if (key === "ArrowUp" || key === "k") move(-1, e.shiftKey);
     else if (key === "Home") move(-order().length, e.shiftKey);
     else if (key === "End") move(order().length, e.shiftKey);
-    else if (key === " ") toggleRun();
-    else if (key === "Delete" || key === "Backspace") setDeleting(chosen());
-    else if (key === "Escape") {
-      setPicked(new Set<string>());
-      open(null);
-    } else if (key === "a" && (e.metaKey || e.ctrlKey)) setPicked(new Set(order()));
+    else if (key === " " || (key === "s" && !mod)) toggleRun();
+    else if (key === "F" && e.shiftKey && !mod) void actions.forceStart(chosen(), true);
+    else if (key === "r" && !mod) void actions.recheck(chosen());
+    else if (key === "a" && !mod) void actions.reannounce(chosen());
+    else if (key === "l" && !mod) dialogs.shareLimits(chosen());
+    else if (key === "m" && !mod) dialogs.move(chosen());
+    else if (key === "c" && mod) copyMagnets();
+    else if (key === "Delete" || key === "Backspace") dialogs.remove(chosen());
+    else if (key === "Escape") clear();
+    else if (key === "a" && mod) setPicked(new Set(order()));
     else return;
     e.preventDefault();
-  };
-
-  const deleteLabel = () => {
-    const hs = deleting();
-    if (hs.length === 1) return live.state.torrents[hs[0] as string]?.name ?? "this torrent";
-    return `${formatCount(hs.length)} torrents`;
   };
 
   const labels = STATUS_LABELS as Record<StatusFilter, string>;
   const title = () => viewTitle(filter(), labels);
 
+  // The detail stays mounted (hidden) while several are chosen, so its
+  // unsaved options outlast the multi-selection.
   const panel = () => (
-    <Show
-      when={focused()}
-      fallback={
-        <div class="flex h-full items-center justify-center bg-card p-8 text-center text-base text-subtle">
-          Select a torrent to see its details.
-        </div>
-      }
-    >
-      {(t) => <DetailPanel torrent={t()} onDelete={setDeleting} class="h-full" />}
-    </Show>
+    <>
+      <Show when={selection().size > 1}>
+        <BulkPanel
+          hashes={chosen()}
+          shown={order().length}
+          onSelectAll={() => setPicked(new Set(order()))}
+          onClear={clear}
+          class="h-full"
+        />
+      </Show>
+      <div class={cn("h-full", selection().size > 1 && "hidden")}>
+        <Show
+          when={focused()}
+          fallback={
+            <div class="flex h-full items-center justify-center bg-card p-8 text-center text-base text-subtle">
+              Select a torrent to see its details.
+            </div>
+          }
+        >
+          {(t) => <DetailPanel torrent={t()} onDelete={dialogs.remove} class="h-full" />}
+        </Show>
+      </div>
+    </>
   );
 
   return (
     <div class="flex min-w-0 flex-1">
-      <main class="flex min-w-0 flex-1 flex-col border-r border-divider">
+      <main class="relative flex min-w-0 flex-1 flex-col border-r border-divider">
         <PageHeader
           title={title()}
           count={<span class="mono text-xs text-subtle">{formatCount(visible().length)}</span>}
         >
-          <Show when={selection().size > 1}>
-            <span class="mr-1 mono text-xs text-muted-foreground">
-              {formatCount(selection().size)} selected
-            </span>
-            <Button variant="outline" size="sm" onClick={() => void actions.start(chosen())}>
-              Start
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => void actions.stop(chosen())}>
-              Stop
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setDeleting(chosen())}>
-              Delete
-            </Button>
-            <span class="mx-1 h-4 w-px bg-divider" aria-hidden="true" />
-          </Show>
           <DropdownMenu>
             <DropdownMenuTrigger as={Button} variant="outline" size="sm">
               <ListFilterIcon />
@@ -376,6 +414,7 @@ export default function Torrents() {
                   items={items()}
                   torrents={live.state.torrents}
                   selected={selection()}
+                  checkboxes={selection().size > 1}
                   focus={focus()}
                   onSelect={select}
                   onKey={onKey}
@@ -412,40 +451,12 @@ export default function Torrents() {
             </Switch>
           </ContextMenuTrigger>
           <Show when={selection().size > 0}>
-            <ContextMenuContent class="min-w-52">
-              <ContextMenuItem onSelect={() => void actions.start(chosen())}>Start</ContextMenuItem>
-              <ContextMenuItem onSelect={() => void actions.stop(chosen())}>Stop</ContextMenuItem>
-              <ContextMenuItem onSelect={() => void actions.forceStart(chosen(), true)}>
-                Force start
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem onSelect={() => void actions.recheck(chosen())}>
-                Recheck
-              </ContextMenuItem>
-              <ContextMenuItem onSelect={() => void actions.reannounce(chosen())}>
-                Reannounce
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem
-                onSelect={() =>
-                  void copy(
-                    chosen()
-                      .map((h) => live.state.torrents[h]?.magnet_uri ?? "")
-                      .filter((m) => m !== "")
-                      .join("\n"),
-                    selection().size === 1 ? "Magnet link" : "Magnet links",
-                  )
-                }
-              >
-                Copy magnet {selection().size === 1 ? "link" : "links"}
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem class="text-danger" onSelect={() => setDeleting(chosen())}>
-                Delete…
-              </ContextMenuItem>
-            </ContextMenuContent>
+            <RowMenu hashes={chosen()} onCopy={copyMagnets} onPrompt={setPrompt} />
           </Show>
         </ContextMenu>
+        <Show when={selection().size > 1}>
+          <SelectionBar hashes={chosen()} onClear={clear} />
+        </Show>
       </main>
 
       <Show when={wide()}>
@@ -466,14 +477,21 @@ export default function Torrents() {
       </Sheet>
 
       <AddDialog open={adding()} onClose={() => setAdding(false)} />
-      <DeleteDialog
-        hashes={deleting()}
-        label={deleteLabel()}
-        onClose={(deleted) => {
-          const gone = deleting();
-          setDeleting([]);
-          if (deleted && focus() && gone.includes(focus() as string)) open(null);
-        }}
+      <PromptDialog
+        open={prompt() === "category"}
+        title="New category"
+        label="Name"
+        action="Create and set"
+        onClose={() => setPrompt(null)}
+        onSubmit={(name) => void actions.category(chosen(), name)}
+      />
+      <PromptDialog
+        open={prompt() === "tag"}
+        title="New tag"
+        label="Tag"
+        action="Create and add"
+        onClose={() => setPrompt(null)}
+        onSubmit={(tag) => void actions.tags(chosen(), "add", [tag])}
       />
     </div>
   );

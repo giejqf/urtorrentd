@@ -8,7 +8,7 @@
 // daemon's folders.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { expect, expectAccessible, test } from "./fixtures";
 import { makeTorrent } from "./torrent";
@@ -162,10 +162,19 @@ test("browse the daemon's folders for the save path", async ({ signedIn: page, d
   const dialog = page.getByRole("dialog", { name: "Add torrents" });
   await expect(dialog.getByLabel("Save path", { exact: true })).toHaveValue(daemon.savePath);
   await dialog.getByRole("button", { name: "Browse for the save path" }).click();
-  const picker = page.getByRole("dialog", { name: "Choose the save path" });
-  await picker.getByRole("button", { name: "Parent folder" }).click();
-  await picker.getByRole("button", { name: "data" }).click();
-  await picker.getByRole("button", { name: "Choose this folder" }).click();
+  const picker = page.getByRole("dialog", { name: "Choose a folder" });
+  await expect(picker).toContainText("free of");
+  // It opens at the save path, or its nearest existing parent.
+  await picker
+    .getByRole("navigation", { name: "Where" })
+    .getByRole("button", { name: basename(dirname(daemon.savePath)), exact: true })
+    .click();
+  await expect(picker.getByRole("button", { name: /^\.\. parent$/ })).toBeVisible();
+  const data = picker.getByRole("option", { name: /^data / });
+  await expect(data).toContainText("writable");
+  await data.click();
+  await expectAccessible(page);
+  await picker.getByRole("button", { name: /^Choose \// }).click();
   await expect(dialog.getByLabel("Save path", { exact: true })).toHaveValue(
     join(dirname(daemon.savePath), "data"),
   );

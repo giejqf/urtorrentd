@@ -33,7 +33,7 @@ import {
   useRssChange,
   useRules,
 } from "./data";
-import { RuleEditor } from "./rule-editor";
+import { RuleDialog, RuleSummary } from "./rule-dialog";
 import type { RssParams } from "./sidebar";
 import {
   byAge,
@@ -282,12 +282,11 @@ export default function Rss() {
           }
         >
           {(r) => (
-            <RuleEditor
+            <RuleSummary
               rule={r()}
               feeds={feedList()}
               matches={matches.data?.length}
-              onRenamed={(name) => setParams({ rule: name })}
-              onDeleted={() => setParams({ rule: undefined })}
+              onEdit={() => setParams({ edit: "1" })}
             />
           )}
         </Show>
@@ -301,7 +300,7 @@ export default function Rss() {
           onDownload={() => setAdding(a().torrent_url ?? a().link)}
           onRead={(read) => markOne(a(), read)}
           onRule={(name) => {
-            setParams({ feed: undefined, folder: undefined, rule: name });
+            setParams({ feed: undefined, folder: undefined, rule: name, edit: "1" });
             setSelected(null);
           }}
         />
@@ -403,6 +402,13 @@ export default function Rss() {
           {panel()}
         </SheetContent>
       </Sheet>
+      <RuleDialog
+        rule={params.edit ? rule() : undefined}
+        feeds={feedList()}
+        onClose={() => setParams({ edit: undefined })}
+        onRenamed={(name) => setParams({ rule: name, edit: undefined })}
+        onDeleted={() => setParams({ rule: undefined, edit: undefined })}
+      />
       <AddDialog
         open={adding() !== null}
         links={adding() ?? undefined}

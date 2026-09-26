@@ -189,9 +189,9 @@ test("stats: the overview and the trackers report", async ({
     // Reclaim on the overview: the idle seeds, deleted after asking.
     await page.goto(`${daemon.url}/stats`);
     await page.getByRole("button", { name: /^Reclaim / }).click();
-    const ask = page.getByRole("alertdialog", { name: /^Delete \d idle torrents?\?/ });
+    const ask = page.getByRole("alertdialog", { name: /^Remove \d idle torrents?\?/ });
     await expect(ask).toBeVisible();
-    await ask.getByRole("button", { name: "Delete", exact: true }).click();
+    await ask.getByRole("button", { name: /^Remove/ }).click();
     await expect
       .poll(async () => (await daemon.api.GET("/api/v1/torrents")).data?.map((t) => t.name))
       .toEqual(["big-buck-e2e.bin"]);

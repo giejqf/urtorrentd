@@ -645,7 +645,6 @@ function Attention(props: { now: number }) {
       </Show>
       <DeleteDialog
         hashes={removing() ? [removing()?.hash ?? ""] : []}
-        label={removing()?.name ?? ""}
         onClose={() => setRemoving(null)}
       />
     </Card>

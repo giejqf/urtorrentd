@@ -95,7 +95,10 @@ test("what the daemon would refuse is caught first", async ({ signedIn: page, da
 
   // The folder browser fills the field (and turns its switch on).
   await page.getByRole("button", { name: "Browse for the folder for finished torrents" }).click();
-  await page.getByRole("button", { name: "Choose this folder" }).click();
+  await page
+    .getByRole("dialog", { name: "Choose a folder" })
+    .getByRole("button", { name: /^Choose \// })
+    .click();
   await expect(page.getByLabel("Folder for finished torrents", { exact: true })).toHaveValue(save);
   await expect(field(page, "Export .torrent files of finished torrents")).toBeChecked();
   await page.keyboard.press("Control+s");

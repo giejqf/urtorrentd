@@ -9,7 +9,6 @@
 // settings'.
 
 import { useBeforeLeave } from "@solidjs/router";
-import { createQuery } from "@tanstack/solid-query";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import Plus from "lucide-solid/icons/plus";
 import X from "lucide-solid/icons/x";
@@ -18,7 +17,6 @@ import {
   createMemo,
   createSignal,
   For,
-  type JSX,
   on,
   onCleanup,
   onMount,
@@ -28,7 +26,6 @@ import {
 import { createStore, reconcile, unwrap as plain } from "solid-js/store";
 
 import { api, type Schemas, unwrap } from "~/api/client";
-import { keys } from "~/api/keys";
 import { FolderPicker } from "~/components/folder-picker";
 import { PromptDialog } from "~/components/prompt-dialog";
 import { StatusDot } from "~/components/status-dot";
@@ -52,56 +49,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import {
-  ChangeDot,
-  RowSwitch,
-  Segmented,
-  UnitInput,
-  UnitSelect,
-} from "~/features/settings/controls";
-import { ratioText, type TimeUnit } from "~/features/settings/queue-form";
-import { effectiveLimits } from "~/features/settings/share";
+import { RowSwitch, UnitInput } from "~/features/settings/controls";
 import { useLive } from "~/features/shell/live";
-import { formatDays } from "~/lib/format";
 import { categoryTone } from "~/lib/torrent";
 import { cn } from "~/lib/utils";
 
 import {
-  type ActionChoice,
   mergeDraft,
-  type Mode,
   type OptionsChange,
   type OptionsDraft,
   optionsDiff,
   optionsDraft,
   type OptionsRow,
 } from "./options";
+import { useTorrentDialogs } from "../torrent-dialogs";
 import { TabHeading } from "./parts";
+import { OptionHeading, OptionRow, ShareFields, useInherited } from "./share-fields";
 
 type TorrentSummary = Schemas["TorrentSummary"];
 type BulkResult = Schemas["BulkResult"];
-
-const MODES: { value: Mode; label: string }[] = [
-  { value: "global", label: "Global" },
-  { value: "unlimited", label: "∞" },
-  { value: "limit", label: "Own" },
-];
-const UNITS: { value: TimeUnit; label: string }[] = [
-  { value: "minutes", label: "min" },
-  { value: "hours", label: "h" },
-  { value: "days", label: "d" },
-];
-const ACTION_LABELS: Record<Schemas["ShareLimitAction"], string> = {
-  stop: "Stop",
-  remove: "Remove",
-  remove_with_files: "Remove + files",
-};
-const ALL_GLOBAL: Schemas["ShareLimits"] = {
-  ratio: { mode: "global" },
-  seeding_time: { mode: "global" },
-  inactive_seeding_time: { mode: "global" },
-  action: null,
-};
 
 /** A bulk call for this one torrent: what did not apply is an error. */
 function applied(r: BulkResult): void {
@@ -327,79 +293,20 @@ export function OptionsLeaveGuard(props: { form: OptionsForm; hash: string }) {
   );
 }
 
-function Heading(props: { children: string }) {
-  return <h3 class="m-0 mt-2.5 section-label first:mt-0">{props.children}</h3>;
-}
-
-function Row(props: {
-  label: JSX.Element;
-  /** The control's id, so the label names it. */
-  for?: string;
-  changed?: boolean;
-  error?: string;
-  children: JSX.Element;
-}) {
-  const label = () => (
-    <>
-      {props.label}
-      <Show when={props.changed}>
-        <ChangeDot />
-      </Show>
-    </>
-  );
-  return (
-    <div class="flex min-h-9 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
-      <Show
-        when={props.for}
-        fallback={<span class="flex items-center text-foreground-2">{label()}</span>}
-      >
-        <label for={props.for} class="flex items-center text-foreground-2">
-          {label()}
-        </label>
-      </Show>
-      {props.children}
-      <Show when={props.error}>
-        <span class="w-full text-right text-xs text-danger" role="alert">
-          {props.error}
-        </span>
-      </Show>
-    </div>
-  );
-}
-
-function limitText(v: number | null, unit: "ratio" | "time"): string {
-  if (v === null) return "none";
-  return unit === "ratio" ? ratioText(v) : formatDays(v);
-}
-
 export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }) {
   const live = useLive();
   const f = () => props.form;
   const d = () => props.form.draft;
   const id = (k: string) => `opt-${k}`;
-  const settings = createQuery(() => ({
-    queryKey: keys.settings(),
-    queryFn: () => unwrap(api.GET("/api/v1/settings")),
-  }));
   // What Global stands for: the draft's category's limits, else the settings'.
-  const inherited = createMemo(() => {
-    const s = settings.data;
-    if (!s) return null;
-    const category = d().category === "" ? undefined : live.state.categories[d().category];
-    return effectiveLimits(ALL_GLOBAL, category?.share_limits, {
-      ratio: s.max_ratio,
-      seeding: s.max_seeding_time,
-      inactive: s.max_inactive_seeding_time,
-      action: s.share_limit_action,
-    });
-  });
+  const inherited = useInherited(() => d().category);
   const categories = createMemo(() => Object.keys(live.state.categories).sort());
   const allTags = createMemo(() =>
     [...new Set([...live.state.tags, ...d().tags])].sort((a, b) => a.localeCompare(b)),
   );
   const [creatingTag, setCreatingTag] = createSignal(false);
   const [creatingCategory, setCreatingCategory] = createSignal(false);
-  let savePath: HTMLInputElement | undefined;
+  const dialogs = useTorrentDialogs();
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
@@ -410,81 +317,12 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
   onMount(() => document.addEventListener("keydown", onKey));
   onCleanup(() => document.removeEventListener("keydown", onKey));
 
-  const limitMode = (field: "ratio" | "seeding" | "inactive", label: string) => {
-    const modeKey = `${field}_mode` as const;
-    const placeholder = () => {
-      const i = inherited();
-      const m = d()[modeKey];
-      if (m === "unlimited") return "∞";
-      if (m === "limit") return "";
-      if (!i) return "";
-      return field === "ratio"
-        ? limitText(i.ratio, "ratio")
-        : limitText(field === "seeding" ? i.seeding : i.inactive, "time");
-    };
-    return (
-      <Row label={label} changed={f().changed(field)} error={f().fieldError(field)}>
-        <span class="flex items-center gap-1.5">
-          <Segmented
-            label={`${label}: where the limit comes from`}
-            compact
-            options={MODES}
-            value={d()[modeKey]}
-            onChange={(m) => f().set(modeKey, m)}
-          />
-          <UnitInput
-            id={id(field)}
-            label={`${label} limit`}
-            class={field === "ratio" ? "h-[30px] w-16" : "h-[30px] w-[108px]"}
-            value={d()[field]}
-            placeholder={placeholder()}
-            muted={d()[modeKey] !== "limit"}
-            changed={f().changed(field)}
-            invalid={f().fieldError(field) !== undefined}
-            onInput={(v) => {
-              f().set(field, v);
-              // Typing a value makes the limit the torrent's own.
-              if (v.trim() !== "") f().set(modeKey, "limit");
-            }}
-            trailing={
-              field === "ratio" ? undefined : (
-                <UnitSelect
-                  label={`${label} unit`}
-                  options={UNITS}
-                  value={d()[field === "seeding" ? "seeding_unit" : "inactive_unit"]}
-                  onChange={(u) =>
-                    f().set(field === "seeding" ? "seeding_unit" : "inactive_unit", u)
-                  }
-                />
-              )
-            }
-          />
-        </span>
-      </Row>
-    );
-  };
-
-  const actionOptions = createMemo(() => {
-    const global = inherited()?.action;
-    return [
-      {
-        value: "global" as ActionChoice,
-        label: global ? `Global · ${ACTION_LABELS[global].toLowerCase()}` : "Global",
-      },
-      ...(["stop", "remove", "remove_with_files"] as const).map((a) => ({
-        value: a as ActionChoice,
-        label: ACTION_LABELS[a],
-        danger: a === "remove_with_files",
-      })),
-    ];
-  });
-
   return (
     <div class="flex min-h-0 flex-1 flex-col gap-2.5 px-4 pt-3 pb-4">
       <TabHeading torrent={props.torrent} />
       <div class="flex min-h-0 flex-1 flex-col overflow-auto pt-1 pr-0.5">
-        <Heading>Naming</Heading>
-        <Row label="Display name" for={id("name")} changed={f().changed("name")}>
+        <OptionHeading>Naming</OptionHeading>
+        <OptionRow label="Display name" for={id("name")} changed={f().changed("name")}>
           <UnitInput
             id={id("name")}
             class="h-[30px] w-[240px]"
@@ -495,8 +333,8 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
             changed={f().changed("name")}
             onInput={(v) => f().set("name", v)}
           />
-        </Row>
-        <Row label="Comment" for={id("comment")} changed={f().changed("comment")}>
+        </OptionRow>
+        <OptionRow label="Comment" for={id("comment")} changed={f().changed("comment")}>
           <UnitInput
             id={id("comment")}
             class="h-[30px] w-[240px]"
@@ -507,9 +345,9 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
             changed={f().changed("comment")}
             onInput={(v) => f().set("comment", v)}
           />
-        </Row>
+        </OptionRow>
 
-        <Heading>Speed &amp; connections</Heading>
+        <OptionHeading>Speed &amp; connections</OptionHeading>
         <For
           each={
             [
@@ -521,7 +359,7 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
           }
         >
           {([field, label, unit, empty]) => (
-            <Row
+            <OptionRow
               label={label}
               for={id(field)}
               changed={f().changed(field)}
@@ -538,26 +376,21 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
                 invalid={f().fieldError(field) !== undefined}
                 onInput={(v) => f().set(field, v)}
               />
-            </Row>
+            </OptionRow>
           )}
         </For>
 
-        <Heading>Share limits</Heading>
-        {limitMode("ratio", "Ratio")}
-        {limitMode("seeding", "Seeding time")}
-        {limitMode("inactive", "Inactive seeding")}
-        <Row label="When reached" changed={f().changed("action")}>
-          <Segmented
-            label="When a limit is reached"
-            compact
-            options={actionOptions()}
-            value={d().action}
-            onChange={(a) => f().set("action", a)}
-            changed={f().changed("action")}
-          />
-        </Row>
+        <OptionHeading>Share limits</OptionHeading>
+        <ShareFields
+          draft={d()}
+          set={(k, v) => f().set(k, v as OptionsDraft[typeof k])}
+          inherited={inherited()}
+          id="opt"
+          changed={(r) => f().changed(r)}
+          error={(r) => f().fieldError(r)}
+        />
 
-        <Heading>Behaviour</Heading>
+        <OptionHeading>Behaviour</OptionHeading>
         <For
           each={
             [
@@ -569,7 +402,7 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
           }
         >
           {([field, label, hint]) => (
-            <Row
+            <OptionRow
               label={
                 <>
                   {label}
@@ -582,12 +415,12 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
               changed={f().changed(field)}
             >
               <RowSwitch id={id(field)} checked={d()[field]} onChange={(v) => f().set(field, v)} />
-            </Row>
+            </OptionRow>
           )}
         </For>
 
-        <Heading>Location</Heading>
-        <Row label="Category" changed={f().changed("category")}>
+        <OptionHeading>Location</OptionHeading>
+        <OptionRow label="Category" changed={f().changed("category")}>
           <DropdownMenu>
             <DropdownMenuTrigger
               as={Button}
@@ -621,8 +454,8 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </Row>
-        <Row label="Tags" changed={f().changed("tags")}>
+        </OptionRow>
+        <OptionRow label="Tags" changed={f().changed("tags")}>
           <span class="flex max-w-[240px] flex-wrap items-center justify-end gap-1">
             <For each={d().tags}>
               {(tag) => (
@@ -675,15 +508,14 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
               </DropdownMenuContent>
             </DropdownMenu>
           </span>
-        </Row>
-        <Row
+        </OptionRow>
+        <OptionRow
           label="Save path"
           for={id("save_path")}
           changed={f().changed("save_path")}
           error={f().fieldError("save_path")}
         >
           <UnitInput
-            ref={(el) => (savePath = el)}
             id={id("save_path")}
             class="h-[30px] w-[240px]"
             align="left"
@@ -703,27 +535,24 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
               />
             }
           />
-        </Row>
+        </OptionRow>
         <p class="m-0 -mt-0.5 text-right text-sm text-subtle">
           <Show
             when={d().auto_management}
-            fallback={f().changed("save_path") ? "Saving moves the content there." : null}
+            fallback={f().changed("save_path") ? "Saving moves the content there. " : null}
           >
             The path follows the category while automatic management is on.{" "}
-            <button
-              type="button"
-              class="text-muted-foreground underline hover:text-foreground"
-              onClick={() => {
-                f().set("auto_management", false);
-                queueMicrotask(() => savePath?.focus());
-              }}
-            >
-              Move content…
-            </button>
           </Show>
+          <button
+            type="button"
+            class="text-muted-foreground underline hover:text-foreground"
+            onClick={() => dialogs.move([props.torrent.hash])}
+          >
+            Move content…
+          </button>
         </p>
         <Show when={!props.torrent.complete || props.torrent.download_path !== null}>
-          <Row
+          <OptionRow
             label="Download path"
             for={id("download_path")}
             changed={f().changed("download_path")}
@@ -748,7 +577,7 @@ export function OptionsTab(props: { torrent: TorrentSummary; form: OptionsForm }
                 />
               }
             />
-          </Row>
+          </OptionRow>
         </Show>
       </div>
       <span role="status" class="sr-only">
