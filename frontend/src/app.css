@@ -60,6 +60,13 @@
   --upload: #eb6834;
   --online: #0ca30c;
 
+  /* A torrent's seeding days, least to most: the accent from dim to light
+     (the design's #184f95, #2a78d6, #3987e5, #86b6ef for blue). */
+  --heat-1: color-mix(in srgb, var(--brand) 45%, var(--background));
+  --heat-2: color-mix(in srgb, var(--brand) 75%, var(--background));
+  --heat-3: var(--brand);
+  --heat-4: color-mix(in srgb, var(--brand) 55%, white);
+
   /* Category palette */
   --cat-1: #3987e5;
   --cat-2: #9085e9;

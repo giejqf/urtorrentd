@@ -15,6 +15,12 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
   Wanted: the `interval` (and `min interval`) of the reply, and how long the
   announce took from request to reply, in the event. In the meantime the
   report shows neither.
+- **Reannouncing to one tracker**, for the web UI's Trackers tab (a
+  torrent's detail: "Reannounce" on each tracker). `Session::force_reannounce`
+  takes the torrent only and announces to every tracker (libtorrent's
+  `force_reannounce` takes a tracker index). Wanted: a tracker (its URL or
+  index) to announce to, alone. In the meantime the tab offers "Reannounce
+  all" only.
 
 ## Resolved upstream
 

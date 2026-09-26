@@ -13,7 +13,8 @@ import { cva } from "class-variance-authority";
 import { cn } from "~/lib/utils";
 
 // The design's buttons: `.btn` (outline, 28px), `.btn.primary` (the one
-// primary action), `.ib` (icon buttons, 28px) and the 40px sign-in button.
+// primary action), `.ib` (icon buttons, 28px), the detail tabs' 24px
+// `.sbtn` and the 40px sign-in button.
 const buttonVariants = cva(
   "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors outline-none focus-visible:shadow-focus focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
@@ -30,6 +31,7 @@ const buttonVariants = cva(
         link: "text-foreground underline-offset-4 hover:underline",
       },
       size: {
+        xs: "h-6 gap-1 px-2 text-xs [&_svg]:size-3",
         sm: "h-7 px-2.5 text-sm [&_svg]:size-[13px]",
         default: "h-8 px-3 text-base [&_svg]:size-3.5",
         md: "h-9 gap-2 rounded-lg px-3.5 text-base [&_svg]:size-3.5",

@@ -180,11 +180,15 @@ export function UnitInput(props: {
   muted?: boolean;
   /** After the input, inside the box (a Browse button). */
   trailing?: JSX.Element;
+  /** Not editable here (set elsewhere): shown dimmed. */
+  disabled?: boolean;
+  ref?: (el: HTMLInputElement) => void;
 }) {
   return (
     <div
       class={cn(
         "flex h-8 w-[150px] flex-none items-center overflow-hidden rounded-md border bg-background focus-within:shadow-focus",
+        props.disabled && "opacity-60",
         props.invalid
           ? "border-danger"
           : props.changed
@@ -194,8 +198,10 @@ export function UnitInput(props: {
       )}
     >
       <input
+        ref={(el) => props.ref?.(el)}
         id={props.id}
         aria-label={props.label}
+        disabled={props.disabled}
         class={cn(
           "h-full w-full min-w-0 bg-transparent px-2.5 mono text-sm outline-none placeholder:text-subtle",
           props.muted ? "text-subtle" : "text-foreground",
@@ -274,6 +280,8 @@ export function Segmented<T extends string>(props: {
   value: T;
   onChange: (v: T) => void;
   changed?: boolean;
+  /** The design's `.seg2`: 22px buttons in 11px type (the detail panel). */
+  compact?: boolean;
 }) {
   const refs: HTMLButtonElement[] = [];
   const move = (from: number, by: number) => {
@@ -289,7 +297,8 @@ export function Segmented<T extends string>(props: {
       role="radiogroup"
       aria-label={props.label}
       class={cn(
-        "flex flex-none gap-0.5 rounded-lg border p-[3px]",
+        "flex flex-none gap-0.5 border",
+        props.compact ? "rounded-md p-0.5" : "rounded-lg p-[3px]",
         props.changed ? "border-warn" : "border-border",
       )}
     >
@@ -307,7 +316,10 @@ export function Segmented<T extends string>(props: {
                 on() || (i() === 0 && !props.options.some((x) => x.value === props.value)) ? 0 : -1
               }
               class={cn(
-                "h-6 rounded-[5px] px-2.5 text-sm font-medium whitespace-nowrap transition-colors focus-visible:shadow-focus focus-visible:outline-none",
+                "font-medium whitespace-nowrap transition-colors focus-visible:shadow-focus focus-visible:outline-none",
+                props.compact
+                  ? "h-[22px] rounded-sm px-2 text-xs"
+                  : "h-6 rounded-[5px] px-2.5 text-sm",
                 on()
                   ? o.danger
                     ? "bg-danger/18 text-danger"

@@ -45,7 +45,7 @@ import { cn } from "~/lib/utils";
 
 import { useGeo, useMinuteClock, usePeersNow, usePeerSplit } from "./data";
 import { WorldMap } from "./map";
-import { Card, Empty, TorrentPicker } from "./parts";
+import { Card, CountryCode, Empty, PeerBadge, TorrentPicker } from "./parts";
 import {
   countryFlows,
   countryName,
@@ -358,31 +358,6 @@ function Overlay(props: { head: string; big: JSX.Element; sub: string; right?: b
   );
 }
 
-function Badge(props: { on: boolean; children: JSX.Element; title: string }) {
-  return (
-    <span
-      title={props.title}
-      class={cn(
-        "inline-flex h-4 items-center rounded-[3px] border px-1 mono text-[9px]",
-        props.on ? "border-border-strong text-foreground-2" : "border-border text-faint",
-      )}
-    >
-      {props.children}
-    </span>
-  );
-}
-
-function CountryCode(props: { code: string | null }) {
-  return (
-    <span
-      title={countryName(props.code)}
-      class="inline-flex h-4 w-6 flex-none items-center justify-center rounded-[3px] bg-accent mono text-[9px] font-semibold text-muted-foreground"
-    >
-      {props.code ?? "??"}
-    </span>
-  );
-}
-
 function PeersTable(props: {
   peers: readonly Peer[];
   scope: string | null;
@@ -551,21 +526,21 @@ function PeersTable(props: {
                             </span>
                           </span>
                           <span class="flex gap-[3px]">
-                            <Badge on title={p().transport === "utp" ? "µTP" : "TCP"}>
+                            <PeerBadge on title={p().transport === "utp" ? "µTP" : "TCP"}>
                               {p().transport === "utp" ? "µTP" : "TCP"}
-                            </Badge>
-                            <Badge
+                            </PeerBadge>
+                            <PeerBadge
                               on={p().encrypted}
                               title={p().encrypted ? "Encrypted" : "Not encrypted"}
                             >
                               E
-                            </Badge>
-                            <Badge
+                            </PeerBadge>
+                            <PeerBadge
                               on={p().incoming}
                               title={p().incoming ? "They connected to us" : "We connected to them"}
                             >
                               IN
-                            </Badge>
+                            </PeerBadge>
                           </span>
                           <span
                             class={cn(

@@ -9,7 +9,7 @@ torrents screen and the add dialog, and the RSS screen, as the mockups have them
 settings section (Downloads, Speed, Queue & share limits, Connection, BitTorrent, Banned
 addresses, Watch folders, RSS, Webhooks, Statistics & GeoIP, Security & API, Engine, About) and
 the Log screen. W6 has every Stats report: Overview, Trackers, Peers & geo, Idle seeds and
-Timeline.
+Timeline. W3 has the detail panel's tabs: Files, Peers, Trackers, History and Options.
 Section 10 has the milestones.
 
 ## 1. What this is
@@ -132,9 +132,11 @@ frontend/
       shell/            the signed-in gate (protected.tsx), the live store (live.tsx), sidebar,
                         navigation, transfer footer, instance menu
       torrents/         the screen (torrents.tsx), the list, filters and sort (view.ts), the
-                        detail panel, pieces (pieces.ts), add/ (the dialog, its sources and
-                        previews, form.ts), delete, actions; later files,
-                        peers, trackers, web seeds, limits
+                        detail panel (detail-panel.tsx: the header, the tabs, the Overview),
+                        pieces (pieces.ts), detail/ (the tabs: Files with files.ts, Peers,
+                        Trackers and web seeds with trackers.ts, History with history.ts,
+                        Options with options.ts, the draft's model), add/ (the dialog, its
+                        sources and previews, form.ts), delete, actions
       settings/         the settings screens: navigation (nav.tsx), the page frame with the
                         restart banner (frame.tsx, restart.tsx), rows, fields and the save bar
                         (controls.tsx), the draft, save and leave logic every page shares
@@ -203,7 +205,7 @@ Unit tests sit next to their code (`format.test.ts`). The root `.gitignore` has
 | What | Where |
 |---|---|
 | Torrents, categories, tags, transfer state | The live store, fed by the event stream (4.3). Nothing polls `/torrents`. |
-| Everything else from the API (detail tabs, settings, RSS, logs, statistics) | TanStack Query, one key per resource. A tab refetches on an interval only while it is visible (peers, trackers, pieces: every 2 s). A mutation invalidates the keys it changes. |
+| Everything else from the API (detail tabs, settings, RSS, logs, statistics) | TanStack Query, one key per resource. A tab refetches on an interval only while it is visible (peers, files, pieces: every 2 s; trackers every 5 s). A mutation invalidates the keys it changes. |
 | View state: section, filters, search, selection, open tab | The URL, so reload, back and shared links work. |
 | Preferences: columns, grouping, sort, accent, units, panel sizes | `/client-data`, under keys starting with `webui.`, so they follow the user to any browser (64 KiB per value). Mirrored in `localStorage` only so the sign-in page can render before it is allowed to read them. |
 | Everything else | Component signals. |
@@ -429,6 +431,11 @@ locally.
   they connect), Idle seeds (`StatsIdle.dc.html`: size against value, the least valuable first
   with a selection to stop, keep or remove) and Timeline (`Timeline.dc.html`: events by kind,
   one lane per torrent, the feed by day, what needs attention).
+- `Detail___Files_tab-html.zip`, `Detail___Peers_tab-html.zip`, `Detail___Trackers_tab-html.zip`,
+  `Detail___History_tab-html.zip`, `Detail___Options_tab-html.zip`: the detail panel's tabs
+  (`MainFiles.dc.html` and the others, the Overview being `Torrents-html.zip`'s panel): the
+  file tree with priorities, the peers, trackers and web seeds, the seeding days and the last
+  day's traffic, and the options saved as one draft.
 
 They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
@@ -514,8 +521,11 @@ on sign-in.
     tag and tracker), and a transfer footer.
   - List: title and count; Filter, Display and Add buttons; rows grouped by state, each group
     header with its count and summed rate.
-  - Detail: breadcrumb (category › short hash) and start / stop / recheck / more; name, state
-    pill and progress; properties; pieces and availability; transfer; trackers.
+  - Detail: breadcrumb (category › short hash) and start / stop / recheck / more, then tabs
+    (`?tab=`, kept while another torrent is picked). Overview: name, state pill and progress;
+    properties; pieces and availability; transfer; trackers. Files, Peers, Trackers, History and
+    Options name the torrent small at their top. The Options draft lives with the panel, so a
+    switch of tab keeps it; leaving the torrent with it unsaved asks first.
 - **Narrower screens.** The artboards are 1440×900 only, so the smaller layouts are ours to
   design in the same language:
   - 1024–1279px: the detail panel becomes a sheet over the list.
@@ -658,6 +668,30 @@ These are the known differences. Resolve each as noted, never by faking.
 | Stats › Timeline: "Re-add" on a removal, "Reannounce" on an error, "Edit tracker" | A removed torrent's `.torrent` is gone; timeline errors are the torrent's (disk, missing files), not a tracker's | "Start" on an error while the torrent is still in error (it recovers missing files and disk errors). Failing trackers are listed in Needs attention with a link to Trackers. |
 | Stats › Timeline: lanes coloured from range start | A state is known from the events: a state change, finishing, the metadata; after the last event, the state now | What is not established is drawn dashed, as before the range. |
 | Stats › Timeline: "Freed by removals 5.4 GB" | Removals do not record sizes | Left out; "Added → finished" is the median from the events. |
+| Detail tabs as links between artboards | One panel | Kobalte tabs, the tab in the URL (`?tab=files`); the Overview is the default and has no parameter. |
+| Files: "Priority ▾" and "Rename" with no selection shown | `POST .../files/priority` takes indexes and one priority; `.../files/rename` and `.../folders/rename` one path | A click on a row's name chooses it (Ctrl or ⌘ adds, Shift a range); Priority sets the chosen rows' files, or every file when none is chosen (the menu says which); Rename takes one row. |
+| Files: priorities Skip, Low, Normal, High | 0 skips, 1 to 7, 4 normal | The add dialog's: Low 1, Normal 4, High 6, Maximum 7, and Skip. The checkbox downloads or skips; checking a skipped file gives it Normal. |
+| Files: folder rows with no size, progress or priority | The daemon lists files only | Folders sum their files' sizes and their progress (by size, over the files not skipped); no priority menu, since their files may differ (Priority sets a chosen folder). Folders open and close. |
+| Files: a lane per file under the pieces bar | `first_piece`, `last_piece` per file; `GET .../pieces` | As designed while there are at most 12 files; more and only the bar shows. Skipped files are hatched. |
+| Files: "availability 3.2" | The row's `availability` (distributed copies; `null` for a complete seed) | As shown, "—" when `null`. |
+| Peers: "24 connected · showing top 10 by rate" | `GET /torrents/{hash}/peers` (every connected peer); `known_peers` in `GET /torrents/{hash}` | Every peer fastest first (the 200 fastest drawn), "· 312 known" when more are known than connected. The country as its code (no flags); "E" and "IN" only when they hold. |
+| Peers: "Map" | Stats › Peers & geo takes `?hash=` | A link to the map of this torrent's peers. |
+| Trackers: full URLs "https://bttracker.debian.org:443/announce" | Tracker URLs can carry passkeys (rule 6) | The host with the scheme as a badge; the whole URL only in its edit field. Removing asks first (a private tracker's passkey is needed to add it back). |
+| Trackers: "Reannounce" on each tracker | `force_reannounce` announces to every tracker; no tracker can be picked (`docs/gaps.md`) | "Reannounce all" only. |
+| Trackers: "working · 186 seeds · 24 leechers · 1 204 completed" | `seeders`, `leechers`, `downloaded` per tracker, each `null` when not reported | What the tracker reported; a failing one's message and how many times it failed. |
+| Trackers: "Add tracker URL… (one per line, same tier)" | `POST .../trackers` with a `tier` (absent: each in a new tier) | The URLs typed together go into one new tier after the last. |
+| Trackers: "Public torrent — Add 38 fetched trackers" | `add_trackers` and `fetched_trackers` (`GET /settings`, `GET /app`) | The trackers new public torrents get that this one lacks, each in its own tier as for a new torrent; never offered to a private torrent (rule 4). |
+| Trackers: DHT "312 nodes" | Nodes are the session's (`dht_nodes` in the transfer state); peers found are per torrent | The session's nodes beside the torrent's peers; "off · private torrent" for a private one. |
+| History: seeding days shaded up to "> 10 GB", "darker = more" | `/stats/torrents/{hash}/days` (UTC days: upload, seeding time) | Shaded by copies of the torrent uploaded that day (under 0.1, 0.5, 1, then a copy or more), so a small and a big torrent read alike; brighter is more; days by UTC. A day it neither seeded nor uploaded is dashed; days before its first record are blank. |
+| History: "Recorded since Aug 30, 21:40", "Best day 7.7 GB" | Days, not times | The first day recorded; the best day with its date. |
+| History: "Ratio trend +0.05 / week at this rate" | Each day's `ratio` at its end | The change from a week ago to now ("+0.05 in the last 7 days"), not a projection. |
+| History: "Swarm completed" | `swarm_completed_max` from the opt-in scrapes | The newest scrape's count, "—" without scrapes. |
+| History: "Open in Stats" | The reports that take one torrent are Timeline and Peers & geo | "Open in Timeline". Delete history asks first (`DELETE /stats/torrents/{hash}`). |
+| Options: "Peer connections 200", "Upload slots global" | `max_connections` is the cap in force; `max_uploads` `null` = the global budget; `null` in a request = the default | The cap in force; emptied, the torrent goes back to the settings' per-torrent default. |
+| Options: share limits "Global" with a dimmed value | A torrent's `global` limits defer to its category's, then the settings' | The value Global stands for shown in the field (from the draft's category); typing a value makes the limit Own. "When reached" names the inherited action ("Global · stop"). |
+| Options: "Browse", "Move content…" | `POST /torrents/location` moves the content and turns automatic management off | Browse is the folder icon in the field. While automatic management is on the path is the category's; "Move content…" turns it off and focuses the path, and saving moves the content there. |
+| Options: no download path | `download_path` on the row; `POST /torrents/download-path` | A Download path row while the torrent is incomplete (or has one). |
+| Options: "1 unsaved change · Discard · Save" | One call per kind of change | As shown, Ctrl/⌘ S too; the calls go one by one and the first failure stops them, shown in the footer. No toast (it would cover the footer). |
 
 ## 7. Testing
 
@@ -816,7 +850,11 @@ Each milestone ends with its end-to-end tests green.
   of each source with per-file choices, and every option. Delete. Keyboard shortcuts.
 - **W3 One torrent in depth.** Files (tree, priorities, rename). Peers (with GeoIP). Trackers
   and web seeds (edit). Pieces. Limits and share limits. Location and download path. Managing
-  categories and tags.
+  categories and tags. Done so far: the detail panel's tabs as designed: Files (the tree with
+  priorities, renames, the pieces each file spans), Peers, Trackers and web seeds (editing,
+  the trackers new public torrents get), History and Options (name, comment, limits, share
+  limits, behaviour, category, tags, save and download paths, as one draft). Left: piece
+  hashes, and managing tags on their own (creating and deleting them).
 - **W4 Settings.** Every settings group, security (credentials, API key), webhooks, watch
   folders and the alternative-limits schedule. Transfer limits and the alternative-limits
   switch. The main and peer logs. Done so far: the settings navigation and frame, the restart
@@ -849,7 +887,8 @@ Each milestone ends with its end-to-end tests green.
   now or over a day or a week; the peers to ban or add; by country or network; how peers
   connect), Idle seeds (size against value; the least valuable first, to stop, keep or remove;
   CSV) and Timeline (events by kind, lanes per torrent, the feed by day, what needs attention;
-  CSV) as designed. Left for later: a torrent's own history (its traffic and seeding days).
+  CSV) as designed. A torrent's own history (its seeding days and last day's traffic) is the
+  detail panel's History tab (W3).
 - **W7 Finish.** The ⌘K palette, small screens, the full browser matrix, and the 10 000-torrent
   budgets.
 

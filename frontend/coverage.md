@@ -25,30 +25,11 @@ row whose operation the UI calls.
 
 ## W3: one torrent in depth
 
-| Operation                                      | Why the UI does not call it                                                      |
-| ---------------------------------------------- | -------------------------------------------------------------------------------- |
-| `GET /api/v1/torrents/{hash}`                  | W3: the fields beyond the list row (web seeds, known peers, source URL).         |
-| `PATCH /api/v1/torrents/{hash}`                | W3: rename, comment.                                                             |
-| `GET /api/v1/torrents/{hash}/files`            | W3: the files tab.                                                               |
-| `POST /api/v1/torrents/{hash}/files/priority`  | W3: the files tab.                                                               |
-| `POST /api/v1/torrents/{hash}/files/rename`    | W3: the files tab.                                                               |
-| `POST /api/v1/torrents/{hash}/folders/rename`  | W3: the files tab.                                                               |
-| `GET /api/v1/torrents/{hash}/peers`            | W3: the peers tab.                                                               |
-| `GET /api/v1/torrents/{hash}/pieces/hashes`    | W3: the pieces tab.                                                              |
-| `POST /api/v1/torrents/{hash}/trackers`        | W3: editing trackers.                                                            |
-| `POST /api/v1/torrents/{hash}/trackers/edit`   | W3: editing trackers.                                                            |
-| `POST /api/v1/torrents/{hash}/trackers/remove` | W3: editing trackers.                                                            |
-| `GET /api/v1/torrents/{hash}/webseeds`         | W3: web seeds.                                                                   |
-| `POST /api/v1/torrents/{hash}/webseeds`        | W3: web seeds.                                                                   |
-| `POST /api/v1/torrents/{hash}/webseeds/edit`   | W3: web seeds.                                                                   |
-| `POST /api/v1/torrents/{hash}/webseeds/remove` | W3: web seeds.                                                                   |
-| `POST /api/v1/torrents/limits`                 | W3: speed limits.                                                                |
-| `POST /api/v1/torrents/share-limits`           | W3: share limits.                                                                |
-| `POST /api/v1/torrents/location`               | W3: moving the content.                                                          |
-| `POST /api/v1/torrents/download-path`          | W3: the download path.                                                           |
-| `POST /api/v1/torrents/auto-management`        | W3: automatic management.                                                        |
-| `POST /api/v1/tags`                            | W3: managing tags (the detail panel creates them through `POST /torrents/tags`). |
-| `POST /api/v1/tags/remove`                     | W3: managing tags.                                                               |
+| Operation                                   | Why the UI does not call it                                                                                 |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/torrents/{hash}/pieces/hashes` | W3: piece hashes have no design yet (the Files tab and the Overview draw the pieces from `GET .../pieces`). |
+| `POST /api/v1/tags`                         | W3: managing tags (the detail panel creates them through `POST /torrents/tags`).                            |
+| `POST /api/v1/tags/remove`                  | W3: managing tags.                                                                                          |
 
 ## W4: settings, security, logs
 
@@ -61,14 +42,6 @@ row whose operation the UI calls.
 | Operation                    | Why the UI does not call it                                               |
 | ---------------------------- | ------------------------------------------------------------------------- |
 | `GET /api/v1/rss/feeds/{id}` | The RSS screen reads every feed's articles at once (`GET /rss/articles`). |
-
-## W6: statistics
-
-| Operation                                   | Why the UI does not call it                            |
-| ------------------------------------------- | ------------------------------------------------------ |
-| `GET /api/v1/stats/torrents/{hash}/traffic` | W6: a torrent's history (not designed yet).            |
-| `GET /api/v1/stats/torrents/{hash}/days`    | W6: a torrent's seeding days (not designed yet).       |
-| `DELETE /api/v1/stats/torrents/{hash}`      | W6: deleting one torrent's history (not designed yet). |
 
 ## W7: the palette
 

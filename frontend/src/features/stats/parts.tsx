@@ -15,6 +15,7 @@ import { Segmented } from "~/features/settings/controls";
 import { formatChange, localDay } from "~/lib/format";
 import { cn } from "~/lib/utils";
 
+import { countryName } from "./peers-view";
 import { datesLabel, type Preset, type Range, type RangeParams } from "./range";
 
 /** The range's presets and a button to pick days (`?from=&to=`). */
@@ -384,4 +385,31 @@ export function download(name: string, text: string, type: string): void {
 export function fileStamp(d = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+/** A peer connection's trait (TCP, E, IN): bright when it holds. */
+export function PeerBadge(props: { on: boolean; children: JSX.Element; title: string }) {
+  return (
+    <span
+      title={props.title}
+      class={cn(
+        "inline-flex h-4 items-center rounded-[3px] border px-1 mono text-[9px]",
+        props.on ? "border-border-strong text-foreground-2" : "border-border text-faint",
+      )}
+    >
+      {props.children}
+    </span>
+  );
+}
+
+/** A peer's country as its code, the name on hover. */
+export function CountryCode(props: { code: string | null }) {
+  return (
+    <span
+      title={countryName(props.code)}
+      class="inline-flex h-4 w-6 flex-none items-center justify-center rounded-[3px] bg-accent mono text-[9px] font-semibold text-muted-foreground"
+    >
+      {props.code ?? "??"}
+    </span>
+  );
 }

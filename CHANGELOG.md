@@ -109,6 +109,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exports CSV. Timeline shows the events by kind, one lane per torrent and a
   feed by day, with what needs attention now, and exports CSV. The
   Overview's Reclaim leaves torrents tagged `keep` alone.
+- Web UI: the detail panel's tabs as designed. Files is the torrent's tree
+  with each file's size, progress and priority, a checkbox to download or
+  skip a file or a folder, priorities for the rows chosen, renames, and the
+  pieces each file spans. Peers lists the connected peers fastest first,
+  with their country, client and connection, and peers to add. Trackers
+  edits, adds (one tier per batch) and removes trackers, shown by host only,
+  offers a public torrent the trackers new ones get, and edits web seeds.
+  History has the last 30 days, the last 12 weeks of seeding days and the
+  last day's traffic, and deletes the torrent's history. Options saves the
+  name, comment, limits, share limits, behaviour, category, tags and
+  location as one draft, and asks before leaving it unsaved.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and
   `cargo xtask dist` (a release binary with the UI built in).
 

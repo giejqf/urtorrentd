@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 urtorrentd contributors
 
-// The design's right panel (AGENTS.md 6.3): one torrent's state, properties,
-// pieces, transfer and trackers. The summary comes from the live store;
-// pieces and trackers are fetched while the panel shows them.
+// The design's right panel (AGENTS.md 6.3): one torrent under a header of
+// actions, in tabs (`?tab=`, kept while another torrent is picked). The
+// Overview has its state, properties, pieces, transfer and trackers; Files,
+// Peers, Trackers, History and Options are in `detail/`. The summary comes
+// from the live store; each tab fetches what it shows while it shows it.
 
+import { useSearchParams } from "@solidjs/router";
 import { createQuery, useQueryClient } from "@tanstack/solid-query";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import Ellipsis from "lucide-solid/icons/ellipsis";
@@ -33,6 +36,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
 import { useLive } from "~/features/shell/live";
 import {
@@ -41,16 +45,20 @@ import {
   formatCount,
   formatDateTime,
   formatDuration,
-  formatEta,
   formatFullDateTime,
   formatLimit,
-  formatPercent,
   formatRatio,
 } from "~/lib/format";
 import { categoryTone, errorKindLabel, stateLook, toneBg, trackerHost } from "~/lib/torrent";
 import { cn } from "~/lib/utils";
 
 import { actions, copy, isRunning } from "./actions";
+import { FilesTab } from "./detail/files-tab";
+import { HistoryTab } from "./detail/history-tab";
+import { createOptionsForm, OptionsLeaveGuard, OptionsTab } from "./detail/options-tab";
+import { progressLine, trackerTone } from "./detail/parts";
+import { PeersTab } from "./detail/peers-tab";
+import { TrackersTab } from "./detail/trackers-tab";
 import { PiecesChart } from "./pieces-chart";
 
 type TorrentSummary = Schemas["TorrentSummary"];
@@ -195,19 +203,6 @@ function TagsEditor(props: { torrent: TorrentSummary }) {
       />
     </>
   );
-}
-
-function trackerTone(status: Schemas["TrackerStatus"]): string {
-  switch (status) {
-    case "working":
-      return "bg-online";
-    case "updating":
-      return "bg-warn";
-    case "not_working":
-      return "bg-danger";
-    case "not_contacted":
-      return "bg-faint";
-  }
 }
 
 function Trackers(props: { torrent: TorrentSummary }) {
@@ -371,21 +366,20 @@ function MoreMenu(props: { torrent: TorrentSummary; onDelete: () => void }) {
   );
 }
 
-function progressLine(t: TorrentSummary): string {
-  if (!t.has_metadata) return `waiting for metadata · ${formatCount(t.peers)} peers`;
-  if (t.complete) return `100% · ratio ${formatRatio(t.ratio)}`;
-  const pct = formatPercent(t.progress, 1);
-  return t.eta === null ? pct : `${pct} · ${formatEta(t.eta)} left`;
-}
+const TABS = ["overview", "files", "peers", "trackers", "history", "options"] as const;
+type Tab = (typeof TABS)[number];
+const TAB_LABELS: Record<Tab, string> = {
+  overview: "Overview",
+  files: "Files",
+  peers: "Peers",
+  trackers: "Trackers",
+  history: "History",
+  options: "Options",
+};
 
-export function DetailPanel(props: {
-  torrent: TorrentSummary;
-  onDelete: (hashes: string[]) => void;
-  class?: string;
-}) {
+function Overview(props: { torrent: TorrentSummary }) {
   const t = () => props.torrent;
   const look = () => stateLook(t());
-  const running = () => isRunning(t());
   const flags = () =>
     [
       t().private && "private",
@@ -394,6 +388,162 @@ export function DetailPanel(props: {
       t().first_last_piece_priority && "first & last pieces",
       t().auto_management && "automatic management",
     ].filter((f): f is string => typeof f === "string");
+  return (
+    <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
+      <div class="flex flex-col gap-2.5">
+        <h2 class="m-0 text-md leading-[1.3] font-semibold [overflow-wrap:anywhere]">{t().name}</h2>
+        <div class="flex items-center gap-2">
+          <Badge variant="pill">
+            <StatusDot class={toneBg[look().tone]} />
+            {look().label}
+          </Badge>
+          <span class="mono text-sm text-muted-foreground">{progressLine(t())}</span>
+        </div>
+        <div
+          class="h-1 overflow-hidden rounded-full bg-divider"
+          role="progressbar"
+          aria-label="Progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.floor(t().progress * 100)}
+        >
+          <div
+            class={cn("h-full", t().complete ? "bg-ok" : "bg-brand")}
+            style={{ width: `${Math.floor(t().progress * 1000) / 10}%` }}
+          />
+        </div>
+        <Show when={t().state === "error"}>
+          <div
+            role="alert"
+            class="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-foreground-2"
+          >
+            <span class="font-medium text-danger">{errorKindLabel(t().error_kind)}</span>
+            <Show when={t().error}>: {t().error}</Show>
+            <Show when={t().error_kind === "content_missing" || t().error_kind === "io"}>
+              <span class="block text-muted-foreground">
+                Start or recheck it once the files are back.
+              </span>
+            </Show>
+          </div>
+        </Show>
+      </div>
+
+      <section aria-label="Properties" class="flex flex-col">
+        <h3 class="m-0 mb-1.5 section-label">Properties</h3>
+        <dl class="m-0">
+          <Prop label="Category">
+            <CategoryMenu torrent={t()} />
+          </Prop>
+          <Prop label="Tags">
+            <TagsEditor torrent={t()} />
+          </Prop>
+          <Prop label="Save path" class="block">
+            <span class="block truncate mono text-xs" title={t().save_path}>
+              {t().save_path}
+            </span>
+          </Prop>
+          <Prop label="Tracker" class="block">
+            <span class="block truncate mono text-xs">
+              {trackerHost(t().tracker) ??
+                (t().trackers_count === 0 ? "none" : `none of ${t().trackers_count} working`)}
+            </span>
+          </Prop>
+          <Prop label="Limits" class="mono">
+            ↓ {formatLimit(t().download_limit)} · ↑ {formatLimit(t().upload_limit)} · ratio{" "}
+            {ratioLimit(t().share_limits.ratio)}
+          </Prop>
+          <Prop label="Added" class="mono">
+            <span title={formatFullDateTime(t().added_on)}>{formatDateTime(t().added_on)}</span>
+          </Prop>
+          <Prop label="Flags" class="flex-wrap py-1">
+            <Show when={flags().length > 0} fallback={<span class="text-subtle">{dash}</span>}>
+              <For each={flags()}>{(f) => <Badge>{f}</Badge>}</For>
+            </Show>
+          </Prop>
+        </dl>
+      </section>
+
+      <PiecesChart torrent={t()} />
+
+      <section aria-label="Transfer" class="flex flex-col gap-2.5">
+        <h3 class="m-0 section-label">Transfer</h3>
+        <dl class="m-0 grid grid-cols-3 gap-3">
+          <Stat label="Downloaded">{formatBytes(t().downloaded)}</Stat>
+          <Stat label="Uploaded">{formatBytes(t().uploaded)}</Stat>
+          <Stat label="Ratio">{formatRatio(t().ratio)}</Stat>
+          <Stat label="Peers">
+            {formatCount(t().peers)}{" "}
+            <span class="text-subtle">/ {formatCount(t().seeds)} seeds</span>
+          </Stat>
+          <Stat label="Wasted">{formatBytes(t().wasted)}</Stat>
+          <Stat label="Seeding time">{formatDuration(t().seeding_time)}</Stat>
+        </dl>
+      </section>
+
+      <Trackers torrent={t()} />
+    </div>
+  );
+}
+
+/** The tabs of one torrent; the Options draft lives here, so it outlasts a switch of tab. */
+function TorrentTabs(props: { torrent: TorrentSummary; tab: Tab; onTab: (tab: Tab) => void }) {
+  const form = createOptionsForm(() => props.torrent);
+  return (
+    <Tabs
+      value={props.tab}
+      onChange={(v) => props.onTab(v as Tab)}
+      class="flex min-h-0 flex-1 flex-col"
+    >
+      <TabsList
+        class="h-9 flex-none items-end gap-0.5 px-2"
+        aria-label={`Details of ${props.torrent.name}`}
+      >
+        <For each={TABS}>
+          {(tab) => (
+            <TabsTrigger
+              value={tab}
+              class="-mb-px h-[34px] rounded-t-md border-b-2 border-transparent px-2.5 text-sm data-[selected]:border-foreground"
+            >
+              {TAB_LABELS[tab]}
+              <Show when={tab === "options" && form.dirty()}>
+                <span class="size-1.5 rounded-full bg-warn" aria-label="unsaved changes" />
+              </Show>
+            </TabsTrigger>
+          )}
+        </For>
+      </TabsList>
+      <TabsContent value="overview" class="mt-0 flex min-h-0 flex-1 flex-col">
+        <Overview torrent={props.torrent} />
+      </TabsContent>
+      <TabsContent value="files" class="mt-0 flex min-h-0 flex-1 flex-col">
+        <FilesTab torrent={props.torrent} />
+      </TabsContent>
+      <TabsContent value="peers" class="mt-0 flex min-h-0 flex-1 flex-col">
+        <PeersTab torrent={props.torrent} />
+      </TabsContent>
+      <TabsContent value="trackers" class="mt-0 flex min-h-0 flex-1 flex-col">
+        <TrackersTab torrent={props.torrent} />
+      </TabsContent>
+      <TabsContent value="history" class="mt-0 flex min-h-0 flex-1 flex-col">
+        <HistoryTab torrent={props.torrent} />
+      </TabsContent>
+      <TabsContent value="options" class="mt-0 flex min-h-0 flex-1 flex-col">
+        <OptionsTab torrent={props.torrent} form={form} />
+      </TabsContent>
+      <OptionsLeaveGuard form={form} hash={props.torrent.hash} />
+    </Tabs>
+  );
+}
+
+export function DetailPanel(props: {
+  torrent: TorrentSummary;
+  onDelete: (hashes: string[]) => void;
+  class?: string;
+}) {
+  const [params, setParams] = useSearchParams<{ tab?: string }>();
+  const tab = (): Tab => TABS.find((x) => x === params.tab) ?? "overview";
+  const t = () => props.torrent;
+  const running = () => isRunning(t());
 
   return (
     <section
@@ -428,102 +578,14 @@ export function DetailPanel(props: {
         </IconAction>
         <MoreMenu torrent={t()} onDelete={() => props.onDelete([t().hash])} />
       </div>
-
-      <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
-        <div class="flex flex-col gap-2.5">
-          <h2 class="m-0 text-md leading-[1.3] font-semibold [overflow-wrap:anywhere]">
-            {t().name}
-          </h2>
-          <div class="flex items-center gap-2">
-            <Badge variant="pill">
-              <StatusDot class={toneBg[look().tone]} />
-              {look().label}
-            </Badge>
-            <span class="mono text-sm text-muted-foreground">{progressLine(t())}</span>
-          </div>
-          <div
-            class="h-1 overflow-hidden rounded-full bg-divider"
-            role="progressbar"
-            aria-label="Progress"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.floor(t().progress * 100)}
-          >
-            <div
-              class={cn("h-full", t().complete ? "bg-ok" : "bg-brand")}
-              style={{ width: `${Math.floor(t().progress * 1000) / 10}%` }}
-            />
-          </div>
-          <Show when={t().state === "error"}>
-            <div
-              role="alert"
-              class="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-foreground-2"
-            >
-              <span class="font-medium text-danger">{errorKindLabel(t().error_kind)}</span>
-              <Show when={t().error}>: {t().error}</Show>
-              <Show when={t().error_kind === "content_missing" || t().error_kind === "io"}>
-                <span class="block text-muted-foreground">
-                  Start or recheck it once the files are back.
-                </span>
-              </Show>
-            </div>
-          </Show>
-        </div>
-
-        <section aria-label="Properties" class="flex flex-col">
-          <h3 class="m-0 mb-1.5 section-label">Properties</h3>
-          <dl class="m-0">
-            <Prop label="Category">
-              <CategoryMenu torrent={t()} />
-            </Prop>
-            <Prop label="Tags">
-              <TagsEditor torrent={t()} />
-            </Prop>
-            <Prop label="Save path" class="block">
-              <span class="block truncate mono text-xs" title={t().save_path}>
-                {t().save_path}
-              </span>
-            </Prop>
-            <Prop label="Tracker" class="block">
-              <span class="block truncate mono text-xs">
-                {trackerHost(t().tracker) ??
-                  (t().trackers_count === 0 ? "none" : `none of ${t().trackers_count} working`)}
-              </span>
-            </Prop>
-            <Prop label="Limits" class="mono">
-              ↓ {formatLimit(t().download_limit)} · ↑ {formatLimit(t().upload_limit)} · ratio{" "}
-              {ratioLimit(t().share_limits.ratio)}
-            </Prop>
-            <Prop label="Added" class="mono">
-              <span title={formatFullDateTime(t().added_on)}>{formatDateTime(t().added_on)}</span>
-            </Prop>
-            <Prop label="Flags" class="flex-wrap py-1">
-              <Show when={flags().length > 0} fallback={<span class="text-subtle">{dash}</span>}>
-                <For each={flags()}>{(f) => <Badge>{f}</Badge>}</For>
-              </Show>
-            </Prop>
-          </dl>
-        </section>
-
-        <PiecesChart torrent={t()} />
-
-        <section aria-label="Transfer" class="flex flex-col gap-2.5">
-          <h3 class="m-0 section-label">Transfer</h3>
-          <dl class="m-0 grid grid-cols-3 gap-3">
-            <Stat label="Downloaded">{formatBytes(t().downloaded)}</Stat>
-            <Stat label="Uploaded">{formatBytes(t().uploaded)}</Stat>
-            <Stat label="Ratio">{formatRatio(t().ratio)}</Stat>
-            <Stat label="Peers">
-              {formatCount(t().peers)}{" "}
-              <span class="text-subtle">/ {formatCount(t().seeds)} seeds</span>
-            </Stat>
-            <Stat label="Wasted">{formatBytes(t().wasted)}</Stat>
-            <Stat label="Seeding time">{formatDuration(t().seeding_time)}</Stat>
-          </dl>
-        </section>
-
-        <Trackers torrent={t()} />
-      </div>
+      {/* One torrent's tabs at a time: a draft never follows another torrent. */}
+      <Show when={t().hash} keyed>
+        <TorrentTabs
+          torrent={props.torrent}
+          tab={tab()}
+          onTab={(v) => setParams({ tab: v === "overview" ? undefined : v }, { scroll: false })}
+        />
+      </Show>
     </section>
   );
 }
