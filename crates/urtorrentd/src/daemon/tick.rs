@@ -11,6 +11,7 @@ use std::time::Duration;
 use urtorrent::{InfoHash, TorrentId, TorrentState as L, TorrentStatus};
 
 use super::{Daemon, ResumeSave};
+use crate::log::LogTopic;
 use crate::settings::{Settings, SettingsPatch, ShareLimitAction};
 use crate::stats::peers::{PEER_SAMPLE_EVERY, PeerSample};
 use crate::stats::{Flush, Sample};
@@ -36,7 +37,7 @@ pub(crate) async fn run(daemon: Weak<Daemon>) {
             return;
         }
         for msg in d.geo.refresh() {
-            d.logs.info(msg);
+            d.logs.info(LogTopic::Statistics, msg);
         }
         if n.is_multiple_of(PEER_SAMPLE_EVERY / TICK.as_secs()) {
             // Before the snapshot: peer traffic never runs ahead of the
@@ -55,7 +56,8 @@ pub(crate) async fn run(daemon: Weak<Daemon>) {
         d.tick_once().await;
         d.save_resume(ResumeSave::Due).await;
         if let Err(e) = d.flush_records().await {
-            d.logs.warn(format!("saving torrent records: {e}"));
+            d.logs
+                .warn(LogTopic::Daemon, format!("saving torrent records: {e}"));
         }
         n += 1;
         if n.is_multiple_of(TOTALS_EVERY) {
@@ -64,7 +66,8 @@ pub(crate) async fn run(daemon: Weak<Daemon>) {
         if let Ok(stats) = &d.stats
             && let Err(e) = stats.flush(now(), Flush::Due, d.stats_retention()).await
         {
-            d.logs.warn(format!("saving statistics: {e}"));
+            d.logs
+                .warn(LogTopic::Statistics, format!("saving statistics: {e}"));
         }
     }
 }
@@ -165,13 +168,19 @@ impl Daemon {
             ..Default::default()
         };
         match self.update_settings(patch).await {
-            Ok(_) => self.logs.info(format!(
-                "alternative speed limits {} (schedule)",
-                if open { "on" } else { "off" }
-            )),
+            Ok(_) => self.logs.info(
+                LogTopic::Settings,
+                format!(
+                    "alternative speed limits {} (schedule)",
+                    if open { "on" } else { "off" }
+                ),
+            ),
             Err(e) => {
                 self.state().scheduled = last;
-                self.logs.warn(format!("alternative-limits schedule: {e}"));
+                self.logs.warn(
+                    LogTopic::Settings,
+                    format!("alternative-limits schedule: {e}"),
+                );
             }
         }
     }
@@ -319,8 +328,10 @@ impl Daemon {
             }
         }
         if !busy && self.cancel_restart() {
-            self.logs
-                .info("restarting: no torrent is checking, moving or receiving data");
+            self.logs.info(
+                LogTopic::Daemon,
+                "restarting: no torrent is checking, moving or receiving data",
+            );
             self.request_restart();
         }
         for (hash, id, action, why) in hits {
@@ -331,15 +342,23 @@ impl Daemon {
                 ShareLimitAction::RemoveWithFiles => self.remove(hash, id, true).await,
             };
             match r {
-                Ok(()) => self.logs.info(format!(
-                    "{name} reached its {why} limit: {}",
-                    match action {
-                        ShareLimitAction::Stop => "stopped",
-                        ShareLimitAction::Remove => "removed",
-                        ShareLimitAction::RemoveWithFiles => "removed with its files",
-                    }
-                )),
-                Err(e) => self.logs.warn(format!("share limit action on {name}: {e}")),
+                Ok(()) => self.logs.info_on(
+                    LogTopic::Torrents,
+                    &hash,
+                    format!(
+                        "{name} reached its {why} limit: {}",
+                        match action {
+                            ShareLimitAction::Stop => "stopped",
+                            ShareLimitAction::Remove => "removed",
+                            ShareLimitAction::RemoveWithFiles => "removed with its files",
+                        }
+                    ),
+                ),
+                Err(e) => self.logs.warn_on(
+                    LogTopic::Torrents,
+                    &hash,
+                    format!("share limit action on {name}: {e}"),
+                ),
             }
         }
     }

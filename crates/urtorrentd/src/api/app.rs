@@ -12,6 +12,7 @@ use axum::http::StatusCode;
 use super::{Json, Query};
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult};
+use crate::log::LogTopic;
 use crate::model::{
     AppInfo, Cookie, DirectoryEntry, DirectoryMode, DirectoryQuery, NetworkInterface, RestartQuery,
     RestartWhen, SystemInfo, WatchStatus,
@@ -73,12 +74,15 @@ pub(crate) async fn restart(
 ) -> StatusCode {
     match q.when.unwrap_or_default() {
         RestartWhen::Now => {
-            d.logs.info("restart requested through the API");
+            d.logs
+                .info(LogTopic::Daemon, "restart requested through the API");
             d.request_restart();
         }
         RestartWhen::Idle => {
-            d.logs
-                .info("restart requested through the API for when the torrents are idle");
+            d.logs.info(
+                LogTopic::Daemon,
+                "restart requested through the API for when the torrents are idle",
+            );
             d.request_restart_when_idle();
         }
     }
@@ -89,8 +93,10 @@ pub(crate) async fn restart(
 #[utoipa::path(delete, path = "/app/restart", tag = "app", responses((status = 204, description = "No restart waits (any that did is called off).")))]
 pub(crate) async fn cancel_restart(State(d): State<Arc<Daemon>>) -> StatusCode {
     if d.cancel_restart() {
-        d.logs
-            .info("the restart waiting for idle torrents was called off");
+        d.logs.info(
+            LogTopic::Daemon,
+            "the restart waiting for idle torrents was called off",
+        );
     }
     StatusCode::NO_CONTENT
 }
@@ -123,7 +129,8 @@ pub(crate) async fn get_watch_folders(State(d): State<Arc<Daemon>>) -> Json<Watc
 /// Shut the daemon down gracefully (trackers are told, state is saved).
 #[utoipa::path(post, path = "/app/shutdown", tag = "app", responses((status = 202, description = "Shutting down.")))]
 pub(crate) async fn shutdown(State(d): State<Arc<Daemon>>) -> StatusCode {
-    d.logs.info("shutdown requested through the API");
+    d.logs
+        .info(LogTopic::Daemon, "shutdown requested through the API");
     d.request_shutdown();
     StatusCode::ACCEPTED
 }

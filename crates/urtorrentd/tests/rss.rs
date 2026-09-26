@@ -184,6 +184,33 @@ async fn feeds_articles_and_download_rules() {
     assert_eq!(t.get(&path).await["feed"]["unread"], 2);
     let unread = t.get("/api/v1/rss/articles?unread=true").await;
     assert_eq!(unread.as_array().unwrap().len(), 2);
+    // Unread again; every feed read at once; all unread again.
+    let (s, _) = t
+        .post(
+            &format!("{path}/read"),
+            json!({"articles": ["item-3"], "unread": true}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert_eq!(t.get(&path).await["feed"]["unread"], 3);
+    let (s, _) = t
+        .post("/api/v1/rss/feeds/read", json!({"feeds": "all"}))
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert_eq!(t.get(&path).await["feed"]["unread"], 0);
+    let (s, _) = t
+        .post(
+            &format!("{path}/read"),
+            json!({"articles": "all", "unread": true}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert_eq!(t.get(&path).await["feed"]["unread"], 3);
+    let (s, v) = t
+        .post("/api/v1/rss/feeds/read", json!({"feeds": [id, 999]}))
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "{v}");
+    assert_eq!(t.get(&path).await["feed"]["unread"], 3, "nothing marked");
 
     // A rule: what it would take (auto-download off: nothing is added).
     let rule = json!({
@@ -200,6 +227,41 @@ async fn feeds_articles_and_download_rules() {
     assert_eq!(r["enabled"], true);
     let m = t.get("/api/v1/rss/rules/shows/matches").await;
     assert_eq!(titles(&m), ["Show.S01E02.1080p", "Show.S01E01.1080p"]);
+    assert_eq!(m[0]["matched_rule"], "shows");
+    // Every article says which rule would take it.
+    let all = t.get("/api/v1/rss/articles").await;
+    let by_rule: Vec<(&str, &Value)> = all
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| (a["title"].as_str().unwrap(), &a["matched_rule"]))
+        .collect();
+    assert_eq!(
+        by_rule,
+        [
+            ("Other.Thing.1080p", &Value::Null),
+            ("Show.S01E02.1080p", &json!("shows")),
+            ("Show.S01E01.1080p", &json!("shows")),
+        ]
+    );
+    // A disabled rule matches nothing; an earlier name comes first.
+    let mut first = rule.clone();
+    first["must_contain"] = json!("s01e01");
+    let (s, _) = t
+        .call(Method::PUT, "/api/v1/rss/rules/aaa", Some(first.clone()))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let v = t.get(&path).await;
+    assert_eq!(v["articles"][2]["matched_rule"], "aaa", "{v}");
+    assert_eq!(v["articles"][1]["matched_rule"], "shows");
+    first["enabled"] = json!(false);
+    let (s, _) = t
+        .call(Method::PUT, "/api/v1/rss/rules/aaa", Some(first))
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(t.get(&path).await["articles"][2]["matched_rule"], "shows");
+    let (s, _) = t.call(Method::DELETE, "/api/v1/rss/rules/aaa", None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(t.get("/api/v1/torrents").await, json!([]));
 
@@ -275,6 +337,32 @@ async fn feeds_articles_and_download_rules() {
         assert!(Instant::now() < deadline, "no conditional request");
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+    // Every feed at once; an unknown one refreshes nothing.
+    let (s, v) = t
+        .post("/api/v1/rss/feeds/refresh", json!({"feeds": [999]}))
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "{v}");
+    let before = feed.lock().unwrap().not_modified;
+    let (s, _) = t
+        .post("/api/v1/rss/feeds/refresh", json!({"feeds": "all"}))
+        .await;
+    assert_eq!(s, StatusCode::ACCEPTED);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while feed.lock().unwrap().not_modified == before {
+        assert!(Instant::now() < deadline, "no refresh of every feed");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    // The rule's additions, in the main log with their torrents.
+    let log = t.get("/api/v1/log?topics=rss").await;
+    let added: Vec<&str> = log
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["message"].as_str().unwrap().contains("added"))
+        .map(|e| e["torrent"].as_str().unwrap())
+        .collect();
+    assert!(added.contains(&hashes[&1].as_str()), "{log}");
+    assert!(log.as_array().unwrap().iter().all(|e| e["topic"] == "rss"));
 
     // Rules: rename, refusals, removal.
     let (s, r) = t

@@ -17,6 +17,7 @@ use super::{Json, Path, SESSION_COOKIE, no_content};
 use crate::auth::{Use, session_id};
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult, ErrorCode};
+use crate::log::LogTopic;
 use crate::model::{
     Account, ApiKeyInfo, ApiKeyResponse, AuthStatus, BanPath, ClientUse, CredentialsRequest,
     LoginBan, LoginRequest, LoginSession, RequestCheck, SessionPath,
@@ -57,10 +58,13 @@ pub(crate) async fn login(
             if d.auth
                 .record_failure(ip, max, Duration::from_secs(ban), ua.clone())
             {
-                d.logs
-                    .warn(format!("API login banned {ip} after {max} failed attempts"));
+                d.logs.warn(
+                    LogTopic::Security,
+                    format!("API login banned {ip} after {max} failed attempts"),
+                );
             } else {
-                d.logs.warn(format!("failed API login from {ip}"));
+                d.logs
+                    .warn(LogTopic::Security, format!("failed API login from {ip}"));
             }
         }
         return Err(ApiError::new(
@@ -168,10 +172,14 @@ pub(crate) async fn setup_credentials(
     d.auth.forget_temporary();
     d.auth.end_all_sessions();
     match ip {
-        Some(ip) => d.logs.info(format!(
-            "API credentials created by first-run setup from {ip}"
-        )),
-        None => d.logs.info("API credentials created by first-run setup"),
+        Some(ip) => d.logs.info(
+            LogTopic::Security,
+            format!("API credentials created by first-run setup from {ip}"),
+        ),
+        None => d.logs.info(
+            LogTopic::Security,
+            "API credentials created by first-run setup",
+        ),
     }
     logged_in(&d, secure, ip, user_agent(&headers))
 }
@@ -224,7 +232,7 @@ pub(crate) async fn set_credentials(
     let s = d.store.clone();
     blocking(move || s.save(store::AUTH, &creds)).await?;
     d.auth.end_all_sessions();
-    d.logs.info("API credentials changed");
+    d.logs.info(LogTopic::Security, "API credentials changed");
     Ok(no_content())
 }
 
@@ -236,7 +244,7 @@ pub(crate) async fn rotate_api_key(
     let (key, creds) = d.auth.rotate_api_key()?;
     let s = d.store.clone();
     blocking(move || s.save(store::AUTH, &creds)).await?;
-    d.logs.info("API key rotated");
+    d.logs.info(LogTopic::Security, "API key rotated");
     Ok(Json(ApiKeyResponse { api_key: key }))
 }
 
@@ -246,7 +254,7 @@ pub(crate) async fn delete_api_key(State(d): State<Arc<Daemon>>) -> ApiResult<St
     let creds = d.auth.delete_api_key();
     let s = d.store.clone();
     blocking(move || s.save(store::AUTH, &creds)).await?;
-    d.logs.info("API key deleted");
+    d.logs.info(LogTopic::Security, "API key deleted");
     Ok(no_content())
 }
 
@@ -306,7 +314,8 @@ pub(crate) async fn end_session(
     if !d.auth.end_session_by_id(&p.id) {
         return Err(ApiError::not_found(format!("no session {}", p.id)));
     }
-    d.logs.info("an API login session was ended");
+    d.logs
+        .info(LogTopic::Security, "an API login session was ended");
     Ok(no_content())
 }
 
@@ -322,10 +331,13 @@ pub(crate) async fn end_other_sessions(
     };
     let n = d.auth.end_other_sessions(keep);
     if n > 0 {
-        d.logs.info(format!(
-            "{n} other API login session{} ended",
-            if n == 1 { "" } else { "s" }
-        ));
+        d.logs.info(
+            LogTopic::Security,
+            format!(
+                "{n} other API login session{} ended",
+                if n == 1 { "" } else { "s" }
+            ),
+        );
     }
     no_content()
 }
@@ -363,7 +375,8 @@ pub(crate) async fn unban_login(
     if !d.auth.clear_failures(crate::util::normalize_ip(ip)) {
         return Err(ApiError::not_found(format!("no failed login from {ip}")));
     }
-    d.logs.info(format!("API login ban of {ip} lifted"));
+    d.logs
+        .info(LogTopic::Security, format!("API login ban of {ip} lifted"));
     Ok(no_content())
 }
 

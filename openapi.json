@@ -2932,7 +2932,7 @@
         "tags": [
           "log"
         ],
-        "summary": "Main-log entries, oldest first.",
+        "summary": "Main-log entries, oldest first: each with what it is about (`topic`)\nand the torrent it concerns, if one.",
         "operationId": "get_main_log",
         "parameters": [
           {
@@ -2950,6 +2950,15 @@
             "name": "levels",
             "in": "query",
             "description": "Only these levels, comma-separated (`info,warning,error`); all when absent.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "topics",
+            "in": "query",
+            "description": "Only these topics, comma-separated (`torrents,rss`; see `LogTopic`);\nall when absent.",
             "required": false,
             "schema": {
               "type": "string"
@@ -3965,6 +3974,194 @@
         }
       }
     },
+    "/api/v1/rss/feeds/read": {
+      "post": {
+        "tags": [
+          "rss"
+        ],
+        "summary": "Mark every article of several feeds read.",
+        "operationId": "mark_rss_feeds_read",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RssFeedsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Marked."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rss/feeds/refresh": {
+      "post": {
+        "tags": [
+          "rss"
+        ],
+        "summary": "Refresh several feeds now (also with `rss_enabled` off); `404` names the\nfirst feed that does not exist, and nothing is refreshed then.",
+        "operationId": "refresh_rss_feeds",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RssFeedsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Refreshing."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/rss/feeds/{id}": {
       "get": {
         "tags": [
@@ -4281,7 +4478,7 @@
         "tags": [
           "rss"
         ],
-        "summary": "Mark articles of a feed read.",
+        "summary": "Mark articles of a feed read (or, with `unread`, unread).",
         "operationId": "mark_rss_read",
         "parameters": [
           {
@@ -15352,6 +15549,8 @@
           "id",
           "time",
           "level",
+          "topic",
+          "torrent",
           "message"
         ],
         "properties": {
@@ -15371,6 +15570,17 @@
             "$ref": "#/components/schemas/LogLevel",
             "description": "Severity."
           },
+          "topic": {
+            "$ref": "#/components/schemas/LogTopic",
+            "description": "What it is about."
+          },
+          "torrent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The torrent it is about (info-hash); `null` = none."
+          },
           "message": {
             "type": "string",
             "description": "What happened."
@@ -15384,6 +15594,22 @@
           "info",
           "warning",
           "error"
+        ]
+      },
+      "LogTopic": {
+        "type": "string",
+        "description": "What a main-log entry is about.",
+        "enum": [
+          "daemon",
+          "torrents",
+          "trackers",
+          "network",
+          "rss",
+          "watch_folders",
+          "webhooks",
+          "settings",
+          "security",
+          "statistics"
         ]
       },
       "LoginBan": {
@@ -16401,7 +16627,8 @@
           "author",
           "size",
           "read",
-          "downloaded"
+          "downloaded",
+          "matched_rule"
         ],
         "properties": {
           "id": {
@@ -16471,6 +16698,13 @@
           "downloaded": {
             "type": "boolean",
             "description": "Added by a download rule."
+          },
+          "matched_rule": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The rule a download would add it by: the first enabled rule on its\nfeed whose filters take it (by name, as the rules run), what the rule\ntook before aside (as `GET /rss/rules/{name}/matches`); `null` = none."
           }
         }
       },
@@ -16602,6 +16836,24 @@
           }
         }
       },
+      "RssFeedIds": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AllTorrents",
+            "description": "Every feed."
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "These ids."
+          }
+        ],
+        "description": "Which feeds: a list of ids or `\"all\"`."
+      },
       "RssFeedPatch": {
         "type": "object",
         "description": "A change to a feed: only the fields present change.",
@@ -16676,6 +16928,20 @@
         },
         "additionalProperties": false
       },
+      "RssFeedsRequest": {
+        "type": "object",
+        "description": "Several feeds at once.",
+        "required": [
+          "feeds"
+        ],
+        "properties": {
+          "feeds": {
+            "$ref": "#/components/schemas/RssFeedIds",
+            "description": "The feeds."
+          }
+        },
+        "additionalProperties": false
+      },
       "RssFolderMove": {
         "type": "object",
         "description": "Move (rename) a folder, with what is in it.",
@@ -16711,7 +16977,7 @@
       },
       "RssReadRequest": {
         "type": "object",
-        "description": "Articles to mark read.",
+        "description": "Articles to mark read (or unread).",
         "required": [
           "articles"
         ],
@@ -16719,6 +16985,10 @@
           "articles": {
             "$ref": "#/components/schemas/RssArticleIds",
             "description": "The articles."
+          },
+          "unread": {
+            "type": "boolean",
+            "description": "Mark them unread instead."
           }
         },
         "additionalProperties": false

@@ -453,6 +453,12 @@ async fn cookies_and_trackers_from_a_url() {
     );
     assert_eq!(hits.load(Ordering::SeqCst), 1);
     assert_eq!(app["fetched_trackers"]["fetching"], false);
+    // In the log, by host (a list's URL can carry a token).
+    let log = t.get("/api/v1/log?topics=trackers").await;
+    assert_eq!(
+        log[0]["message"], "fetched 2 trackers from 127.0.0.1",
+        "{log}"
+    );
     // Fetched again when asked, not only once a day.
     let (s, _) = t
         .call(Method::POST, "/api/v1/app/fetched-trackers/refresh", None)

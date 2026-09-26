@@ -20,6 +20,7 @@ use axum::response::{IntoResponse, Response};
 use super::SESSION_COOKIE;
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ErrorCode};
+use crate::log::LogTopic;
 use crate::model::{AuthMethod, CsrfCheck, HostCheck, ProxyCheck, RequestCheck};
 use crate::util::{Cidr, normalize_ip};
 
@@ -286,12 +287,15 @@ pub(crate) async fn authenticate(
         .get::<Client>()
         .is_some_and(|c| c.forwarded_by_untrusted);
     if exempt && relayed && !UNTRUSTED_PROXY_WARNED.swap(true, Ordering::Relaxed) {
-        d.logs.warn(format!(
-            "a request relayed by {} carries forwarding headers but that address is not in \
+        d.logs.warn(
+            LogTopic::Security,
+            format!(
+                "a request relayed by {} carries forwarding headers but that address is not in \
              api_trusted_proxies: its clients are not exempt from authentication; add the \
              proxy to api_trusted_proxies",
-            ip.map_or_else(|| "an unknown address".to_string(), |ip| ip.to_string())
-        ));
+                ip.map_or_else(|| "an unknown address".to_string(), |ip| ip.to_string())
+            ),
+        );
     }
     let bypass = exempt && !relayed;
     let principal = if bypass {

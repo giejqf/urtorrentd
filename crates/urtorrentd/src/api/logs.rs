@@ -11,16 +11,18 @@ use super::{Json, Query};
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult};
 use crate::log::{LogEntry, PeerLogEntry};
-use crate::model::{LogQuery, PeerLogQuery, parse_levels};
+use crate::model::{LogQuery, PeerLogQuery, parse_levels, parse_topics};
 
-/// Main-log entries, oldest first.
+/// Main-log entries, oldest first: each with what it is about (`topic`)
+/// and the torrent it concerns, if one.
 #[utoipa::path(get, path = "/log", tag = "log", params(LogQuery), responses((status = 200, body = Vec<LogEntry>)))]
 pub(crate) async fn get_main_log(
     State(d): State<Arc<Daemon>>,
     Query(q): Query<LogQuery>,
 ) -> ApiResult<Json<Vec<LogEntry>>> {
     let levels = parse_levels(q.levels.as_deref()).map_err(ApiError::bad_request)?;
-    Ok(Json(d.logs.main_since(q.after, &levels)))
+    let topics = parse_topics(q.topics.as_deref()).map_err(ApiError::bad_request)?;
+    Ok(Json(d.logs.main_since(q.after, &levels, &topics)))
 }
 
 /// Peer-log entries (bans), oldest first.

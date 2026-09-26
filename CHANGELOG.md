@@ -143,6 +143,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   off.
 - `GET /app/system`: CPUs, kernel, memory, the open-file limit and how
   many files are open, and the default save path's file system.
+- Main-log entries say what they are about (`topic`: `torrents`,
+  `trackers`, `rss`, `watch_folders`, `webhooks`, `settings`, `security`,
+  `network`, `statistics`, `daemon`) and which torrent (`torrent`);
+  `GET /log?topics=` filters by it. The fetched tracker list and webhook
+  deliveries that failed after their retries are logged now (by host or
+  name: their URLs can carry tokens).
+- RSS articles say which rule a download would add them by
+  (`matched_rule`); articles can be marked unread again (`unread` in
+  `POST /rss/feeds/{id}/read`); `POST /rss/feeds/refresh` and
+  `POST /rss/feeds/read` refresh several feeds, or mark them read, at once.
 - `DELETE /stats` deletes every statistic, and `DELETE /stats/removed` the
   history of removed torrents (counted by `removed` in `GET /stats`); the
   file shrinks. The GeoIP databases say when they were read (`loaded`).
@@ -170,6 +180,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A webhook delivery that got no answer recorded the error with the
   webhook's URL in it, and URLs often carry a token; the error is kept
   without it now.
+- A tracker that could not be added to a new torrent was logged with its
+  URL, which can carry a passkey; the log names its host now.
 - Clients that need no login (`api_bypass_local_auth`,
   `api_auth_whitelist`) now pass the cross-origin check like login
   sessions: a web page on another origin could otherwise make their

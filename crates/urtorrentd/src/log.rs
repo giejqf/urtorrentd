@@ -9,9 +9,10 @@ use std::net::IpAddr;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use urtorrent::InfoHash;
 use utoipa::ToSchema;
 
-use crate::util::now;
+use crate::util::{hex, now};
 
 /// Entries kept per log.
 const CAPACITY: usize = 10_000;
@@ -28,6 +29,34 @@ pub enum LogLevel {
     Error,
 }
 
+/// What a main-log entry is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LogTopic {
+    /// The daemon: starting, stopping, restarting, saving its state.
+    Daemon,
+    /// Torrents: added, removed, moved, checked, share limits, files.
+    Torrents,
+    /// Trackers: the list from `add_trackers_url`, trackers added to new
+    /// torrents.
+    Trackers,
+    /// Listening: interfaces and the external address.
+    Network,
+    /// RSS feeds and download rules.
+    Rss,
+    /// Watch folders.
+    WatchFolders,
+    /// Webhook deliveries.
+    Webhooks,
+    /// Settings applied on their own: the alternative-limits schedule, the
+    /// incomplete-file suffix.
+    Settings,
+    /// Sign-in: logins, sessions, the API key, login bans, proxies.
+    Security,
+    /// Statistics and GeoIP.
+    Statistics,
+}
+
 /// One main-log entry.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct LogEntry {
@@ -37,6 +66,11 @@ pub struct LogEntry {
     pub time: u64,
     /// Severity.
     pub level: LogLevel,
+    /// What it is about.
+    pub topic: LogTopic,
+    /// The torrent it is about (info-hash); `null` = none.
+    #[schema(required = true)]
+    pub torrent: Option<String>,
     /// What happened.
     pub message: String,
 }
@@ -74,6 +108,24 @@ pub struct PeerLogEntry {
     pub reason: String,
 }
 
+/// A torrent a log entry is about: its info-hash, or that as hex.
+pub trait LogTorrent {
+    /// The info-hash as lowercase hex.
+    fn hex_hash(&self) -> String;
+}
+
+impl LogTorrent for InfoHash {
+    fn hex_hash(&self) -> String {
+        hex(self)
+    }
+}
+
+impl LogTorrent for str {
+    fn hex_hash(&self) -> String {
+        self.to_ascii_lowercase()
+    }
+}
+
 struct Ring<T> {
     next_id: u64,
     entries: VecDeque<T>,
@@ -103,6 +155,12 @@ pub struct Logs {
     peers: Mutex<Ring<PeerLogEntry>>,
 }
 
+impl std::fmt::Debug for Logs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Logs").finish_non_exhaustive()
+    }
+}
+
 impl Default for Logs {
     fn default() -> Logs {
         Logs {
@@ -114,7 +172,13 @@ impl Default for Logs {
 
 impl Logs {
     /// Append to the main log (and emit the same line through `tracing`).
-    pub fn log(&self, level: LogLevel, message: impl Into<String>) {
+    pub fn log(
+        &self,
+        level: LogLevel,
+        topic: LogTopic,
+        torrent: Option<String>,
+        message: impl Into<String>,
+    ) {
         let message = message.into();
         match level {
             LogLevel::Info => tracing::info!("{message}"),
@@ -126,19 +190,41 @@ impl Logs {
                 id,
                 time: now(),
                 level,
+                topic,
+                torrent,
                 message,
             });
         }
     }
 
     /// Shorthand for an info entry.
-    pub fn info(&self, message: impl Into<String>) {
-        self.log(LogLevel::Info, message);
+    pub fn info(&self, topic: LogTopic, message: impl Into<String>) {
+        self.log(LogLevel::Info, topic, None, message);
     }
 
     /// Shorthand for a warning entry.
-    pub fn warn(&self, message: impl Into<String>) {
-        self.log(LogLevel::Warning, message);
+    pub fn warn(&self, topic: LogTopic, message: impl Into<String>) {
+        self.log(LogLevel::Warning, topic, None, message);
+    }
+
+    /// An info entry about a torrent.
+    pub fn info_on(
+        &self,
+        topic: LogTopic,
+        torrent: &(impl LogTorrent + ?Sized),
+        message: impl Into<String>,
+    ) {
+        self.log(LogLevel::Info, topic, Some(torrent.hex_hash()), message);
+    }
+
+    /// A warning entry about a torrent.
+    pub fn warn_on(
+        &self,
+        topic: LogTopic,
+        torrent: &(impl LogTorrent + ?Sized),
+        message: impl Into<String>,
+    ) {
+        self.log(LogLevel::Warning, topic, Some(torrent.hex_hash()), message);
     }
 
     /// Record a ban or unban in the peer log.
@@ -165,8 +251,13 @@ impl Logs {
     }
 
     /// Main-log entries with an id above `after` whose level is in `levels`
-    /// (all levels when empty), oldest first.
-    pub fn main_since(&self, after: Option<u64>, levels: &[LogLevel]) -> Vec<LogEntry> {
+    /// and topic in `topics` (all when empty), oldest first.
+    pub fn main_since(
+        &self,
+        after: Option<u64>,
+        levels: &[LogLevel],
+        topics: &[LogTopic],
+    ) -> Vec<LogEntry> {
         let Ok(ring) = self.main.lock() else {
             return Vec::new();
         };
@@ -174,6 +265,7 @@ impl Logs {
             .iter()
             .filter(|e| after.is_none_or(|a| e.id > a))
             .filter(|e| levels.is_empty() || levels.contains(&e.level))
+            .filter(|e| topics.is_empty() || topics.contains(&e.topic))
             .cloned()
             .collect()
     }

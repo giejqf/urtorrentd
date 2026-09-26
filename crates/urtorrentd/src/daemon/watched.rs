@@ -18,6 +18,7 @@ use std::time::{Duration, SystemTime};
 use super::Daemon;
 use super::add::{MAX_TORRENT_FILE, Parsed, parse_magnet, parse_metainfo};
 use crate::error::{ApiError, ApiResult, ErrorCode};
+use crate::log::LogTopic;
 use crate::model::{WatchFolderStatus, WatchOutcome, WatchPickup, WatchStatus};
 use crate::settings::{AfterAdd, WatchFolder};
 use crate::util::{blocking, hex, now};
@@ -227,21 +228,25 @@ impl Daemon {
             };
             let target = match &result {
                 Ok(added) => {
-                    self.logs.info(format!(
-                        "added {} from the watch folder ({shown})",
-                        added.name
-                    ));
+                    self.logs.info_on(
+                        LogTopic::WatchFolders,
+                        added.hash.as_str(),
+                        format!("added {} from the watch folder ({shown})", added.name),
+                    );
                     pickup.name = Some(added.name.clone());
                     (folder.after_add == AfterAdd::Rename).then(|| with_suffix(&path, ".added"))
                 }
                 Err(e) if e.code == ErrorCode::Duplicate => {
-                    self.logs.info(format!("{shown}: {}", e.message));
+                    self.logs
+                        .info(LogTopic::WatchFolders, format!("{shown}: {}", e.message));
                     pickup.outcome = WatchOutcome::Duplicate;
                     (folder.after_add == AfterAdd::Rename).then(|| with_suffix(&path, ".added"))
                 }
                 Err(e) => {
-                    self.logs
-                        .warn(format!("{shown} could not be added: {}", e.message));
+                    self.logs.warn(
+                        LogTopic::WatchFolders,
+                        format!("{shown} could not be added: {}", e.message),
+                    );
                     pickup.outcome = WatchOutcome::Rejected;
                     pickup.error = Some(e.message.clone());
                     Some(with_suffix(&path, ".rejected"))
@@ -255,9 +260,10 @@ impl Daemon {
             .await;
             let mut st = self.watch_state();
             if let Err(e) = done {
-                self.logs.warn(format!(
-                    "{shown}: {e}; it is not taken again until it changes"
-                ));
+                self.logs.warn(
+                    LogTopic::WatchFolders,
+                    format!("{shown}: {e}; it is not taken again until it changes"),
+                );
                 pickup.error = Some(match pickup.error.take() {
                     Some(why) => format!("{why}; then {e}"),
                     None => format!("{e}; not taken again until it changes"),
@@ -301,13 +307,16 @@ impl Daemon {
         let now: HashMap<String, String> = errors.into_iter().collect();
         for (path, e) in &now {
             if st.errors.get(path) != Some(e) {
-                self.logs.warn(format!("watch folder {path}: {e}"));
+                self.logs
+                    .warn(LogTopic::WatchFolders, format!("watch folder {path}: {e}"));
             }
         }
         for path in st.errors.keys() {
             if !now.contains_key(path) && folders.iter().any(|f| &f.path == path) {
-                self.logs
-                    .info(format!("watch folder {path} is readable again"));
+                self.logs.info(
+                    LogTopic::WatchFolders,
+                    format!("watch folder {path} is readable again"),
+                );
             }
         }
         st.errors = now;

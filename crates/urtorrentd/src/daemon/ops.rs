@@ -13,6 +13,7 @@ use urtorrent::{InfoHash, QueueMove, Torrent, TorrentId};
 
 use super::Daemon;
 use crate::error::{ApiError, ApiResult};
+use crate::log::LogTopic;
 use crate::model::{
     self, FileInfo, LimitsRequest, PeerSourceInfo, PiecesResponse, QueueMoveTo, TimelineKind,
     TorrentPatch, TrackerEndpointInfo, TrackerInfo, TrackerStatus, TrackersResponse,
@@ -118,9 +119,19 @@ impl Daemon {
             ));
         }
         let d = self.clone();
+        let hash = self.state().by_id.get(&id).copied();
         tokio::spawn(async move {
             if let Err(e) = d.session.force_recheck(id).await {
-                d.logs.warn(format!("recheck failed: {e}"));
+                match hash {
+                    Some(h) => d.logs.warn_on(
+                        LogTopic::Torrents,
+                        &h,
+                        format!("recheck of {} failed: {e}", d.name_of(&h)),
+                    ),
+                    None => d
+                        .logs
+                        .warn(LogTopic::Torrents, format!("recheck failed: {e}")),
+                }
             }
         });
         Ok(())
@@ -158,10 +169,14 @@ impl Daemon {
         let _g = self.persist_lock.lock().await;
         let (store, h) = (self.store.clone(), hex(&hash));
         crate::util::blocking(move || store.delete_torrent(&h)).await?;
-        self.logs.info(format!(
-            "removed torrent {name}{}",
-            if with_files { " and its files" } else { "" }
-        ));
+        self.logs.info_on(
+            LogTopic::Torrents,
+            &hash,
+            format!(
+                "removed torrent {name}{}",
+                if with_files { " and its files" } else { "" }
+            ),
+        );
         Ok(())
     }
 
@@ -312,29 +327,39 @@ impl Daemon {
                             }
                         })
                         .await;
-                    d.logs.info(format!("moved {} to {path}", hex(&hash)));
+                    d.logs.info_on(
+                        LogTopic::Torrents,
+                        &hash,
+                        format!("moved {} to {path}", hex(&hash)),
+                    );
                     d.lifecycle(hash, TimelineKind::Moved, Some(path.clone()))
                         .await;
                     if recheck {
                         d.recheck_finished(hash, id).await;
                     }
                 }
-                Err(e) => d
-                    .logs
-                    .warn(format!("moving {} to {path} failed: {e}", hex(&hash))),
+                Err(e) => d.logs.warn_on(
+                    LogTopic::Torrents,
+                    &hash,
+                    format!("moving {} to {path} failed: {e}", hex(&hash)),
+                ),
             }
         });
     }
 
     /// `recheck_on_completion`: recheck a finished torrent.
     pub(crate) async fn recheck_finished(self: &Arc<Self>, hash: InfoHash, id: TorrentId) {
-        self.logs.info(format!(
-            "rechecking {} (recheck_on_completion)",
-            self.name_of(&hash)
-        ));
+        self.logs.info_on(
+            LogTopic::Torrents,
+            &hash,
+            format!("rechecking {} (recheck_on_completion)", self.name_of(&hash)),
+        );
         if let Err(e) = self.recheck(id).await {
-            self.logs
-                .warn(format!("recheck of {}: {e}", self.name_of(&hash)));
+            self.logs.warn_on(
+                LogTopic::Torrents,
+                &hash,
+                format!("recheck of {}: {e}", self.name_of(&hash)),
+            );
         }
     }
 
@@ -395,8 +420,11 @@ impl Daemon {
             Ok(Some(b)) => b,
             Ok(None) => return,
             Err(e) => {
-                self.logs
-                    .warn(format!("exporting {}: {e}", self.name_of(&hash)));
+                self.logs.warn_on(
+                    LogTopic::Torrents,
+                    &hash,
+                    format!("exporting {}: {e}", self.name_of(&hash)),
+                );
                 return;
             }
         };
@@ -425,8 +453,11 @@ impl Daemon {
         })
         .await;
         if let Err(e) = r {
-            self.logs
-                .warn(format!("exporting {} to {dir}: {e}", self.name_of(&hash)));
+            self.logs.warn_on(
+                LogTopic::Torrents,
+                &hash,
+                format!("exporting {} to {dir}: {e}", self.name_of(&hash)),
+            );
         }
     }
 

@@ -21,8 +21,9 @@ use axum::http::StatusCode;
 
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult, ErrorCode};
+use crate::log::LogTopic;
 use crate::model::{
-    RssArticle, RssArticleIds, RssArticlesQuery, RssFeed, RssFeedDetail, RssFeedPatch,
+    RssArticle, RssArticleIds, RssArticlesQuery, RssFeed, RssFeedDetail, RssFeedIds, RssFeedPatch,
     RssFeedRequest, RssRule, RssRuleRequest,
 };
 use crate::util::{blocking, now};
@@ -179,10 +180,38 @@ impl Daemon {
     /// A feed and its articles.
     pub(crate) async fn rss_feed(&self, id: u32) -> ApiResult<RssFeedDetail> {
         let feed = self.rss_feed_view(id).await?;
-        let articles = self
+        let mut articles = self
             .rss_read(move |c| db::articles(c, Some(id), false, u32::MAX))
             .await?;
+        self.match_rules(&mut articles).await?;
         Ok(RssFeedDetail { feed, articles })
+    }
+
+    /// Fill in each article's `matched_rule`: the first enabled rule on its
+    /// feed (by name, the order rules run in) whose filters take it, what
+    /// the rule took before aside.
+    async fn match_rules(&self, articles: &mut [RssArticle]) -> ApiResult<()> {
+        let rules = self.rss_read(db::rules).await?;
+        let rules: Vec<(RssRule, Matcher)> = rules
+            .into_iter()
+            .filter(|r| r.enabled)
+            .map(|mut r| {
+                r.ignore_days = 0;
+                r.matched_episodes.clear();
+                r
+            })
+            .filter_map(|r| Matcher::new(&r).ok().map(|m| (r, m)))
+            .collect();
+        let (t, repacks) = (now(), self.settings().rss_download_repacks);
+        for a in articles.iter_mut() {
+            a.matched_rule = rules
+                .iter()
+                .find(|(r, m)| {
+                    r.feeds.contains(&a.feed) && m.take(r, &a.title, t, repacks).is_some()
+                })
+                .map(|(r, _)| r.name.clone());
+        }
+        Ok(())
     }
 
     /// Add a feed; it is refreshed at once.
@@ -279,6 +308,43 @@ impl Daemon {
         Ok(())
     }
 
+    /// The feeds of a bulk request, all known (404 for the first that is
+    /// not).
+    async fn rss_feed_ids(&self, ids: RssFeedIds) -> ApiResult<Vec<u32>> {
+        let known: Vec<u32> = self
+            .rss_read(db::feeds)
+            .await?
+            .iter()
+            .map(|f| f.id)
+            .collect();
+        match ids {
+            RssFeedIds::All(_) => Ok(known),
+            RssFeedIds::List(l) => match l.iter().find(|id| !known.contains(id)) {
+                Some(id) => Err(no_feed(*id)),
+                None => Ok(l),
+            },
+        }
+    }
+
+    /// Refresh several feeds now.
+    pub(crate) async fn refresh_rss_feeds(&self, ids: RssFeedIds) -> ApiResult<()> {
+        let ids = self.rss_feed_ids(ids).await?;
+        self.rss().wanted.extend(ids);
+        Ok(())
+    }
+
+    /// Mark every article of several feeds read.
+    pub(crate) async fn mark_rss_feeds_read(&self, ids: RssFeedIds) -> ApiResult<()> {
+        let ids = self.rss_feed_ids(ids).await?;
+        self.rss_write(move |tx| {
+            for id in ids {
+                db::mark_read(tx, id, None, true)?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
     /// Articles across feeds, newest first.
     pub(crate) async fn rss_articles(&self, q: RssArticlesQuery) -> ApiResult<Vec<RssArticle>> {
         let limit = q.limit.unwrap_or(500);
@@ -286,16 +352,24 @@ impl Daemon {
             return Err(ApiError::bad_request("`limit` must be 1 to 5000"));
         }
         let unread = q.unread.unwrap_or(false);
-        self.rss_read(move |c| db::articles(c, q.feed, unread, limit))
-            .await
+        let mut articles = self
+            .rss_read(move |c| db::articles(c, q.feed, unread, limit))
+            .await?;
+        self.match_rules(&mut articles).await?;
+        Ok(articles)
     }
 
-    /// Mark articles of a feed read.
-    pub(crate) async fn mark_rss_read(&self, id: u32, ids: RssArticleIds) -> ApiResult<()> {
+    /// Mark articles of a feed read, or unread.
+    pub(crate) async fn mark_rss_read(
+        &self,
+        id: u32,
+        ids: RssArticleIds,
+        read: bool,
+    ) -> ApiResult<()> {
         self.rss_feed_view(id).await?;
         self.rss_write(move |tx| match ids {
-            RssArticleIds::All(_) => db::mark_read(tx, id, None),
-            RssArticleIds::List(l) => db::mark_read(tx, id, Some(&l)),
+            RssArticleIds::All(_) => db::mark_read(tx, id, None, read),
+            RssArticleIds::List(l) => db::mark_read(tx, id, Some(&l), read),
         })
         .await?;
         Ok(())
@@ -464,10 +538,12 @@ impl Daemon {
             })
             .await?;
         let repacks = self.settings().rss_download_repacks;
-        Ok(articles
+        let mut taken: Vec<RssArticle> = articles
             .into_iter()
             .filter(|a| m.take(&rule, &a.title, now(), repacks).is_some())
-            .collect())
+            .collect();
+        self.match_rules(&mut taken).await?;
+        Ok(taken)
     }
 
     /// Start the refreshes that are due (the tick).
@@ -556,7 +632,8 @@ impl Daemon {
                 .await
             }
             Err(e) => {
-                self.logs.warn(format!("RSS feed {label}: {e}"));
+                self.logs
+                    .warn(LogTopic::Rss, format!("RSS feed {label}: {e}"));
                 let _ = self.rss_read(move |c| db::save_error(c, id, t, &e)).await;
                 return;
             }
@@ -566,7 +643,9 @@ impl Daemon {
                 self.run_rules(id, Some(new)).await;
             }
             Ok(_) => {}
-            Err(e) => self.logs.warn(format!("RSS feed {label}: {e}")),
+            Err(e) => self
+                .logs
+                .warn(LogTopic::Rss, format!("RSS feed {label}: {e}")),
         }
     }
 
@@ -651,16 +730,19 @@ impl Daemon {
                 };
                 let added = match self.add_from_source(&source, &rule.add_options).await {
                     Ok(t) => {
-                        self.logs
-                            .info(format!("RSS rule {:?} added {}", rule.name, t.name));
+                        self.logs.info_on(
+                            LogTopic::Rss,
+                            t.hash.as_str(),
+                            format!("RSS rule {:?} added {}", rule.name, t.name),
+                        );
                         true
                     }
                     Err(e) if e.code == ErrorCode::Duplicate => true,
                     Err(e) => {
-                        self.logs.warn(format!(
-                            "RSS rule {:?}: {}: {}",
-                            rule.name, a.title, e.message
-                        ));
+                        self.logs.warn(
+                            LogTopic::Rss,
+                            format!("RSS rule {:?}: {}: {}", rule.name, a.title, e.message),
+                        );
                         false
                     }
                 };

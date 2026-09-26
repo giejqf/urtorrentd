@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 use crate::error::{ApiError, ApiResult};
+use crate::log::{LogTopic, Logs};
 use crate::model::{
     Webhook, WebhookDelivery, WebhookEvent, WebhookPatch, WebhookPayload, WebhookRequest,
 };
@@ -119,11 +120,13 @@ pub struct Webhooks {
     hooks: RwLock<Vec<StoredWebhook>>,
     deliveries: Mutex<HashMap<u32, VecDeque<(WebhookDelivery, WebhookPayload)>>>,
     client: reqwest::Client,
+    /// The main log: a delivery that failed for good goes there.
+    logs: Arc<Logs>,
 }
 
 impl Webhooks {
     /// From the stored list.
-    pub fn new(hooks: Vec<StoredWebhook>) -> Result<Webhooks, String> {
+    pub fn new(hooks: Vec<StoredWebhook>, logs: Arc<Logs>) -> Result<Webhooks, String> {
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(TIMEOUT)
@@ -134,6 +137,7 @@ impl Webhooks {
             hooks: RwLock::new(hooks),
             deliveries: Mutex::new(HashMap::new()),
             client,
+            logs,
         })
     }
 
@@ -280,6 +284,9 @@ impl Webhooks {
             let payload = payload.clone();
             tokio::spawn(async move {
                 let d = this.deliver(&hook, &payload, true).await;
+                if let Some(e) = &d.error {
+                    this.log_failure(&hook, &d, e);
+                }
                 this.remember(hook.id, d, payload);
             });
         }
@@ -324,6 +331,30 @@ impl Webhooks {
         d.time = now();
         self.remember(id, d.clone(), payload);
         Ok(d)
+    }
+
+    /// A delivery that failed after its retries, in the main log (by the
+    /// webhook's name or host: its URL can carry a token).
+    fn log_failure(&self, hook: &StoredWebhook, d: &WebhookDelivery, error: &str) {
+        let name = hook.name.clone().unwrap_or_else(|| {
+            reqwest::Url::parse(&hook.url)
+                .ok()
+                .and_then(|u| u.host_str().map(str::to_string))
+                .unwrap_or_default()
+        });
+        let event = serde_json::to_value(d.event)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        let msg = format!(
+            "webhook {name:?}: the {event} delivery failed after {} attempt{}: {error}",
+            d.attempts,
+            if d.attempts == 1 { "" } else { "s" }
+        );
+        match &d.hash {
+            Some(h) => self.logs.warn_on(LogTopic::Webhooks, h.as_str(), msg),
+            None => self.logs.warn(LogTopic::Webhooks, msg),
+        }
     }
 
     fn remember(&self, id: u32, d: WebhookDelivery, payload: WebhookPayload) {

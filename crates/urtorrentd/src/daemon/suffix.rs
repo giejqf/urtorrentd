@@ -19,6 +19,7 @@ use urtorrent::{InfoHash, TorrentId};
 
 use super::Daemon;
 use crate::error::ApiResult;
+use crate::log::LogTopic;
 
 /// The name a file should have: `old` removed if present, `new` appended if
 /// the file is not complete.
@@ -87,10 +88,11 @@ impl Daemon {
             .reconcile_suffix(hash, id, Some(&sfx), Some(&sfx))
             .await
         {
-            self.logs.warn(format!(
-                "{}: incomplete-file suffix: {e}",
-                self.name_of(&hash)
-            ));
+            self.logs.warn_on(
+                LogTopic::Torrents,
+                &hash,
+                format!("{}: incomplete-file suffix: {e}", self.name_of(&hash)),
+            );
         }
     }
 
@@ -113,10 +115,14 @@ impl Daemon {
         };
         match self.session.rename_file(id, index, base.to_string()).await {
             Ok(()) => self.invalidate_content(hash),
-            Err(e) => self.logs.warn(format!(
-                "{}: removing the incomplete-file suffix: {e}",
-                self.name_of(&hash)
-            )),
+            Err(e) => self.logs.warn_on(
+                LogTopic::Torrents,
+                &hash,
+                format!(
+                    "{}: removing the incomplete-file suffix: {e}",
+                    self.name_of(&hash)
+                ),
+            ),
         }
     }
 
@@ -134,18 +140,23 @@ impl Daemon {
                     .await
                 {
                     Ok(n) => renamed += n,
-                    Err(e) => d
-                        .logs
-                        .warn(format!("{}: incomplete-file suffix: {e}", d.name_of(&h))),
+                    Err(e) => d.logs.warn_on(
+                        LogTopic::Torrents,
+                        &h,
+                        format!("{}: incomplete-file suffix: {e}", d.name_of(&h)),
+                    ),
                 }
             }
-            d.logs.info(format!(
-                "incomplete-file suffix {}: {renamed} files renamed",
-                match &new {
-                    Some(s) => format!("set to {s:?}"),
-                    None => "turned off".to_string(),
-                }
-            ));
+            d.logs.info(
+                LogTopic::Settings,
+                format!(
+                    "incomplete-file suffix {}: {renamed} files renamed",
+                    match &new {
+                        Some(s) => format!("set to {s:?}"),
+                        None => "turned off".to_string(),
+                    }
+                ),
+            );
         });
     }
 }

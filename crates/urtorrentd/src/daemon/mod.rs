@@ -29,6 +29,7 @@ use urtorrent::{AddTorrent, InfoHash, Session, TorrentId};
 use crate::auth::{Auth, Credentials};
 use crate::error::{ApiError, ApiResult};
 use crate::geo::{self, GeoIp};
+use crate::log::LogTopic;
 use crate::log::Logs;
 use crate::model::{BulkFailure, BulkResult, Hashes, TimelineKind};
 use crate::settings::{self, Settings, SettingsPatch};
@@ -161,7 +162,7 @@ pub struct Daemon {
     pub(crate) session: Session,
     pub(crate) store: Store,
     pub(crate) auth: Auth,
-    pub(crate) logs: Logs,
+    pub(crate) logs: Arc<Logs>,
     pub(crate) state: Mutex<State>,
     /// Serializes operations that change the registry or settings across awaits.
     pub(crate) ops: tokio::sync::Mutex<()>,
@@ -270,7 +271,8 @@ impl Daemon {
             })
             .await?
         };
-        let webhooks = Webhooks::new(hooks).map_err(StartError::Http)?;
+        let logs = Arc::new(Logs::default());
+        let webhooks = Webhooks::new(hooks, logs.clone()).map_err(StartError::Http)?;
         let auth = Auth::new(creds);
         let temporary_password = auth.ensure_password()?;
         // Statistics are disposable: a database that cannot be opened turns
@@ -297,7 +299,7 @@ impl Daemon {
             session,
             store,
             auth,
-            logs: Logs::default(),
+            logs,
             state: Mutex::new(State {
                 settings: settings.clone(),
                 torrents: HashMap::new(),
@@ -331,30 +333,36 @@ impl Daemon {
             closed: watch::channel(false).0,
             tasks: Mutex::new(Vec::new()),
         });
-        daemon.logs.info(format!(
-            "urtorrentd {} on urtorrent {} started (peer port {}){}",
-            env!("CARGO_PKG_VERSION"),
-            urtorrent::VERSION,
-            daemon.session.listen_port(),
-            if first_start { ", first start" } else { "" }
-        ));
+        daemon.logs.info(
+            LogTopic::Daemon,
+            format!(
+                "urtorrentd {} on urtorrent {} started (peer port {}){}",
+                env!("CARGO_PKG_VERSION"),
+                urtorrent::VERSION,
+                daemon.session.listen_port(),
+                if first_start { ", first start" } else { "" }
+            ),
+        );
         {
             let s = daemon.settings();
             for e in daemon
                 .geo
                 .configure(s.geoip_database.as_deref(), s.geoip_asn_database.as_deref())
             {
-                daemon.logs.warn(e);
+                daemon.logs.warn(LogTopic::Statistics, e);
             }
         }
         if let Err(e) = &daemon.stats {
-            daemon.logs.warn(format!(
-                "statistics are off for this run: {e} (delete {} to start over)",
-                crate::stats::db::STATS_DB_FILE
-            ));
+            daemon.logs.warn(
+                LogTopic::Statistics,
+                format!(
+                    "statistics are off for this run: {e} (delete {} to start over)",
+                    crate::stats::db::STATS_DB_FILE
+                ),
+            );
         }
         if imported > 0 {
-            daemon.logs.info(format!(
+            daemon.logs.info(LogTopic::Daemon, format!(
                 "imported {imported} torrents from a 0.1 data directory (the old files are in imported-0.1/)"
             ));
         }
@@ -377,7 +385,8 @@ impl Daemon {
         let stored = match blocking(move || store.load_torrents()).await {
             Ok(s) => s,
             Err(e) => {
-                self.logs.warn(format!("reading saved torrents: {e}"));
+                self.logs
+                    .warn(LogTopic::Torrents, format!("reading saved torrents: {e}"));
                 return;
             }
         };
@@ -386,16 +395,17 @@ impl Daemon {
             let t = match t {
                 Ok(t) => t,
                 Err(e) => {
-                    self.logs.warn(format!("unreadable torrent record {e}"));
+                    self.logs
+                        .warn(LogTopic::Torrents, format!("unreadable torrent record {e}"));
                     continue;
                 }
             };
             let record = t.record;
             let Some(hash) = parse_hash(&record.info_hash) else {
-                self.logs.warn(format!(
-                    "torrent record with a bad info-hash: {}",
-                    record.info_hash
-                ));
+                self.logs.warn(
+                    LogTopic::Torrents,
+                    format!("torrent record with a bad info-hash: {}", record.info_hash),
+                );
                 continue;
             };
             let dir = record
@@ -408,10 +418,13 @@ impl Daemon {
                     AddTorrent::magnet(m.clone(), dir).hold_after_metadata(add::needs_hold(&record))
                 }
                 (None, None) => {
-                    self.logs.warn(format!(
-                        "torrent {} has neither metainfo nor a magnet link; skipped",
-                        record.info_hash
-                    ));
+                    self.logs.warn(
+                        LogTopic::Torrents,
+                        format!(
+                            "torrent {} has neither metainfo nor a magnet link; skipped",
+                            record.info_hash
+                        ),
+                    );
                     continue;
                 }
             }
@@ -428,14 +441,15 @@ impl Daemon {
                     }
                     restored += 1;
                 }
-                Err(e) => self.logs.warn(format!(
-                    "could not restore torrent {}: {e}",
-                    record.info_hash
-                )),
+                Err(e) => self.logs.warn(
+                    LogTopic::Torrents,
+                    format!("could not restore torrent {}: {e}", record.info_hash),
+                ),
             }
         }
         if restored > 0 {
-            self.logs.info(format!("restored {restored} torrents"));
+            self.logs
+                .info(LogTopic::Torrents, format!("restored {restored} torrents"));
         }
     }
 
@@ -530,7 +544,7 @@ impl Daemon {
                 new.geoip_database.as_deref(),
                 new.geoip_asn_database.as_deref(),
             ) {
-                self.logs.warn(e);
+                self.logs.warn(LogTopic::Statistics, e);
             }
         }
         if old.stats_enabled != new.stats_enabled
@@ -545,7 +559,8 @@ impl Daemon {
                 .set_recording(new.stats_enabled, now(), retention)
                 .await
             {
-                self.logs.warn(format!("statistics: {e}"));
+                self.logs
+                    .warn(LogTopic::Statistics, format!("statistics: {e}"));
             }
         }
         if old.incomplete_file_suffix != new.incomplete_file_suffix {
@@ -732,24 +747,28 @@ impl Daemon {
         }
         self.save_resume(ResumeSave::Changed).await;
         if let Err(e) = self.flush_records().await {
-            self.logs.warn(format!("saving torrent records: {e}"));
+            self.logs
+                .warn(LogTopic::Daemon, format!("saving torrent records: {e}"));
         }
         self.save_totals().await;
         if let Ok(stats) = &self.stats
             && let Err(e) = stats.stop(now(), self.stats_retention()).await
         {
-            self.logs.warn(format!("saving statistics: {e}"));
+            self.logs
+                .warn(LogTopic::Statistics, format!("saving statistics: {e}"));
         }
         if let Ok(Some(dht)) = self.session.dht_state().await {
             let s = self.store.clone();
             if let Err(e) = blocking(move || s.save_dht(&dht)).await {
-                self.logs.warn(format!("saving the DHT state: {e}"));
+                self.logs
+                    .warn(LogTopic::Daemon, format!("saving the DHT state: {e}"));
             }
         }
         if let Err(e) = self.session.shutdown().await {
-            self.logs.warn(format!("engine shutdown: {e}"));
+            self.logs
+                .warn(LogTopic::Daemon, format!("engine shutdown: {e}"));
         }
-        self.logs.info("stopped");
+        self.logs.info(LogTopic::Daemon, "stopped");
     }
 
     /// Change a torrent's record in memory; [`Daemon::flush_records`] writes
@@ -858,7 +877,8 @@ impl Daemon {
         }
         let s = self.store.clone();
         if let Err(e) = blocking(move || s.save_resume(&items)).await {
-            self.logs.warn(format!("saving resume data: {e}"));
+            self.logs
+                .warn(LogTopic::Daemon, format!("saving resume data: {e}"));
         }
     }
 
@@ -874,7 +894,8 @@ impl Daemon {
         };
         let s = self.store.clone();
         if let Err(e) = blocking(move || s.save(store::TOTALS, &totals)).await {
-            self.logs.warn(format!("saving totals: {e}"));
+            self.logs
+                .warn(LogTopic::Daemon, format!("saving totals: {e}"));
         }
     }
 

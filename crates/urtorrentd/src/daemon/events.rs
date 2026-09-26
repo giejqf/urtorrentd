@@ -11,6 +11,7 @@ use std::sync::{Arc, Weak};
 use urtorrent::{ErrorKind, Event, EventStream, InfoHash, TorrentId};
 
 use super::{Daemon, ResumeSave};
+use crate::log::LogTopic;
 use crate::log::{LogLevel, PeerLogSource};
 use crate::model::TimelineKind;
 use crate::stats::peers::PeerSample;
@@ -78,6 +79,8 @@ impl Daemon {
                         .await;
                     self.logs.log(
                         LogLevel::Error,
+                        LogTopic::Torrents,
+                        Some(hex(&h)),
                         format!(
                             "torrent {} stopped: {error} ({})",
                             self.name_of(&h),
@@ -130,12 +133,16 @@ impl Daemon {
                 self.state().incoming_seen = true;
             }
             Event::ExternalAddress { ip } => {
-                self.logs.info(format!("external address detected: {ip}"));
+                self.logs.info(
+                    LogTopic::Network,
+                    format!("external address detected: {ip}"),
+                );
             }
             Event::Lagged { dropped } => {
-                self.logs.warn(format!(
-                    "{dropped} engine events were dropped; refreshing all caches"
-                ));
+                self.logs.warn(
+                    LogTopic::Daemon,
+                    format!("{dropped} engine events were dropped; refreshing all caches"),
+                );
                 {
                     let mut st = self.state();
                     for e in st.torrents.values_mut() {
@@ -161,15 +168,20 @@ impl Daemon {
                 let store = self.store.clone();
                 let h = hex(&hash);
                 if let Err(e) = blocking(move || store.save_metainfo(&h, &bytes)).await {
-                    self.logs
-                        .warn(format!("saving metadata of {}: {e}", hex(&hash)));
+                    self.logs.warn_on(
+                        LogTopic::Torrents,
+                        &hash,
+                        format!("saving metadata of {}: {e}", hex(&hash)),
+                    );
                 }
                 let _ = self.update_record(hash, |r| r.magnet = None).await;
             }
             Ok(None) => {}
-            Err(e) => self
-                .logs
-                .warn(format!("reading metadata of {}: {e}", hex(&hash))),
+            Err(e) => self.logs.warn_on(
+                LogTopic::Torrents,
+                &hash,
+                format!("reading metadata of {}: {e}", hex(&hash)),
+            ),
         }
         {
             let mut st = self.state();
@@ -193,8 +205,11 @@ impl Daemon {
         if let Some(dir) = self.settings().export_dir {
             self.export_torrent(hash, id, &dir).await;
         }
-        self.logs
-            .info(format!("received metadata for {}", self.name_of(&hash)));
+        self.logs.info_on(
+            LogTopic::Torrents,
+            &hash,
+            format!("received metadata for {}", self.name_of(&hash)),
+        );
         match status {
             Ok(s) if s.state == urtorrent::TorrentState::Held => {
                 self.finish_hold(hash, id).await;
@@ -207,10 +222,11 @@ impl Daemon {
                     .get(&hash)
                     .is_some_and(|e| e.record.first_last_piece_priority);
                 if first_last && let Err(e) = self.apply_first_last(id, true).await {
-                    self.logs.warn(format!(
-                        "{}: first and last pieces: {e}",
-                        self.name_of(&hash)
-                    ));
+                    self.logs.warn_on(
+                        LogTopic::Torrents,
+                        &hash,
+                        format!("{}: first and last pieces: {e}", self.name_of(&hash)),
+                    );
                 }
             }
         }
@@ -220,8 +236,11 @@ impl Daemon {
         let Some(hash) = self.hash_of(id) else {
             return;
         };
-        self.logs
-            .info(format!("finished downloading {}", self.name_of(&hash)));
+        self.logs.info_on(
+            LogTopic::Torrents,
+            &hash,
+            format!("finished downloading {}", self.name_of(&hash)),
+        );
         self.lifecycle(hash, TimelineKind::Finished, None).await;
         self.save_resume(ResumeSave::One(hash)).await;
         let target = {

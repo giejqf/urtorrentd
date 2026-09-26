@@ -886,3 +886,52 @@ async fn clients_without_login_still_need_the_pages_origin() {
     assert_eq!(v["csrf"], "off");
     t.stop().await;
 }
+
+#[tokio::test]
+async fn log_entries_say_what_they_are_about() {
+    let t = TestDaemon::start(28, |_| {}).await;
+    let f = common::fixture(
+        "logged.bin",
+        &[("logged.bin", 20_000)],
+        16_384,
+        None,
+        false,
+        28,
+    );
+    let hash = t.add(&f, json!({"stopped": true})).await;
+    let log = t.get("/api/v1/log").await;
+    let log = log.as_array().unwrap();
+    assert_eq!(log[0]["topic"], "daemon", "{log:?}");
+    assert_eq!(log[0]["torrent"], serde_json::Value::Null);
+    let added = log
+        .iter()
+        .find(|e| e["message"].as_str().unwrap().starts_with("added torrent"))
+        .unwrap();
+    assert_eq!(added["topic"], "torrents");
+    assert_eq!(added["torrent"], hash.as_str());
+    // Filtered by topic, with levels.
+    let only = t.get("/api/v1/log?topics=torrents").await;
+    assert!(
+        only.as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["topic"] == "torrents")
+    );
+    assert!(
+        only.as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["torrent"] == hash.as_str())
+    );
+    let two = t.get("/api/v1/log?topics=torrents,daemon").await;
+    assert!(two.as_array().unwrap().len() > only.as_array().unwrap().len());
+    assert_eq!(
+        t.get("/api/v1/log?topics=torrents&levels=error").await,
+        json!([])
+    );
+    let (s, v) = t
+        .call(Method::GET, "/api/v1/log?topics=nonsense", None)
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    t.stop().await;
+}

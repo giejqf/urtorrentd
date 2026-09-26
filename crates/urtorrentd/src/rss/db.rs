@@ -372,6 +372,7 @@ fn article_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<RssArticle> {
         size: r.get(8)?,
         read: r.get(9)?,
         downloaded: r.get(10)?,
+        matched_rule: None,
     })
 }
 
@@ -397,13 +398,19 @@ pub fn articles(
         .map_err(db_err)
 }
 
-/// Mark articles read (`None` = all of the feed); returns how many.
-pub fn mark_read(tx: &Transaction<'_>, feed: u32, ids: Option<&[String]>) -> io::Result<usize> {
+/// Mark articles read, or unread (`None` = all of the feed); returns how
+/// many.
+pub fn mark_read(
+    tx: &Transaction<'_>,
+    feed: u32,
+    ids: Option<&[String]>,
+    read: bool,
+) -> io::Result<usize> {
     match ids {
         None => tx
             .execute(
-                "UPDATE rss_articles SET read = 1 WHERE feed = ?1",
-                params![feed],
+                "UPDATE rss_articles SET read = ?2 WHERE feed = ?1",
+                params![feed, read],
             )
             .map_err(db_err),
         Some(ids) => {
@@ -411,8 +418,8 @@ pub fn mark_read(tx: &Transaction<'_>, feed: u32, ids: Option<&[String]>) -> io:
             for id in ids {
                 n += tx
                     .execute(
-                        "UPDATE rss_articles SET read = 1 WHERE feed = ?1 AND id = ?2",
-                        params![feed, id],
+                        "UPDATE rss_articles SET read = ?3 WHERE feed = ?1 AND id = ?2",
+                        params![feed, id, read],
                     )
                     .map_err(db_err)?;
             }

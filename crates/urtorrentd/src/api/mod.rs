@@ -330,6 +330,8 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
             rss::delete_rss_feed
         ))
         .routes(routes!(rss::refresh_rss_feed))
+        .routes(routes!(rss::refresh_rss_feeds))
+        .routes(routes!(rss::mark_rss_feeds_read))
         .routes(routes!(rss::mark_rss_read))
         .routes(routes!(rss::list_rss_articles))
         .routes(routes!(rss::list_rss_folders, rss::add_rss_folder))

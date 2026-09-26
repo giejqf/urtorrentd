@@ -12,7 +12,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ErrorDetail;
-use crate::log::LogLevel;
+use crate::log::{LogLevel, LogTopic};
 use crate::store::{Category, ShareLimits, StopCondition};
 
 /// A present field (even `null`) is `Some`, an absent one `None`.
@@ -1471,6 +1471,9 @@ pub struct LogQuery {
     pub after: Option<u64>,
     /// Only these levels, comma-separated (`info,warning,error`); all when absent.
     pub levels: Option<String>,
+    /// Only these topics, comma-separated (`torrents,rss`; see `LogTopic`);
+    /// all when absent.
+    pub topics: Option<String>,
 }
 
 /// Query of the peer log.
@@ -1494,6 +1497,21 @@ pub fn parse_levels(s: Option<&str>) -> Result<Vec<LogLevel>, String> {
             "warning" => Ok(LogLevel::Warning),
             "error" => Ok(LogLevel::Error),
             other => Err(format!("unknown log level {other:?}")),
+        })
+        .collect()
+}
+
+/// Parse a `topics` query value.
+pub fn parse_topics(s: Option<&str>) -> Result<Vec<LogTopic>, String> {
+    let Some(s) = s else {
+        return Ok(Vec::new());
+    };
+    s.split(',')
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .map(|x| {
+            serde_json::from_value(serde_json::Value::String(x.to_string()))
+                .map_err(|_| format!("unknown log topic {x:?}"))
         })
         .collect()
 }
@@ -2595,6 +2613,11 @@ pub struct RssArticle {
     pub read: bool,
     /// Added by a download rule.
     pub downloaded: bool,
+    /// The rule a download would add it by: the first enabled rule on its
+    /// feed whose filters take it (by name, as the rules run), what the rule
+    /// took before aside (as `GET /rss/rules/{name}/matches`); `null` = none.
+    #[schema(required = true)]
+    pub matched_rule: Option<String>,
 }
 
 /// Query of articles across feeds.
@@ -2619,12 +2642,33 @@ pub enum RssArticleIds {
     List(Vec<String>),
 }
 
-/// Articles to mark read.
+/// Articles to mark read (or unread).
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RssReadRequest {
     /// The articles.
     pub articles: RssArticleIds,
+    /// Mark them unread instead.
+    #[serde(default)]
+    pub unread: bool,
+}
+
+/// Which feeds: a list of ids or `"all"`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, ToSchema)]
+#[serde(untagged)]
+pub enum RssFeedIds {
+    /// Every feed.
+    All(AllTorrents),
+    /// These ids.
+    List(Vec<u32>),
+}
+
+/// Several feeds at once.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RssFeedsRequest {
+    /// The feeds.
+    pub feeds: RssFeedIds,
 }
 
 /// A folder path (`tv/anime`).

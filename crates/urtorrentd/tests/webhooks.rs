@@ -198,6 +198,14 @@ async fn torrent_events_are_posted_to_webhooks() {
         .await;
     assert_eq!(s, StatusCode::CREATED);
     let flaky_id = flaky["id"].as_u64().unwrap();
+    // One that fails for good (a redirect is not followed, nor retried).
+    let (s, relay) = leecher
+        .post(
+            "/api/v1/webhooks",
+            json!({"url": format!("http://{addr}/moved?token=x"), "name": "Relay", "events": ["removed"]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED);
     let (s, _) = leecher
         .post("/api/v1/torrents/delete", json!({"hashes": [hash.clone()]}))
         .await;
@@ -207,6 +215,36 @@ async fn torrent_events_are_posted_to_webhooks() {
             && events(&got, "/flaky", &hash).len() == 2
     })
     .await;
+    // The failure is in the main log, about the torrent, without the URL.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let failed = loop {
+        let log = leecher.get("/api/v1/log?topics=webhooks").await;
+        if let Some(e) = log.as_array().unwrap().first() {
+            break e.clone();
+        }
+        assert!(Instant::now() < deadline, "no failure logged");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    assert_eq!(failed["level"], "warning");
+    assert_eq!(failed["torrent"], hash.as_str());
+    let msg = failed["message"].as_str().unwrap();
+    assert!(msg.contains("\"Relay\""), "{msg}");
+    assert!(
+        msg.contains("removed delivery failed after 1 attempt"),
+        "{msg}"
+    );
+    assert!(
+        !msg.contains("token") && !msg.contains(&addr.to_string()),
+        "{msg}"
+    );
+    let (s, _) = leecher
+        .call(
+            Method::DELETE,
+            &format!("/api/v1/webhooks/{}", relay["id"]),
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
     let removed = got
         .lock()
         .unwrap()

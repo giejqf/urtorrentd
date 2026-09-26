@@ -143,7 +143,8 @@ POST /api/v1/categories {"name": "movies", "save_path": null, "download_path": n
 Feeds live in folders (`tv/anime`); each keeps its newest `rss_max_articles`
 articles. With `rss_enabled` the daemon refreshes every feed at its interval
 (`refresh_interval`, else `rss_refresh_interval`); `POST
-/rss/feeds/{id}/refresh` refreshes one now either way.
+/rss/feeds/{id}/refresh` refreshes one now either way, and `POST
+/rss/feeds/refresh` several (`{"feeds": [1, 2]}` or `{"feeds": "all"}`).
 
 ```sh
 POST /api/v1/rss/feeds {"url": "https://indexer.example/rss?passkey=...", "folder": "tv", "name": "Indexer"}
@@ -151,7 +152,13 @@ GET  /api/v1/rss/feeds/1          # the feed and its articles: title, date, torr
 PUT  /api/v1/rss/rules/Show%201080p {"must_contain": "show 1080p", "must_not_contain": "cam",
      "episode_filter": "2x1-;", "smart_filter": true, "feeds": [1], "add_options": {"category": "tv"}}
 GET  /api/v1/rss/rules/Show%201080p/matches    # what it would take now
+POST /api/v1/rss/feeds/1/read {"articles": ["item-3"], "unread": true}
+POST /api/v1/rss/feeds/read {"feeds": "all"}   # every article of every feed read
 ```
+
+Every article says which rule a download would add it by (`matched_rule`):
+the first enabled rule on its feed, by name, whose filters take it, what
+the rule took before aside.
 
 A rule takes an article when its title passes:
 
@@ -429,10 +436,11 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | POST | `/transfer/bans` | Ban peer addresses |
 | GET | `/sync` | Incremental updates: everything, then changes since `rev` |
 | GET | `/events` | The same updates pushed as server-sent events |
-| GET | `/log`, `/log/peers` | Main log; peer (ban) log: each entry says who banned or unbanned (`source`: `engine` on one torrent, named by `torrent`, or `settings`) |
+| GET | `/log`, `/log/peers` | Main log: each entry says what it is about (`topic`: `torrents`, `trackers`, `rss`, `webhooks`, ...; filter with `?topics=`) and the torrent it concerns; peer (ban) log: each entry says who banned or unbanned (`source`: `engine` on one torrent, named by `torrent`, or `settings`) |
 | GET, POST | `/rss/feeds` | RSS feeds; add one |
 | GET, PATCH, DELETE | `/rss/feeds/{id}` | A feed with its articles; change it; remove it |
-| POST | `/rss/feeds/{id}/refresh`, `/rss/feeds/{id}/read` | Refresh now; mark articles read |
+| POST | `/rss/feeds/{id}/refresh`, `/rss/feeds/{id}/read` | Refresh now; mark articles read (or `unread`) |
+| POST | `/rss/feeds/refresh`, `/rss/feeds/read` | Refresh several feeds now; mark every article of several feeds read (`{"feeds": [1, 2]}` or `"all"`) |
 | GET | `/rss/articles` | Articles across feeds (unread only, one feed) |
 | GET, POST | `/rss/folders` | Folders; add one |
 | POST | `/rss/folders/remove`, `/rss/folders/move` | Remove a folder with its feeds; move one |

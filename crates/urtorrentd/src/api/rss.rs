@@ -14,8 +14,8 @@ use crate::daemon::Daemon;
 use crate::error::ApiResult;
 use crate::model::{
     RssArticle, RssArticlesQuery, RssFeed, RssFeedDetail, RssFeedPatch, RssFeedPath,
-    RssFeedRequest, RssFolderMove, RssFolderRequest, RssReadRequest, RssRule, RssRulePath,
-    RssRuleRename, RssRuleRequest,
+    RssFeedRequest, RssFeedsRequest, RssFolderMove, RssFolderRequest, RssReadRequest, RssRule,
+    RssRulePath, RssRuleRename, RssRuleRequest,
 };
 
 /// Every feed.
@@ -72,14 +72,35 @@ pub(crate) async fn refresh_rss_feed(
     Ok(StatusCode::ACCEPTED)
 }
 
-/// Mark articles of a feed read.
+/// Mark articles of a feed read (or, with `unread`, unread).
 #[utoipa::path(post, path = "/rss/feeds/{id}/read", tag = "rss", params(RssFeedPath), request_body = RssReadRequest, responses((status = 204, description = "Marked.")))]
 pub(crate) async fn mark_rss_read(
     State(d): State<Arc<Daemon>>,
     Path(p): Path<RssFeedPath>,
     Json(req): Json<RssReadRequest>,
 ) -> ApiResult<StatusCode> {
-    d.mark_rss_read(p.id, req.articles).await?;
+    d.mark_rss_read(p.id, req.articles, !req.unread).await?;
+    Ok(no_content())
+}
+
+/// Refresh several feeds now (also with `rss_enabled` off); `404` names the
+/// first feed that does not exist, and nothing is refreshed then.
+#[utoipa::path(post, path = "/rss/feeds/refresh", tag = "rss", request_body = RssFeedsRequest, responses((status = 202, description = "Refreshing.")))]
+pub(crate) async fn refresh_rss_feeds(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<RssFeedsRequest>,
+) -> ApiResult<StatusCode> {
+    d.refresh_rss_feeds(req.feeds).await?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+/// Mark every article of several feeds read.
+#[utoipa::path(post, path = "/rss/feeds/read", tag = "rss", request_body = RssFeedsRequest, responses((status = 204, description = "Marked.")))]
+pub(crate) async fn mark_rss_feeds_read(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<RssFeedsRequest>,
+) -> ApiResult<StatusCode> {
+    d.mark_rss_feeds_read(req.feeds).await?;
     Ok(no_content())
 }
 

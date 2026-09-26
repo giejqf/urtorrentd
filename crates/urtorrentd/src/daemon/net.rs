@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use super::Daemon;
 use crate::error::{ApiError, ApiResult};
+use crate::log::LogTopic;
 use crate::model::{Cookie, FetchedTrackers};
 use crate::settings::valid_tracker_url;
 use crate::store;
@@ -233,13 +234,25 @@ impl Daemon {
             let mut net = d.net();
             if let Some(l) = net.trackers.as_mut().filter(|l| l.url == url) {
                 l.fetching = false;
+                // The host only: the list's URL can carry a token.
+                let host = crate::stats::db::tracker_host(&url).unwrap_or_default();
                 match r {
                     Ok(list) => {
+                        d.logs.info(
+                            LogTopic::Trackers,
+                            format!("fetched {} trackers from {host}", list.len()),
+                        );
                         l.trackers = list;
                         l.fetched = Some(now());
                         l.error = None;
                     }
-                    Err(e) => l.error = Some(e),
+                    Err(e) => {
+                        d.logs.warn(
+                            LogTopic::Trackers,
+                            format!("fetching the tracker list from {host}: {e}"),
+                        );
+                        l.error = Some(e);
+                    }
                 }
             }
         });
@@ -297,17 +310,20 @@ impl Daemon {
                         .flatten()
                         .collect();
                 if want == (Some(Ipv4Addr::LOCALHOST), None) {
-                    self.logs.warn(format!(
-                        "interface {name} has no address: listening on loopback only"
-                    ));
+                    self.logs.warn(
+                        LogTopic::Network,
+                        format!("interface {name} has no address: listening on loopback only"),
+                    );
                 } else {
-                    self.logs.info(format!(
-                        "interface {name}: listening on {}",
-                        shown.join(", ")
-                    ));
+                    self.logs.info(
+                        LogTopic::Network,
+                        format!("interface {name}: listening on {}", shown.join(", ")),
+                    );
                 }
             }
-            Err(e) => self.logs.warn(format!("interface {name}: {e}")),
+            Err(e) => self
+                .logs
+                .warn(LogTopic::Network, format!("interface {name}: {e}")),
         }
     }
 }

@@ -13,6 +13,7 @@ use urtorrent::{AddTorrent, InfoHash, MagnetLink, QueueMove, Torrent};
 
 use super::Daemon;
 use crate::error::{ApiError, ApiResult, ErrorCode};
+use crate::log::LogTopic;
 use crate::model::{
     AddFailure, AddOptions, AddTorrentsRequest, AddTorrentsResponse, AddedTorrent, ContentLayout,
     MetadataFile, TimelineKind, TorrentMetadata,
@@ -493,8 +494,11 @@ impl Daemon {
             .unwrap_or(settings.add_to_top_of_queue)
             && let Err(e) = self.session.move_in_queue(id, QueueMove::Top).await
         {
-            self.logs
-                .warn(format!("{}: moving to the top of the queue: {e}", p.name));
+            self.logs.warn_on(
+                LogTopic::Torrents,
+                &p.hash,
+                format!("{}: moving to the top of the queue: {e}", p.name),
+            );
         }
         if !is_magnet && !p.private {
             self.add_auto_trackers(id, &settings.add_trackers).await;
@@ -508,8 +512,11 @@ impl Daemon {
             if hold {
                 for (index, path) in &renames {
                     if let Err(e) = self.session.rename_file(id, *index, path.clone()).await {
-                        self.logs
-                            .warn(format!("{}: content layout rename: {e}", p.name));
+                        self.logs.warn_on(
+                            LogTopic::Torrents,
+                            &p.hash,
+                            format!("{}: content layout rename: {e}", p.name),
+                        );
                     }
                 }
                 if !renames.is_empty() {
@@ -519,12 +526,19 @@ impl Daemon {
             } else if o.first_last_piece_priority
                 && let Err(e) = self.apply_first_last(id, true).await
             {
-                self.logs
-                    .warn(format!("{}: first and last pieces: {e}", p.name));
+                self.logs.warn_on(
+                    LogTopic::Torrents,
+                    &p.hash,
+                    format!("{}: first and last pieces: {e}", p.name),
+                );
             }
         }
         let name = o.rename.clone().filter(|n| !n.is_empty()).unwrap_or(p.name);
-        self.logs.info(format!("added torrent {name} ({hash_hex})"));
+        self.logs.info_on(
+            LogTopic::Torrents,
+            &p.hash,
+            format!("added torrent {name} ({hash_hex})"),
+        );
         self.lifecycle(p.hash, TimelineKind::Added, None).await;
         Ok(AddedTorrent {
             hash: hash_hex,
@@ -563,10 +577,11 @@ impl Daemon {
                 .collect();
             for (index, path) in content_renames(&files, record.content_layout) {
                 if let Err(e) = self.session.rename_file(id, index, path).await {
-                    self.logs.warn(format!(
-                        "{}: content layout rename: {e}",
-                        self.name_of(&hash)
-                    ));
+                    self.logs.warn_on(
+                        LogTopic::Torrents,
+                        &hash,
+                        format!("{}: content layout rename: {e}", self.name_of(&hash)),
+                    );
                 }
             }
             self.invalidate_content(hash);
@@ -580,10 +595,11 @@ impl Daemon {
         if record.first_last_piece_priority
             && let Err(e) = self.apply_first_last(id, true).await
         {
-            self.logs.warn(format!(
-                "{}: first and last pieces: {e}",
-                self.name_of(&hash)
-            ));
+            self.logs.warn_on(
+                LogTopic::Torrents,
+                &hash,
+                format!("{}: first and last pieces: {e}", self.name_of(&hash)),
+            );
         }
         let stop = record.stopped || record.stop_condition != StopCondition::None;
         let forced = self
@@ -599,8 +615,11 @@ impl Daemon {
             self.session.resume(id).await
         };
         if let Err(e) = r {
-            self.logs
-                .warn(format!("{}: releasing: {e}", self.name_of(&hash)));
+            self.logs.warn_on(
+                LogTopic::Torrents,
+                &hash,
+                format!("{}: releasing: {e}", self.name_of(&hash)),
+            );
         }
         let _ = self
             .update_record(hash, |r| {
@@ -613,8 +632,11 @@ impl Daemon {
             })
             .await;
         if record.stop_condition != StopCondition::None {
-            self.logs
-                .info(format!("stopped {} (stop condition)", self.name_of(&hash)));
+            self.logs.info_on(
+                LogTopic::Torrents,
+                &hash,
+                format!("stopped {} (stop condition)", self.name_of(&hash)),
+            );
         }
     }
 
@@ -636,8 +658,11 @@ impl Daemon {
             .map(|(i, f)| if excluded.contains(&i) { 0 } else { f.priority })
             .collect();
         if let Err(e) = self.session.set_file_priorities(id, prios).await {
-            self.logs
-                .warn(format!("{}: excluded files: {e}", self.name_of(&hash)));
+            self.logs.warn_on(
+                LogTopic::Torrents,
+                &hash,
+                format!("{}: excluded files: {e}", self.name_of(&hash)),
+            );
         }
     }
 
@@ -693,6 +718,7 @@ impl Daemon {
             return;
         }
         let existing = self.session.trackers(id).await.unwrap_or_default();
+        let hash = self.state().by_id.get(&id).copied();
         let mut tier = existing.iter().map(|t| t.tier + 1).max().unwrap_or(0);
         for url in urls {
             if !valid_tracker_url(url) || existing.iter().any(|t| t.url == *url) {
@@ -700,7 +726,15 @@ impl Daemon {
             }
             match self.session.add_tracker(id, url.clone(), tier).await {
                 Ok(()) => tier += 1,
-                Err(e) => self.logs.warn(format!("adding tracker {url}: {e}")),
+                Err(e) => {
+                    // The host only: tracker URLs can carry a passkey.
+                    let host = crate::stats::db::tracker_host(url).unwrap_or_default();
+                    let msg = format!("adding the tracker at {host}: {e}");
+                    match &hash {
+                        Some(h) => self.logs.warn_on(LogTopic::Trackers, h, msg),
+                        None => self.logs.warn(LogTopic::Trackers, msg),
+                    }
+                }
             }
         }
     }

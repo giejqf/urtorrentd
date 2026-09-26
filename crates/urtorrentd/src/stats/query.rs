@@ -11,6 +11,7 @@ use super::db::{Period, Retention, StatsDb, TorrentRow, tracker_host};
 use super::{Flush, Stats};
 use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult};
+use crate::log::LogTopic;
 use crate::model::{
     ByteTotals, GeoDimension, GeoPoint, GeoQuery, GeoRow, GeoStats, GroupKind, GroupPoint,
     GroupQuery, GroupRow, GroupStats, IdleQuery, IdleSeed, IdleSeeds, PeerBreakdown, PeerDimension,
@@ -193,7 +194,8 @@ impl Daemon {
         let _ops = self.ops.lock().await;
         let s = self.stats_handle()?;
         s.clear(now()).await.map_err(ApiError::io)?;
-        self.logs.info("statistics deleted through the API");
+        self.logs
+            .info(LogTopic::Statistics, "statistics deleted through the API");
         Ok(())
     }
 
@@ -204,10 +206,13 @@ impl Daemon {
             .await
             .map_err(ApiError::io)?;
         if n > 0 {
-            self.logs.info(format!(
-                "history of {n} removed torrent{} deleted through the API",
-                if n == 1 { "" } else { "s" }
-            ));
+            self.logs.info(
+                LogTopic::Statistics,
+                format!(
+                    "history of {n} removed torrent{} deleted through the API",
+                    if n == 1 { "" } else { "s" }
+                ),
+            );
         }
         Ok(n)
     }
