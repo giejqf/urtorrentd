@@ -62,7 +62,7 @@ fn cpu_model(cpuinfo: &str) -> Option<String> {
 }
 
 /// The file system holding `path` (or its nearest existing parent).
-fn file_system(path: &Path) -> Option<FileSystemInfo> {
+pub(crate) fn file_system(path: &Path) -> Option<FileSystemInfo> {
     let mut p: PathBuf = path.to_path_buf();
     let p = loop {
         if let Ok(c) = p.canonicalize() {

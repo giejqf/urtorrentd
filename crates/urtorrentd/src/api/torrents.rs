@@ -9,7 +9,7 @@ use std::sync::Arc;
 use axum::extract::State;
 
 use super::{Json, Query};
-use crate::daemon::{Daemon, MoveTo};
+use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult};
 use crate::model::{
     AddPeersRequest, AddTorrentsRequest, AddTorrentsResponse, AddTrackersBulkRequest, BulkResult,
@@ -280,8 +280,10 @@ pub(crate) async fn set_share_limits(
     ))
 }
 
-/// Move content to another directory (in the background; the state shows
-/// `moving`). Turns automatic management off.
+/// Set the save path: the content moves there (in the background; the
+/// state shows `moving`), except an incomplete torrent's in its download
+/// path, which moves there when the torrent completes. Turns automatic
+/// management off.
 #[utoipa::path(post, path = "/torrents/location", tag = "torrents", responses((status = 200, body = BulkResult)))]
 pub(crate) async fn set_location(
     State(d): State<Arc<Daemon>>,
@@ -292,19 +294,8 @@ pub(crate) async fn set_location(
     }
     let path = req.path.clone();
     Ok(Json(
-        d.bulk(&req.hashes, |h, id| {
-            d.spawn_move(
-                h,
-                id,
-                MoveTo::Save {
-                    path: path.clone(),
-                    managed: false,
-                },
-                false,
-            );
-            std::future::ready(Ok(()))
-        })
-        .await?,
+        d.bulk(&req.hashes, |h, id| d.set_save_path(h, id, path.clone()))
+            .await?,
     ))
 }
 

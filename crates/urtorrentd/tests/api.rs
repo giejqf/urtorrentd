@@ -935,3 +935,70 @@ async fn log_entries_say_what_they_are_about() {
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
     t.stop().await;
 }
+
+#[tokio::test]
+async fn directories_and_their_file_systems() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let t = TestDaemon::start(29, |_| {}).await;
+    let root = t.dir.path().join("browse");
+    std::fs::create_dir_all(root.join("full")).unwrap();
+    for i in 0..3 {
+        std::fs::write(root.join("full").join(format!("f{i}")), b"x").unwrap();
+    }
+    std::fs::create_dir_all(root.join("empty")).unwrap();
+    std::fs::create_dir_all(root.join("locked")).unwrap();
+    std::fs::set_permissions(root.join("locked"), std::fs::Permissions::from_mode(0o555)).unwrap();
+    std::fs::write(root.join("file.txt"), b"x").unwrap();
+
+    // Each entry says whether the daemon can write in it and what it holds.
+    let v = t
+        .get(&format!(
+            "/api/v1/fs/directory?path={}&mode=all",
+            root.display()
+        ))
+        .await;
+    let entries: Vec<(&str, bool, bool, &serde_json::Value)> = v
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["name"].as_str().unwrap(),
+                e["is_dir"].as_bool().unwrap(),
+                e["writable"].as_bool().unwrap(),
+                &e["entries"],
+            )
+        })
+        .collect();
+    let root_user = rustix::process::geteuid().is_root();
+    assert_eq!(
+        entries,
+        [
+            ("empty", true, true, &serde_json::json!(0)),
+            ("file.txt", false, false, &serde_json::Value::Null),
+            ("full", true, true, &serde_json::json!(3)),
+            ("locked", true, root_user, &serde_json::json!(0)),
+        ]
+    );
+
+    // The file system holding a path, or its nearest existing parent.
+    let fs = t
+        .get(&format!(
+            "/api/v1/fs/file-system?path={}/not/yet",
+            root.display()
+        ))
+        .await;
+    assert_eq!(
+        fs["path"],
+        root.canonicalize().unwrap().to_string_lossy().as_ref()
+    );
+    let (total, free) = (fs["total"].as_u64().unwrap(), fs["free"].as_u64().unwrap());
+    assert!(total > 0 && free <= total, "{fs}");
+    let (s, _) = t
+        .call(Method::GET, "/api/v1/fs/file-system?path=relative", None)
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    std::fs::set_permissions(root.join("locked"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    t.stop().await;
+}

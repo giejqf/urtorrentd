@@ -245,6 +245,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(app::get_watch_folders))
         .routes(routes!(app::get_settings, app::patch_settings))
         .routes(routes!(app::list_directory))
+        .routes(routes!(app::get_file_system))
         .routes(routes!(app::get_cookies, app::set_cookies))
         .routes(routes!(app::list_interfaces))
         .routes(routes!(torrents::list_torrents, torrents::add_torrents))
@@ -347,6 +348,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(rss::put_rss_rule, rss::delete_rss_rule))
         .routes(routes!(rss::rename_rss_rule))
         .routes(routes!(rss::rss_rule_matches))
+        .routes(routes!(rss::dry_run_rss_rule))
         .routes(routes!(
             clientdata::load_client_data,
             clientdata::store_client_data

@@ -363,6 +363,45 @@ impl Daemon {
         }
     }
 
+    /// A torrent's save path (qBittorrent's `setLocation` and
+    /// `setSavePath`): the content moves there now, except an incomplete
+    /// torrent's in its download path, which stays there and goes to the new
+    /// save path when the torrent completes. Either way automatic management
+    /// goes off.
+    pub(crate) async fn set_save_path(
+        self: &Arc<Self>,
+        hash: InfoHash,
+        id: TorrentId,
+        path: String,
+    ) -> ApiResult<()> {
+        let staged = {
+            let st = self.state();
+            let e = st
+                .torrents
+                .get(&hash)
+                .ok_or_else(|| ApiError::torrent_not_found(&hex(&hash)))?;
+            e.record.download_path.is_some()
+        };
+        if staged && !self.session.status(id).await?.complete {
+            return self
+                .update_record(hash, |r| {
+                    r.save_path = path;
+                    r.auto_management = false;
+                })
+                .await;
+        }
+        self.spawn_move(
+            hash,
+            id,
+            MoveTo::Save {
+                path,
+                managed: false,
+            },
+            false,
+        );
+        Ok(())
+    }
+
     /// A torrent's download path after it was added (qBittorrent's
     /// `setDownloadPath`): an incomplete torrent's content moves there (or,
     /// with `None`, to its save path); a complete one's stays in its save

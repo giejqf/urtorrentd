@@ -23,8 +23,8 @@ use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult, ErrorCode};
 use crate::log::LogTopic;
 use crate::model::{
-    RssArticle, RssArticleIds, RssArticlesQuery, RssFeed, RssFeedDetail, RssFeedIds, RssFeedPatch,
-    RssFeedRequest, RssRule, RssRuleRequest,
+    RssArticle, RssArticleIds, RssArticlesQuery, RssDryRunArticle, RssFeed, RssFeedDetail,
+    RssFeedIds, RssFeedPatch, RssFeedRequest, RssRule, RssRuleRequest, RssVerdict,
 };
 use crate::util::{blocking, now};
 use db::FeedRow;
@@ -544,6 +544,60 @@ impl Daemon {
             .collect();
         self.match_rules(&mut taken).await?;
         Ok(taken)
+    }
+
+    /// What a rule as given would do with each article of its feeds,
+    /// newest first: a dry run of a rule being edited (nothing is saved or
+    /// added; no history applies, as in [`Daemon::rss_rule_matches`]).
+    pub(crate) async fn rss_rule_dry_run(
+        &self,
+        req: RssRuleRequest,
+    ) -> ApiResult<Vec<RssDryRunArticle>> {
+        crate::daemon::check_add_options(&req.add_options)?;
+        let rule = RssRule {
+            name: String::new(),
+            enabled: true,
+            must_contain: req.must_contain,
+            must_not_contain: req.must_not_contain,
+            use_regex: req.use_regex,
+            episode_filter: req.episode_filter,
+            smart_filter: req.smart_filter,
+            feeds: req.feeds,
+            ignore_days: 0,
+            add_options: req.add_options,
+            last_match: None,
+            matched_episodes: Vec::new(),
+        };
+        let m = Matcher::new(&rule).map_err(ApiError::bad_request)?;
+        let feeds = rule.feeds.clone();
+        let mut articles = self
+            .rss_read(move |c| {
+                let mut out = Vec::new();
+                for f in feeds {
+                    out.extend(db::articles(c, Some(f), false, u32::MAX)?);
+                }
+                Ok(out)
+            })
+            .await?;
+        articles.sort_by_key(|a| std::cmp::Reverse(a.date));
+        self.match_rules(&mut articles).await?;
+        let repacks = self.settings().rss_download_repacks;
+        let t = now();
+        Ok(articles
+            .into_iter()
+            .map(|a| {
+                let judged = m.judge(&rule, &a.title, t, repacks);
+                RssDryRunArticle {
+                    verdict: match (&judged, a.downloaded) {
+                        (Ok(_), false) => RssVerdict::Take,
+                        (Ok(_), true) => RssVerdict::Taken,
+                        (Err(_), _) => RssVerdict::Filtered,
+                    },
+                    reason: judged.err(),
+                    article: a,
+                }
+            })
+            .collect())
     }
 
     /// Start the refreshes that are due (the tick).

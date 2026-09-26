@@ -152,9 +152,17 @@ GET  /api/v1/rss/feeds/1          # the feed and its articles: title, date, torr
 PUT  /api/v1/rss/rules/Show%201080p {"must_contain": "show 1080p", "must_not_contain": "cam",
      "episode_filter": "2x1-;", "smart_filter": true, "feeds": [1], "add_options": {"category": "tv"}}
 GET  /api/v1/rss/rules/Show%201080p/matches    # what it would take now
+POST /api/v1/rss/dry-run {"must_contain": "show 1080p", "feeds": [1]}   # a rule being edited: every article, verdict and reason
 POST /api/v1/rss/feeds/1/read {"articles": ["item-3"], "unread": true}
 POST /api/v1/rss/feeds/read {"feeds": "all"}   # every article of every feed read
 ```
+
+`POST /rss/dry-run` takes a rule as `PUT` does, saves nothing, and answers
+every article of its feeds, newest first, with a `verdict`: `take` (a
+download would add it), `taken` (a rule added it already) or `filtered`,
+with the `reason` (`does not match: amd64`, `excluded by must not contain:
+beta`, `episode 1x5 is not in the episode filter`). Like `/matches`, it
+applies no history (`last_match`, the smart filter's episodes).
 
 Every article says which rule a download would add it by (`matched_rule`):
 the first enabled rule on its feed, by name, whose filters take it, what
@@ -439,7 +447,8 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | POST, DELETE | `/app/restart` | Graceful shutdown, then the same binary starts again in the same process (settings in `restart_required` take effect); `?when=idle` waits until no torrent is checking, moving or receiving data; `DELETE` calls a waiting restart off |
 | POST | `/app/fetched-trackers/refresh` | Fetch the `add_trackers_url` list now rather than at its daily turn (202; 409 when it is not set); `GET /app` → `fetched_trackers.fetching` while it runs |
 | GET, PATCH | `/settings` | All settings; change some ([settings.md](settings.md)) |
-| GET | `/fs/directory` | List a directory (for choosing paths) |
+| GET | `/fs/directory` | List a directory (for choosing paths): each entry with whether the daemon can write in it and how many entries it holds (up to 1 000) |
+| GET | `/fs/file-system` | The file system holding a path, or its nearest existing parent: mount point, type, size, free space |
 | GET, PUT | `/app/cookies` | The cookie jar for the daemon's own HTTP requests |
 | GET | `/app/interfaces` | Network interfaces and their addresses |
 | GET | `/watch-folders` | The watch folders' standing (last read, why one cannot be read) and the last 100 files they took, with what became of each (added, duplicate, rejected) |
@@ -455,7 +464,8 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | POST | `/torrents/queue` | Move in the queue (top, up, down, bottom) |
 | PUT | `/torrents/{hash}/queue-position` | Put one torrent at a place in the queue (`{"position": 3}`: 0 first, past the end last; the others shift; one re-plan) |
 | POST | `/torrents/download-path` | Move incomplete torrents to a download path, or back |
-| POST | `/torrents/sequential`, `/first-last-piece-priority`, `/limits`, `/share-limits`, `/location`, `/category`, `/tags`, `/auto-management`, `/peers` | Bulk settings and peers |
+| POST | `/torrents/location` | Set the save path: the content moves there now, except an incomplete torrent's in its download path, which goes there when the torrent completes; automatic management off |
+| POST | `/torrents/sequential`, `/first-last-piece-priority`, `/limits`, `/share-limits`, `/category`, `/tags`, `/auto-management`, `/peers` | Bulk settings and peers |
 | GET, PATCH | `/torrents/{hash}` | Everything about one torrent; change its name or comment |
 | GET | `/torrents/{hash}/files` | Files with progress, priority, piece range, availability |
 | POST | `/torrents/{hash}/files/priority`, `/files/rename`, `/folders/rename` | File priorities and renames |
@@ -490,6 +500,7 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | PUT, DELETE | `/rss/rules/{name}` | Create or replace a rule; remove it |
 | POST | `/rss/rules/{name}/rename` | Rename a rule |
 | GET | `/rss/rules/{name}/matches` | What a rule's filters take from its feeds |
+| POST | `/rss/dry-run` | A rule being edited, unsaved: every article of its feeds with what it would do and why ([RSS](#rss)) |
 | GET, PATCH | `/client-data` | The client data store (JSON by key) |
 | GET, POST | `/webhooks` | Webhooks with their last deliveries; add one |
 | GET, PATCH, DELETE | `/webhooks/{id}` | One webhook; change it; remove it |

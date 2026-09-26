@@ -51,8 +51,9 @@ fn wildcard(word: &str) -> String {
 enum Terms {
     Empty,
     Regex(Regex),
-    /// Alternatives, each a list of words that must all appear.
-    Wildcards(Vec<Vec<Regex>>),
+    /// Alternatives, each a list of words (as typed, compiled) that must
+    /// all appear.
+    Wildcards(Vec<Vec<(String, Regex)>>),
 }
 
 impl Terms {
@@ -68,7 +69,7 @@ impl Terms {
         for alt in s.split('|') {
             let words = alt
                 .split_whitespace()
-                .map(|w| regex(&wildcard(w)))
+                .map(|w| regex(&wildcard(w)).map(|r| (w.to_string(), r)))
                 .collect::<Result<Vec<_>, _>>()?;
             if !words.is_empty() {
                 alts.push(words);
@@ -88,8 +89,49 @@ impl Terms {
             Terms::Regex(r) => Some(r.is_match(title)),
             Terms::Wildcards(alts) => Some(
                 alts.iter()
-                    .any(|words| words.iter().all(|w| w.is_match(title))),
+                    .any(|words| words.iter().all(|(_, w)| w.is_match(title))),
             ),
+        }
+    }
+
+    /// What `title` lacks, when it does not match: the expression, or the
+    /// words missing from the alternative it comes closest to.
+    fn missing(&self, title: &str) -> String {
+        match self {
+            Terms::Empty => String::new(),
+            Terms::Regex(r) => r.as_str().to_string(),
+            Terms::Wildcards(alts) => alts
+                .iter()
+                .map(|words| {
+                    words
+                        .iter()
+                        .filter(|(_, w)| !w.is_match(title))
+                        .map(|(s, _)| s.as_str())
+                        .collect::<Vec<_>>()
+                })
+                .min_by_key(Vec::len)
+                .unwrap_or_default()
+                .join(" "),
+        }
+    }
+
+    /// What in `title` matches, when it does: the expression, or the words
+    /// of the first alternative found.
+    fn found(&self, title: &str) -> String {
+        match self {
+            Terms::Empty => String::new(),
+            Terms::Regex(r) => r.as_str().to_string(),
+            Terms::Wildcards(alts) => alts
+                .iter()
+                .find(|words| words.iter().all(|(_, w)| w.is_match(title)))
+                .map(|words| {
+                    words
+                        .iter()
+                        .map(|(s, _)| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .unwrap_or_default(),
         }
     }
 }
@@ -217,18 +259,38 @@ impl Matcher {
         now: u64,
         repacks: bool,
     ) -> Option<Option<String>> {
+        self.judge(rule, title, now, repacks).ok()
+    }
+
+    /// [`Matcher::take`], saying why when the rule leaves the article.
+    pub fn judge(
+        &self,
+        rule: &RssRule,
+        title: &str,
+        now: u64,
+        repacks: bool,
+    ) -> Result<Option<String>, String> {
         if !rule.enabled {
-            return None;
+            return Err("the rule is off".to_string());
         }
         if rule.ignore_days > 0
             && rule
                 .last_match
                 .is_some_and(|t| now.saturating_sub(t) < u64::from(rule.ignore_days) * 86_400)
         {
-            return None;
+            return Err(format!(
+                "ignored for {} days after the last match",
+                rule.ignore_days
+            ));
         }
-        if self.must.matches(title) == Some(false) || self.must_not.matches(title) == Some(true) {
-            return None;
+        if self.must.matches(title) == Some(false) {
+            return Err(format!("does not match: {}", self.must.missing(title)));
+        }
+        if self.must_not.matches(title) == Some(true) {
+            return Err(format!(
+                "excluded by must not contain: {}",
+                self.must_not.found(title)
+            ));
         }
         let ep = episode(title);
         if !self.episodes.is_empty() {
@@ -237,14 +299,20 @@ impl Matcher {
                     if episodes
                         .iter()
                         .any(|&e| in_filter(&self.episodes, *season, e)) => {}
-                _ => return None,
+                Some(Episode::Numbered { season, episodes }) => {
+                    let first = episodes.first().copied().unwrap_or_default();
+                    return Err(format!(
+                        "episode {season}x{first} is not in the episode filter"
+                    ));
+                }
+                _ => return Err("no episode number for the episode filter".to_string()),
             }
         }
         if !rule.smart_filter {
-            return Some(None);
+            return Ok(None);
         }
         let Some(ep) = ep else {
-            return Some(None);
+            return Ok(None);
         };
         let mut key = match ep {
             Episode::Numbered { season, episodes } => episodes
@@ -258,9 +326,9 @@ impl Matcher {
             key.push_str(":repack");
         }
         if rule.matched_episodes.contains(&key) {
-            return None;
+            return Err(format!("episode {key} was taken before (smart filter)"));
         }
-        Some(Some(key))
+        Ok(Some(key))
     }
 }
 

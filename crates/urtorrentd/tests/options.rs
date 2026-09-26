@@ -209,6 +209,22 @@ async fn add_defaults_paths_exclusions_merges_and_exports() {
         })
         .await;
     assert_eq!(x["auto_management"], false);
+    // A new save path while it downloads there: recorded, nothing moves
+    // until it completes (or the download path goes).
+    let later = dirs.path().join("later");
+    let (s, v) = t
+        .post(
+            "/api/v1/torrents/location",
+            json!({"hashes": [p.clone()], "path": later}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["applied"], json!([p.clone()]));
+    let x = t.torrent(&p).await;
+    assert_eq!(x["save_path"], later.to_string_lossy().as_ref(), "{x}");
+    assert_eq!(x["download_path"], staging.to_string_lossy().as_ref());
+    assert_ne!(x["state"], "moving");
+    assert!(!later.exists(), "nothing moved yet");
     let (s, _) = t
         .post(
             "/api/v1/torrents/download-path",
@@ -216,8 +232,10 @@ async fn add_defaults_paths_exclusions_merges_and_exports() {
         )
         .await;
     assert_eq!(s, StatusCode::OK);
-    t.wait_for(&p, "the move back", 30, |x| {
-        x["download_path"].is_null() && x["state"] != "moving"
+    t.wait_for(&p, "the move to the new save path", 30, |x| {
+        x["download_path"].is_null()
+            && x["state"] != "moving"
+            && x["save_path"] == later.to_string_lossy().as_ref()
     })
     .await;
     let (s, _) = t

@@ -14,8 +14,8 @@ use crate::daemon::Daemon;
 use crate::error::{ApiError, ApiResult};
 use crate::log::LogTopic;
 use crate::model::{
-    AppInfo, Cookie, DirectoryEntry, DirectoryMode, DirectoryQuery, NetworkInterface, RestartQuery,
-    RestartWhen, SystemInfo, WatchStatus,
+    AppInfo, Cookie, DirectoryEntry, DirectoryMode, DirectoryQuery, FileSystemInfo,
+    FileSystemQuery, NetworkInterface, RestartQuery, RestartWhen, SystemInfo, WatchStatus,
 };
 use crate::settings::{Settings, SettingsPatch};
 use crate::util::blocking;
@@ -152,6 +152,27 @@ pub(crate) async fn patch_settings(
     Ok(Json(d.update_settings(patch).await?))
 }
 
+/// Entries counted inside each directory listed, at most.
+const MAX_COUNTED: usize = 1000;
+
+/// The file system holding a path on the daemon's machine (or its nearest
+/// existing parent): where it is mounted, its type, size and free space.
+#[utoipa::path(get, path = "/fs/file-system", tag = "app", params(FileSystemQuery), responses((status = 200, body = FileSystemInfo)))]
+pub(crate) async fn get_file_system(
+    State(_d): State<Arc<Daemon>>,
+    Query(q): Query<FileSystemQuery>,
+) -> ApiResult<Json<FileSystemInfo>> {
+    let path = std::path::PathBuf::from(&q.path);
+    if !path.is_absolute() || q.path.contains('\0') {
+        return Err(ApiError::bad_request("path must be absolute"));
+    }
+    blocking(move || Ok(crate::system::file_system(&path)))
+        .await
+        .map_err(ApiError::io)?
+        .map(Json)
+        .ok_or_else(|| ApiError::not_found(format!("no file system holds {}", q.path)))
+}
+
 /// List a directory on the daemon's machine (for choosing save paths).
 #[utoipa::path(get, path = "/fs/directory", tag = "app", params(DirectoryQuery), responses((status = 200, body = Vec<DirectoryEntry>)))]
 pub(crate) async fn list_directory(
@@ -175,9 +196,23 @@ pub(crate) async fn list_directory(
                 DirectoryMode::Files => !is_dir,
             };
             if keep {
+                let p = entry.path();
                 out.push(DirectoryEntry {
                     name: entry.file_name().to_string_lossy().into_owned(),
-                    path: entry.path().to_string_lossy().into_owned(),
+                    writable: is_dir
+                        && rustix::fs::access(
+                            &p,
+                            rustix::fs::Access::WRITE_OK | rustix::fs::Access::EXEC_OK,
+                        )
+                        .is_ok(),
+                    entries: if is_dir {
+                        std::fs::read_dir(&p).ok().map(|it| {
+                            u32::try_from(it.take(MAX_COUNTED).count()).unwrap_or(u32::MAX)
+                        })
+                    } else {
+                        None
+                    },
+                    path: p.to_string_lossy().into_owned(),
                     is_dir,
                 });
             }

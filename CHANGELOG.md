@@ -120,6 +120,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   last day's traffic, and deletes the torrent's history. Options saves the
   name, comment, limits, share limits, behaviour, category, tags and
   location as one draft, and asks before leaving it unsaved.
+- `POST /rss/dry-run`: a rule as being edited, unsaved, over its feeds'
+  articles: each one's verdict (`take`, `taken` by a rule already,
+  `filtered`) and why the filters leave it.
+- `GET /fs/file-system`: the file system holding a path (mount point,
+  type, size, free space). `GET /fs/directory` entries say whether the
+  daemon can write in them and how many entries they hold.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and
   `cargo xtask dist` (a release binary with the UI built in).
 
@@ -210,6 +216,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Requires urtorrent 0.13.5.
+- `POST /torrents/location` on an incomplete torrent downloading in its
+  download path sets the save path and leaves the content there until the
+  torrent completes (qBittorrent's `setSavePath`); before, it moved the
+  partial files at once and dropped the download path. `POST
+  /torrents/download-path` still moves them now.
 - The session cookie has no `Max-Age`: it lasts for the browser session,
   and the daemon ends login sessions after `api_session_timeout` idle
   seconds. Before, the browser dropped it that long after sign-in even

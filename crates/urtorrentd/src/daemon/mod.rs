@@ -41,7 +41,7 @@ use crate::webhooks::{StoredWebhook, Webhooks};
 
 pub(crate) use add::check_options as check_add_options;
 pub use add::{content_renames, decode_base64, parse_metadata};
-pub(crate) use ops::{MoveTo, parse_peer_ip};
+pub(crate) use ops::parse_peer_ip;
 
 /// A torrent's resume data is saved at most this often while it changes
 /// (the engine's own cadence in file mode), and at once when it finishes, is

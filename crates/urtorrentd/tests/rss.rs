@@ -300,6 +300,56 @@ async fn feeds_articles_and_download_rules() {
         .collect();
     assert_eq!(downloaded, ["item-2", "item-1"]);
 
+    // A dry run of a rule being edited: each article, what the rule would
+    // do with it, and why its filters leave one. Nothing is saved.
+    let (s, v) = t
+        .post(
+            "/api/v1/rss/dry-run",
+            json!({"must_contain": "show 1080p", "must_not_contain": "e01", "feeds": [id]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let verdicts: Vec<(&str, &str, &Value)> = v
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| {
+            (
+                a["title"].as_str().unwrap(),
+                a["verdict"].as_str().unwrap(),
+                &a["reason"],
+            )
+        })
+        .collect();
+    assert_eq!(
+        verdicts,
+        [
+            (
+                "Other.Thing.1080p",
+                "filtered",
+                &json!("does not match: show")
+            ),
+            ("Show.S01E02.1080p", "taken", &Value::Null),
+            (
+                "Show.S01E01.1080p",
+                "filtered",
+                &json!("excluded by must not contain: e01")
+            ),
+        ]
+    );
+    let (s, _) = t
+        .post(
+            "/api/v1/rss/dry-run",
+            json!({"must_contain": "(", "use_regex": true, "feeds": [id]}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "a bad expression");
+    assert_eq!(
+        t.get("/api/v1/rss/rules").await.as_array().unwrap().len(),
+        1,
+        "nothing saved"
+    );
+
     // New articles: a repack of episode 2 and episode 3 are taken, another
     // release of episode 1 is not (smart filter).
     {

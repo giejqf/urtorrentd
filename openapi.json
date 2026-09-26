@@ -2927,6 +2927,108 @@
         }
       }
     },
+    "/api/v1/fs/file-system": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "The file system holding a path on the daemon's machine (or its nearest\nexisting parent): where it is mounted, its type, size and free space.",
+        "operationId": "get_file_system",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "description": "Absolute path; need not exist (its nearest existing parent is looked\nat).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileSystemInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/log": {
       "get": {
         "tags": [
@@ -3703,6 +3805,110 @@
                   "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/RssArticle"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rss/dry-run": {
+      "post": {
+        "tags": [
+          "rss"
+        ],
+        "summary": "A dry run of a rule as given (one being edited): every article of its\nfeeds, newest first, with what the rule would do and why its filters\nleave an article. Nothing is saved or added, and no history applies.",
+        "operationId": "dry_run_rss_rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RssRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RssDryRunArticle"
                   }
                 }
               }
@@ -9355,7 +9561,7 @@
         "tags": [
           "torrents"
         ],
-        "summary": "Move content to another directory (in the background; the state shows\n`moving`). Turns automatic management off.",
+        "summary": "Set the save path: the content moves there (in the background; the\nstate shows `moving`), except an incomplete torrent's in its download\npath, which moves there when the torrent completes. Turns automatic\nmanagement off.",
         "operationId": "set_location",
         "requestBody": {
           "content": {
@@ -14975,7 +15181,9 @@
         "required": [
           "name",
           "path",
-          "is_dir"
+          "is_dir",
+          "writable",
+          "entries"
         ],
         "properties": {
           "name": {
@@ -14989,6 +15197,19 @@
           "is_dir": {
             "type": "boolean",
             "description": "A directory."
+          },
+          "writable": {
+            "type": "boolean",
+            "description": "A directory the daemon can create files in (`false` for a file)."
+          },
+          "entries": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Entries in a directory, counted up to 1 000 (1 000 = that many or\nmore); `null` for a file, or a directory the daemon cannot read.",
+            "minimum": 0
           }
         }
       },
@@ -15314,7 +15535,7 @@
         "properties": {
           "path": {
             "type": "string",
-            "description": "The path looked at: the default save path, or its nearest existing\nparent."
+            "description": "The path looked at (the default save path, or the path asked about),\nor its nearest existing parent."
           },
           "mount_point": {
             "type": [
@@ -15960,7 +16181,7 @@
       },
       "LocationRequest": {
         "type": "object",
-        "description": "Move content to a new directory (turns automatic management off).",
+        "description": "Set the save path: the content moves there, or, while an incomplete\ntorrent downloads in its download path, on completion (turns automatic\nmanagement off).",
         "required": [
           "hashes",
           "path"
@@ -17251,6 +17472,35 @@
         ],
         "description": "Which articles of a feed: a list of ids or `\"all\"`."
       },
+      "RssDryRunArticle": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RssArticle",
+            "description": "The article."
+          },
+          {
+            "type": "object",
+            "required": [
+              "verdict",
+              "reason"
+            ],
+            "properties": {
+              "verdict": {
+                "$ref": "#/components/schemas/RssVerdict",
+                "description": "What the rule would do with it."
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Why the filters leave it (`does not match: amd64`, `excluded by must\nnot contain: beta`, `episode 1x5 is not in the episode filter`);\n`null` when they take it."
+              }
+            }
+          }
+        ],
+        "description": "An article of a rule's feeds and what the rule would do with it (a dry\nrun)."
+      },
       "RssFeed": {
         "type": "object",
         "description": "An RSS or Atom feed.",
@@ -17673,6 +17923,15 @@
           }
         },
         "additionalProperties": false
+      },
+      "RssVerdict": {
+        "type": "string",
+        "description": "What a rule would do with an article.",
+        "enum": [
+          "take",
+          "taken",
+          "filtered"
+        ]
       },
       "Settings": {
         "type": "object",

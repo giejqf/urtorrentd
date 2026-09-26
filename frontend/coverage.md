@@ -31,6 +31,13 @@ row whose operation the UI calls.
 | `POST /api/v1/tags`                         | W3: managing tags (the detail panel creates them through `POST /torrents/tags`).                            |
 | `POST /api/v1/tags/remove`                  | W3: managing tags.                                                                                          |
 
+## Not built yet
+
+| Operation                    | Why the UI does not call it                                            |
+| ---------------------------- | ---------------------------------------------------------------------- |
+| `POST /api/v1/rss/dry-run`   | The rule dialog (next commit): what a rule being edited would take.    |
+| `GET /api/v1/fs/file-system` | The folder and move dialogs (next commit): free space where things go. |
+
 ## W4: settings, security, logs
 
 | Operation                   | Why the UI does not call it                                          |

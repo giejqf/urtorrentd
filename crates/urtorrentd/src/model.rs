@@ -147,7 +147,9 @@ pub struct ShareLimitsRequest {
     pub share_limits: ShareLimits,
 }
 
-/// Move content to a new directory (turns automatic management off).
+/// Set the save path: the content moves there, or, while an incomplete
+/// torrent downloads in its download path, on completion (turns automatic
+/// management off).
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct LocationRequest {
     /// Target torrents.
@@ -1308,8 +1310,8 @@ pub struct SystemInfo {
 /// A file system.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FileSystemInfo {
-    /// The path looked at: the default save path, or its nearest existing
-    /// parent.
+    /// The path looked at (the default save path, or the path asked about),
+    /// or its nearest existing parent.
     pub path: String,
     /// Where the file system is mounted; `null` = not known.
     #[schema(required = true)]
@@ -1356,6 +1358,21 @@ pub struct DirectoryEntry {
     pub path: String,
     /// A directory.
     pub is_dir: bool,
+    /// A directory the daemon can create files in (`false` for a file).
+    pub writable: bool,
+    /// Entries in a directory, counted up to 1 000 (1 000 = that many or
+    /// more); `null` for a file, or a directory the daemon cannot read.
+    #[schema(required = true)]
+    pub entries: Option<u32>,
+}
+
+/// Query of the file system holding a path.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct FileSystemQuery {
+    /// Absolute path; need not exist (its nearest existing parent is looked
+    /// at).
+    pub path: String,
 }
 
 /// Change the login.
@@ -2838,6 +2855,34 @@ pub struct RssRule {
     pub last_match: Option<u64>,
     /// Episodes it took (smart filter).
     pub matched_episodes: Vec<String>,
+}
+
+/// What a rule would do with an article.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RssVerdict {
+    /// Its filters take it, and no rule added it yet: a download would.
+    Take,
+    /// Its filters take it, but a rule added it already.
+    Taken,
+    /// Its filters leave it (`reason` says why).
+    Filtered,
+}
+
+/// An article of a rule's feeds and what the rule would do with it (a dry
+/// run).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RssDryRunArticle {
+    /// The article.
+    #[serde(flatten)]
+    pub article: RssArticle,
+    /// What the rule would do with it.
+    pub verdict: RssVerdict,
+    /// Why the filters leave it (`does not match: amd64`, `excluded by must
+    /// not contain: beta`, `episode 1x5 is not in the episode filter`);
+    /// `null` when they take it.
+    #[schema(required = true)]
+    pub reason: Option<String>,
 }
 
 /// A rule's definition (`PUT /rss/rules/{name}`); its history is kept.

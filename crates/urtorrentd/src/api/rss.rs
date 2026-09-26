@@ -13,9 +13,9 @@ use super::{Json, Path, Query, no_content};
 use crate::daemon::Daemon;
 use crate::error::ApiResult;
 use crate::model::{
-    RssArticle, RssArticlesQuery, RssFeed, RssFeedDetail, RssFeedPatch, RssFeedPath,
-    RssFeedRequest, RssFeedsRequest, RssFolderMove, RssFolderRequest, RssReadRequest, RssRule,
-    RssRulePath, RssRuleRename, RssRuleRequest,
+    RssArticle, RssArticlesQuery, RssDryRunArticle, RssFeed, RssFeedDetail, RssFeedPatch,
+    RssFeedPath, RssFeedRequest, RssFeedsRequest, RssFolderMove, RssFolderRequest, RssReadRequest,
+    RssRule, RssRulePath, RssRuleRename, RssRuleRequest,
 };
 
 /// Every feed.
@@ -184,6 +184,17 @@ pub(crate) async fn rename_rss_rule(
     Json(req): Json<RssRuleRename>,
 ) -> ApiResult<Json<RssRule>> {
     Ok(Json(d.rename_rss_rule(&p.name, &req.name).await?))
+}
+
+/// A dry run of a rule as given (one being edited): every article of its
+/// feeds, newest first, with what the rule would do and why its filters
+/// leave an article. Nothing is saved or added, and no history applies.
+#[utoipa::path(post, path = "/rss/dry-run", tag = "rss", request_body = RssRuleRequest, responses((status = 200, body = Vec<RssDryRunArticle>)))]
+pub(crate) async fn dry_run_rss_rule(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<RssRuleRequest>,
+) -> ApiResult<Json<Vec<RssDryRunArticle>>> {
+    Ok(Json(d.rss_rule_dry_run(req).await?))
 }
 
 /// The articles of the rule's feeds its filters take, newest first (a dry
