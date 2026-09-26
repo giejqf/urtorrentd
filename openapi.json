@@ -4180,6 +4180,117 @@
         }
       }
     },
+    "/api/v1/rss/feeds/probe": {
+      "post": {
+        "tags": [
+          "rss"
+        ],
+        "summary": "Look at a feed before adding it: its URL is fetched and read (with the\ncookie jar and the identity's user agent, as refreshes are) and nothing\nis kept.",
+        "operationId": "probe_rss_feed",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RssFeedProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RssFeedProbe"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The feed could not be fetched or read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/rss/feeds/read": {
       "post": {
         "tags": [
@@ -17668,6 +17779,43 @@
         },
         "additionalProperties": false
       },
+      "RssFeedProbe": {
+        "type": "object",
+        "description": "What a feed's URL holds now (nothing is kept).",
+        "required": [
+          "title",
+          "articles"
+        ],
+        "properties": {
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The feed's own title; `null` = it has none."
+          },
+          "articles": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Its articles.",
+            "minimum": 0
+          }
+        }
+      },
+      "RssFeedProbeRequest": {
+        "type": "object",
+        "description": "A feed to look at before adding it.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The feed's URL (http or https)."
+          }
+        },
+        "additionalProperties": false
+      },
       "RssFeedRequest": {
         "type": "object",
         "description": "A new feed.",
@@ -17701,6 +17849,10 @@
             "format": "int64",
             "description": "Seconds between refreshes (at least 60); absent = the setting.",
             "minimum": 0
+          },
+          "skip_existing": {
+            "type": "boolean",
+            "description": "Keep the articles its first refresh finds without running the\ndownload rules on them, so only later articles are downloaded (with\n`rss_auto_download`). Off: they go through the rules like any new\narticle."
           }
         },
         "additionalProperties": false

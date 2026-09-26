@@ -24,7 +24,7 @@ use crate::error::{ApiError, ApiResult, ErrorCode};
 use crate::log::LogTopic;
 use crate::model::{
     RssArticle, RssArticleIds, RssArticlesQuery, RssDryRunArticle, RssFeed, RssFeedDetail,
-    RssFeedIds, RssFeedPatch, RssFeedRequest, RssRule, RssRuleRequest, RssVerdict,
+    RssFeedIds, RssFeedPatch, RssFeedProbe, RssFeedRequest, RssRule, RssRuleRequest, RssVerdict,
 };
 use crate::util::{blocking, now};
 use db::FeedRow;
@@ -44,6 +44,9 @@ pub(crate) struct RssState {
     loading: HashSet<u32>,
     /// Feeds asked to refresh now.
     wanted: HashSet<u32>,
+    /// New feeds whose first refresh keeps its articles without the rules
+    /// (`skip_existing`; until a refresh succeeds).
+    skip_rules: HashSet<u32>,
     /// When each host was last asked.
     hosts: HashMap<String, Instant>,
 }
@@ -238,8 +241,49 @@ impl Daemon {
                 db::insert_feed(tx, &url, name.as_deref(), folder.as_deref(), interval)
             })
             .await?;
-        self.rss().wanted.insert(id);
+        {
+            let mut rss = self.rss();
+            rss.wanted.insert(id);
+            if req.skip_existing {
+                rss.skip_rules.insert(id);
+            }
+        }
         self.rss_feed_view(id).await
+    }
+
+    /// Fetch a feed's URL and read it, keeping nothing (before adding it).
+    pub(crate) async fn probe_rss_feed(&self, url: &str) -> ApiResult<RssFeedProbe> {
+        let url = check_url(url)?;
+        let row = FeedRow {
+            id: 0,
+            url,
+            name: None,
+            folder: None,
+            refresh_interval: None,
+            title: None,
+            last_refresh: None,
+            error: None,
+            etag: None,
+            last_modified: None,
+            articles: 0,
+            unread: 0,
+        };
+        match self.fetch_feed(&row).await {
+            Ok(Some((doc, _, _))) => Ok(RssFeedProbe {
+                title: doc.title,
+                articles: u32::try_from(doc.items.len()).unwrap_or(u32::MAX),
+            }),
+            Ok(None) => Err(ApiError::new(
+                StatusCode::BAD_GATEWAY,
+                ErrorCode::DownloadFailed,
+                "the server answered 304 without a document",
+            )),
+            Err(e) => Err(ApiError::new(
+                StatusCode::BAD_GATEWAY,
+                ErrorCode::DownloadFailed,
+                e,
+            )),
+        }
     }
 
     /// Change a feed.
@@ -294,6 +338,7 @@ impl Daemon {
     pub(crate) async fn delete_rss_feed(&self, id: u32) -> ApiResult<()> {
         let _ops = self.ops.lock().await;
         if self.rss_write(move |tx| db::delete_feed(tx, id)).await? {
+            self.rss().skip_rules.remove(&id);
             Ok(())
         } else {
             Err(no_feed(id))
@@ -693,10 +738,14 @@ impl Daemon {
             }
         };
         match result {
-            Ok(new) if !new.is_empty() && self.settings().rss_auto_download => {
-                self.run_rules(id, Some(new)).await;
+            Ok(new) => {
+                // A new feed added with `skip_existing`: what it has now
+                // stays out of the rules.
+                let skip = self.rss().skip_rules.remove(&id);
+                if !skip && !new.is_empty() && self.settings().rss_auto_download {
+                    self.run_rules(id, Some(new)).await;
+                }
             }
-            Ok(_) => {}
             Err(e) => self
                 .logs
                 .warn(LogTopic::Rss, format!("RSS feed {label}: {e}")),

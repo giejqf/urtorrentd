@@ -145,9 +145,16 @@ articles. With `rss_enabled` the daemon refreshes every feed at its interval
 (`refresh_interval`, else `rss_refresh_interval`); `POST
 /rss/feeds/{id}/refresh` refreshes one now either way, and `POST
 /rss/feeds/refresh` several (`{"feeds": [1, 2]}` or `{"feeds": "all"}`).
+`POST /rss/feeds/probe` fetches and reads a URL without keeping anything
+(its title and how many articles it has; 502 when it cannot be fetched or
+read), to look before adding. A feed added with `"skip_existing": true`
+keeps what its first refresh finds without running the download rules on
+it, so with `rss_auto_download` only later articles are downloaded (the
+flag lasts until a refresh succeeds, in memory).
 
 ```sh
-POST /api/v1/rss/feeds {"url": "https://indexer.example/rss?passkey=...", "folder": "tv", "name": "Indexer"}
+POST /api/v1/rss/feeds/probe {"url": "https://indexer.example/rss?passkey=..."}   # {"title": "Indexer", "articles": 88}
+POST /api/v1/rss/feeds {"url": "https://indexer.example/rss?passkey=...", "folder": "tv", "name": "Indexer", "skip_existing": true}
 GET  /api/v1/rss/feeds/1          # the feed and its articles: title, date, torrent_url, size, read, downloaded
 PUT  /api/v1/rss/rules/Show%201080p {"must_contain": "show 1080p", "must_not_contain": "cam",
      "episode_filter": "2x1-;", "smart_filter": true, "feeds": [1], "add_options": {"category": "tv"}}
@@ -493,6 +500,7 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | GET, PATCH, DELETE | `/rss/feeds/{id}` | A feed with its articles; change it; remove it |
 | POST | `/rss/feeds/{id}/refresh`, `/rss/feeds/{id}/read` | Refresh now; mark articles read (or `unread`) |
 | POST | `/rss/feeds/refresh`, `/rss/feeds/read` | Refresh several feeds now; mark every article of several feeds read (`{"feeds": [1, 2]}` or `"all"`) |
+| POST | `/rss/feeds/probe` | Fetch and read a feed's URL, keeping nothing: its title and article count |
 | GET | `/rss/articles` | Articles across feeds (unread only, one feed) |
 | GET, POST | `/rss/folders` | Folders; add one |
 | POST | `/rss/folders/remove`, `/rss/folders/move` | Remove a folder with its feeds; move one |

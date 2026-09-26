@@ -11,11 +11,11 @@ use axum::http::StatusCode;
 
 use super::{Json, Path, Query, no_content};
 use crate::daemon::Daemon;
-use crate::error::ApiResult;
+use crate::error::{ApiResult, ErrorBody};
 use crate::model::{
     RssArticle, RssArticlesQuery, RssDryRunArticle, RssFeed, RssFeedDetail, RssFeedPatch,
-    RssFeedPath, RssFeedRequest, RssFeedsRequest, RssFolderMove, RssFolderRequest, RssReadRequest,
-    RssRule, RssRulePath, RssRuleRename, RssRuleRequest,
+    RssFeedPath, RssFeedProbe, RssFeedProbeRequest, RssFeedRequest, RssFeedsRequest, RssFolderMove,
+    RssFolderRequest, RssReadRequest, RssRule, RssRulePath, RssRuleRename, RssRuleRequest,
 };
 
 /// Every feed.
@@ -31,6 +31,17 @@ pub(crate) async fn add_rss_feed(
     Json(req): Json<RssFeedRequest>,
 ) -> ApiResult<(StatusCode, Json<RssFeed>)> {
     Ok((StatusCode::CREATED, Json(d.add_rss_feed(req).await?)))
+}
+
+/// Look at a feed before adding it: its URL is fetched and read (with the
+/// cookie jar and the identity's user agent, as refreshes are) and nothing
+/// is kept.
+#[utoipa::path(post, path = "/rss/feeds/probe", tag = "rss", request_body = RssFeedProbeRequest, responses((status = 200, body = RssFeedProbe), (status = 502, description = "The feed could not be fetched or read.", body = ErrorBody)))]
+pub(crate) async fn probe_rss_feed(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<RssFeedProbeRequest>,
+) -> ApiResult<Json<RssFeedProbe>> {
+    Ok(Json(d.probe_rss_feed(&req.url).await?))
 }
 
 /// A feed and its articles, newest first.

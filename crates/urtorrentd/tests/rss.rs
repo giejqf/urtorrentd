@@ -27,6 +27,8 @@ struct Feed {
     torrents: HashMap<u32, Vec<u8>>,
     /// Requests answered 304 (not modified).
     not_modified: u32,
+    /// Answer 503 (the indexer is down).
+    down: bool,
 }
 
 type Shared = Arc<Mutex<Feed>>;
@@ -54,6 +56,9 @@ async fn serve(feed: Shared) -> SocketAddr {
             axum::routing::get(
                 move |State(f): State<Shared>, headers: HeaderMap| async move {
                     let mut f = f.lock().unwrap();
+                    if f.down {
+                        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+                    }
                     let doc = document(&f, addr);
                     let etag = format!("\"{}\"", doc.len());
                     if headers
@@ -508,6 +513,100 @@ async fn feeds_articles_and_download_rules() {
     assert_eq!(left, [broken_id], "the folder's feed went with it");
     let (s, _) = t.call(Method::GET, &path, None).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
+    t.stop().await;
+}
+
+#[tokio::test]
+async fn a_feed_looked_at_first_and_one_added_without_its_backlog() {
+    let feed: Shared = Arc::default();
+    let mut hashes = HashMap::new();
+    for (n, title) in [(1, "Old.One"), (2, "Old.Two"), (3, "New.One")] {
+        let f = fixture(
+            &format!("backlog{n}.bin"),
+            &[(&format!("backlog{n}.bin"), 20_000)],
+            16_384,
+            None,
+            false,
+            110 + n,
+        );
+        hashes.insert(n, f.hash.clone());
+        let mut s = feed.lock().unwrap();
+        s.torrents.insert(n, f.torrent);
+        if n <= 2 {
+            s.items.push((title.to_string(), n));
+        }
+    }
+    let addr = serve(feed.clone()).await;
+    let url = format!("http://{addr}/feed.xml");
+    let t = TestDaemon::start(87, |_| {}).await;
+
+    // Looked at before adding: its title and articles, nothing kept.
+    let (s, v) = t.post("/api/v1/rss/feeds/probe", json!({"url": url})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v, json!({"title": "Test indexer", "articles": 2}));
+    assert_eq!(t.get("/api/v1/rss/feeds").await, json!([]));
+    feed.lock().unwrap().down = true;
+    let (s, v) = t.post("/api/v1/rss/feeds/probe", json!({"url": url})).await;
+    assert_eq!(s, StatusCode::BAD_GATEWAY, "{v}");
+    let (s, _) = t
+        .post("/api/v1/rss/feeds/probe", json!({"url": "ftp://x/feed"}))
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+
+    // Added without its backlog while the indexer is down: the first
+    // refresh fails, and the rule is made meanwhile.
+    let (s, f) = t
+        .post(
+            "/api/v1/rss/feeds",
+            json!({"url": url, "skip_existing": true}),
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{f}");
+    let id = f["id"].as_u64().unwrap();
+    let path = format!("/api/v1/rss/feeds/{id}");
+    wait_get(&t, &path, "the failed refresh", |v| {
+        v["feed"]["error"] != Value::Null
+    })
+    .await;
+    let (s, _) = t
+        .call(
+            Method::PUT,
+            "/api/v1/rss/rules/everything",
+            Some(json!({"must_contain": "", "feeds": [id]})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (s, _) = t
+        .call(
+            Method::PATCH,
+            "/api/v1/settings",
+            Some(json!({"rss_auto_download": true})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    feed.lock().unwrap().down = false;
+    let (s, _) = t.post(&format!("{path}/refresh"), json!({})).await;
+    assert_eq!(s, StatusCode::ACCEPTED);
+    wait_get(&t, &path, "the first good refresh", |v| {
+        v["feed"]["articles"] == 2
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        t.get("/api/v1/torrents").await,
+        json!([]),
+        "the backlog stays"
+    );
+
+    // What comes later goes through the rules.
+    feed.lock().unwrap().items.push(("New.One".to_string(), 3));
+    let (s, _) = t.post(&format!("{path}/refresh"), json!({})).await;
+    assert_eq!(s, StatusCode::ACCEPTED);
+    let v = wait_get(&t, "/api/v1/torrents", "the new article", |v| {
+        v.as_array().unwrap().len() == 1
+    })
+    .await;
+    assert_eq!(v[0]["hash"], hashes[&3].as_str());
     t.stop().await;
 }
 

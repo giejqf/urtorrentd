@@ -2696,6 +2696,30 @@ pub struct RssFeedRequest {
     /// Seconds between refreshes (at least 60); absent = the setting.
     #[serde(default)]
     pub refresh_interval: Option<u64>,
+    /// Keep the articles its first refresh finds without running the
+    /// download rules on them, so only later articles are downloaded (with
+    /// `rss_auto_download`). Off: they go through the rules like any new
+    /// article.
+    #[serde(default)]
+    pub skip_existing: bool,
+}
+
+/// A feed to look at before adding it.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RssFeedProbeRequest {
+    /// The feed's URL (http or https).
+    pub url: String,
+}
+
+/// What a feed's URL holds now (nothing is kept).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RssFeedProbe {
+    /// The feed's own title; `null` = it has none.
+    #[schema(required = true)]
+    pub title: Option<String>,
+    /// Its articles.
+    pub articles: u32,
 }
 
 /// A change to a feed: only the fields present change.

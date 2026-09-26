@@ -338,6 +338,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         ))
         .routes(routes!(rss::refresh_rss_feed))
         .routes(routes!(rss::refresh_rss_feeds))
+        .routes(routes!(rss::probe_rss_feed))
         .routes(routes!(rss::mark_rss_feeds_read))
         .routes(routes!(rss::mark_rss_read))
         .routes(routes!(rss::list_rss_articles))

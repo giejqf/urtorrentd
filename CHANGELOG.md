@@ -134,6 +134,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `POST /rss/dry-run`: a rule as being edited, unsaved, over its feeds'
   articles: each one's verdict (`take`, `taken` by a rule already,
   `filtered`) and why the filters leave it.
+- `POST /rss/feeds/probe`: a feed's URL fetched and read without keeping
+  anything (its title and article count), to look before adding it. A feed
+  added with `skip_existing` keeps its first articles without running the
+  download rules on them, so auto-download takes only what comes later.
 - `GET /fs/file-system`: the file system holding a path (mount point,
   type, size, free space). `GET /fs/directory` entries say whether the
   daemon can write in them and how many entries they hold.
