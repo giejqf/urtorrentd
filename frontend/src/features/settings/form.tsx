@@ -147,6 +147,7 @@ export function SettingsPage<D extends object, F extends keyof D & string>(props
   description: string;
   form: SettingsForm<D, F>;
   children: JSX.Element;
+  action?: JSX.Element;
 }) {
   const [leaving, setLeaving] = createSignal<(() => void) | null>(null);
   const names = () => props.form.diff().names;
@@ -171,6 +172,7 @@ export function SettingsPage<D extends object, F extends keyof D & string>(props
       title={props.title}
       description={props.description}
       saved={!props.form.dirty()}
+      action={props.action}
       overlay={
         <SaveBar
           names={names()}

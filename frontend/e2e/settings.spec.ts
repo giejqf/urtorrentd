@@ -109,8 +109,8 @@ test("leaving with unsaved changes asks first", async ({ signedIn: page, daemon 
 
 test("other sections say they are coming", async ({ signedIn: page, daemon }) => {
   await page.goto(`${daemon.url}/settings/speed`);
-  await page.getByRole("link", { name: "Watch folders" }).click();
-  await expect(page.getByRole("heading", { name: "Watch folders", level: 1 })).toBeVisible();
+  await page.getByRole("link", { name: "Security & API" }).click();
+  await expect(page.getByRole("heading", { name: "Security & API", level: 1 })).toBeVisible();
   await expect(page.getByText("are not built yet")).toBeVisible();
 });
 

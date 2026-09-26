@@ -6,7 +6,7 @@ too (section 1 restates them for the UI). This file adds what is specific to the
 
 Status (2026-09-25): W0, W1 and W2 are done: sign-in, first-run setup, the shell, the torrents
 screen and the add dialog as the mockups have them. W4 has started: Settings › Downloads, Speed, Queue & share limits, Connection,
-BitTorrent and Banned addresses.
+BitTorrent, Banned addresses, Watch folders, RSS and Webhooks.
 Section 10 has the milestones.
 
 ## 1. What this is
@@ -141,7 +141,9 @@ frontend/
                         queue-form.ts, the queue's slots in queue-now.ts, the draggable list
                         in queue-list.tsx, share limits in share.ts), Connection and BitTorrent
                         (connection.tsx, bittorrent.tsx; network-form.ts) and Banned addresses
-                        (banned.tsx; bans.ts); later the other sections,
+                        (banned.tsx; bans.ts), Watch folders (watch-folders.tsx;
+                        watch-form.ts), RSS (rss-settings.tsx; rss-view.ts) and Webhooks
+                        (webhooks.tsx; webhooks-view.ts); later the other sections,
                         security (credentials, API key), webhooks, watch folders
       rss/ log/ stats/
   e2e/
@@ -390,6 +392,9 @@ locally.
 - `Settings_Connection-html.zip`, `Settings_BitTorrent-html.zip`,
   `Settings_Banned_addresses-html.zip`: Settings › Connection (`SettingsConnection.dc.html`),
   BitTorrent (`SettingsBitTorrent.dc.html`) and Banned addresses (`SettingsBans.dc.html`).
+- `Settings_Watch_folders-html.zip`, `Settings_RSS-html.zip`, `Settings_Webhooks-html.zip`:
+  Settings › Watch folders (`SettingsWatch.dc.html`), RSS (`SettingsRss.dc.html`) and
+  Webhooks (`SettingsWebhooks.dc.html`): expanding cards that edit one item each.
 
 They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
@@ -548,6 +553,16 @@ These are the known differences. Resolve each as noted, never by faking.
 | Settings › Banned addresses: Note and Added columns | `banned_ips` / `banned_ip_ranges` are plain lists | Address, kind, Unban. |
 | Settings › Banned addresses: "automatic bans, 30 days", "connections refused today" | The peer log (`source`, `torrent`; added for the UI) holds 10 000 entries since the daemon started; refusals are not counted | "engine bans in the peer log"; no refusals figure. |
 | Settings › Banned addresses: "Keep banned", "ban expired" | An engine ban is on one torrent for as long as it runs; nothing expires on a timer | "Ban everywhere" adds the address to `banned_ips`; unbans are the settings'. "Show older" pages through the log already loaded. |
+| Settings › Watch folders: "scanned 4 s ago", "not mounted", "Picked up recently" | `GET /watch-folders` (added for the UI): each folder's last read and read error, and the last 100 files taken with their outcome | As shown: "read 4s ago", "cannot be read: …", and the pickups with what became of each. |
+| Settings › Watch folders: "3 added this week" | The pickups are kept in memory since the daemon started | Counted from them: "in 7 days" once the daemon has run a week, else "since start". |
+| Settings › Watch folders: "Scan now" | The folders are read every 2 s and a file is taken once still for 3 s | Left out: it would change nothing. The flow says "3 to 5 s". |
+| Settings › Watch folders: category "Created if missing" | A folder's `category` is created by the add | A select of the categories there are (and the folder's own); new ones are made on Downloads. |
+| Settings › RSS: "torrents from rules, 30 days" | Rules keep `last_match` only, not a count | "rules that took something, 30 days". |
+| Settings › RSS: "A dry run is available per rule" | `GET /rss/rules/{name}/matches` exists; the RSS screen is W5 | Not said until the RSS screen offers it. |
+| Settings › RSS: the next hour of polling | The daemon's rule: a feed is due its interval after its last refresh (failed ones too), at once when never refreshed; the per-host delay can push one back a little | Drawn from the draft's interval and each feed's `last_refresh`; off draws nothing but a note. |
+| Settings › Webhooks: URLs in the list | Webhook URLs often carry a token (Discord, Sonarr's API key) | The list shows the origin and "/…"; the full URL only in its edit field (rule 6). |
+| Settings › Webhooks: "Redeliver", "Payload of the last finished" | Deliveries kept their result only; `GET /webhooks/{id}/deliveries/{delivery}` and `.../redeliver` (added for the UI) keep and resend the payload | Redeliver on failed rows (once, same delivery id); the payload of the newest delivery that is not a test, else the test. |
+| Settings › Webhooks: secret "Rotate" | A secret is never shown back | Rotate or Generate fills a new random one, shown until saved so the receiver can be given it; Remove unsigns. |
 | Settings footer: "libtorrent 2.0.11" | `library` in `GET /app` is urtorrent's version | Show the library we run on. |
 | Add dialog: "Watch folder" tab | The `watch_folders` setting (path, subfolders, what happens to an added file, add options) | The tab appends a watch folder with the dialog's options (`PATCH /settings`); the right column lists the files it will pick up. |
 
@@ -719,7 +734,10 @@ Each milestone ends with its end-to-end tests green.
   with the slots they hand out and the queue's order, reordered by dragging, share limits with
   the seeding torrents closest to one), Connection (reachability, listening, interfaces,
   transports), BitTorrent (discovery with the last day's traffic by source, bootstrap routers,
-  encryption, identity) and Banned addresses (the list, bans per day, the peer log) as designed. The other sections show
+  encryption, identity), Banned addresses (the list, bans per day, the peer log), Watch folders
+  (each folder's options and standing, the files picked up), RSS (polling with the next hour
+  planned, rules and feeds) and Webhooks (health, editing, deliveries with redelivery, the
+  payload) as designed. The other sections show
   that they are not built yet.
 - **W5 RSS.** Folders, feeds, articles, and rules with their matches.
 - **W6 Statistics.** Traffic over time, seeding days, rankings, the timeline, places,

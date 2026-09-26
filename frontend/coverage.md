@@ -53,40 +53,31 @@ row whose operation the UI calls.
 
 ## W4: settings, security, logs
 
-| Operation                         | Why the UI does not call it      |
-| --------------------------------- | -------------------------------- |
-| `PUT /api/v1/auth/credentials`    | W4: security settings.           |
-| `POST /api/v1/auth/api-key`       | W4: security settings.           |
-| `DELETE /api/v1/auth/api-key`     | W4: security settings.           |
-| `GET /api/v1/app/cookies`         | W4: the cookie jar for URL adds. |
-| `PUT /api/v1/app/cookies`         | W4: the cookie jar for URL adds. |
-| `GET /api/v1/webhooks`            | W4: webhooks.                    |
-| `POST /api/v1/webhooks`           | W4: webhooks.                    |
-| `GET /api/v1/webhooks/{id}`       | W4: webhooks.                    |
-| `PATCH /api/v1/webhooks/{id}`     | W4: webhooks.                    |
-| `DELETE /api/v1/webhooks/{id}`    | W4: webhooks.                    |
-| `POST /api/v1/webhooks/{id}/test` | W4: webhooks.                    |
-| `POST /api/v1/transfer/bans`      | W4: banning peers.               |
-| `GET /api/v1/log`                 | W4: the log screen.              |
+| Operation                      | Why the UI does not call it                                          |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `PUT /api/v1/auth/credentials` | W4: security settings.                                               |
+| `POST /api/v1/auth/api-key`    | W4: security settings.                                               |
+| `DELETE /api/v1/auth/api-key`  | W4: security settings.                                               |
+| `GET /api/v1/app/cookies`      | W4: the cookie jar for URL adds.                                     |
+| `PUT /api/v1/app/cookies`      | W4: the cookie jar for URL adds.                                     |
+| `GET /api/v1/webhooks/{id}`    | The Webhooks page reads the list: every webhook with its deliveries. |
+| `POST /api/v1/transfer/bans`   | W4: banning peers.                                                   |
+| `GET /api/v1/log`              | W4: the log screen.                                                  |
 
 ## W5: RSS
 
 | Operation                              | Why the UI does not call it |
 | -------------------------------------- | --------------------------- |
 | `GET /api/v1/rss/articles`             | W5: the RSS screen.         |
-| `GET /api/v1/rss/feeds`                | W5: the RSS screen.         |
 | `POST /api/v1/rss/feeds`               | W5: the RSS screen.         |
 | `GET /api/v1/rss/feeds/{id}`           | W5: the RSS screen.         |
 | `PATCH /api/v1/rss/feeds/{id}`         | W5: the RSS screen.         |
 | `DELETE /api/v1/rss/feeds/{id}`        | W5: the RSS screen.         |
 | `POST /api/v1/rss/feeds/{id}/read`     | W5: the RSS screen.         |
-| `POST /api/v1/rss/feeds/{id}/refresh`  | W5: the RSS screen.         |
 | `GET /api/v1/rss/folders`              | W5: the RSS screen.         |
 | `POST /api/v1/rss/folders`             | W5: the RSS screen.         |
 | `POST /api/v1/rss/folders/move`        | W5: the RSS screen.         |
 | `POST /api/v1/rss/folders/remove`      | W5: the RSS screen.         |
-| `GET /api/v1/rss/rules`                | W5: the RSS screen.         |
-| `PUT /api/v1/rss/rules/{name}`         | W5: the RSS screen.         |
 | `DELETE /api/v1/rss/rules/{name}`      | W5: the RSS screen.         |
 | `GET /api/v1/rss/rules/{name}/matches` | W5: the RSS screen.         |
 | `POST /api/v1/rss/rules/{name}/rename` | W5: the RSS screen.         |

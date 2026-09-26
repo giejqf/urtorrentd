@@ -27,6 +27,9 @@ const Queue = lazy(() => import("~/features/settings/queue"));
 const Connection = lazy(() => import("~/features/settings/connection"));
 const BitTorrent = lazy(() => import("~/features/settings/bittorrent"));
 const Banned = lazy(() => import("~/features/settings/banned"));
+const WatchFolders = lazy(() => import("~/features/settings/watch-folders"));
+const RssSettings = lazy(() => import("~/features/settings/rss-settings"));
+const Webhooks = lazy(() => import("~/features/settings/webhooks"));
 const PlannedSettings = lazy(() => import("~/features/settings/planned"));
 
 export const routes = (
@@ -46,6 +49,9 @@ export const routes = (
       <Route path="/settings/connection" component={Connection} />
       <Route path="/settings/bittorrent" component={BitTorrent} />
       <Route path="/settings/bans" component={Banned} />
+      <Route path="/settings/watch-folders" component={WatchFolders} />
+      <Route path="/settings/rss" component={RssSettings} />
+      <Route path="/settings/webhooks" component={Webhooks} />
       <Route path="/settings/:section" component={PlannedSettings} />
       <Route path="*" component={() => <Navigate href="/torrents" />} />
     </Route>

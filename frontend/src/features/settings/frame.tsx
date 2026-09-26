@@ -22,6 +22,8 @@ export function SettingsFrame(props: {
   overlay?: JSX.Element;
   /** Nothing waits to be saved (shown in the bar). */
   saved?: boolean;
+  /** Beside the title: the page's main action ("Add webhook"). */
+  action?: JSX.Element;
 }) {
   const shell = useShell();
   return (
@@ -52,11 +54,14 @@ export function SettingsFrame(props: {
       </div>
       <div class="flex min-h-0 flex-1 flex-col items-center overflow-auto px-4 pt-7 pb-[120px]">
         <div class="flex w-full max-w-[760px] flex-col gap-7">
-          <div class="flex flex-col gap-1">
-            <h1 class="m-0 text-xl font-semibold tracking-[-0.01em]">{props.title}</h1>
-            <Show when={props.description}>
-              <p class="m-0 text-sm text-subtle">{props.description}</p>
-            </Show>
+          <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+            <div class="flex min-w-0 flex-1 basis-[420px] flex-col gap-1">
+              <h1 class="m-0 text-xl font-semibold tracking-[-0.01em]">{props.title}</h1>
+              <Show when={props.description}>
+                <p class="m-0 text-sm text-subtle">{props.description}</p>
+              </Show>
+            </div>
+            {props.action}
           </div>
           {props.children}
         </div>

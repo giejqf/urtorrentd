@@ -68,6 +68,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transports; DHT, PEX and LSD with the last day's peer traffic by how the
   peer was found, bootstrap routers, encryption and identity; bans added
   and lifted at once, what they cover, and the peer log with bans per day.
+- Web UI: Settings › Watch folders, RSS and Webhooks as designed: watch
+  folders with their options, whether each can be read and what they
+  picked up; RSS polling with the next hour it plans, download rules
+  switched on and off, feeds refreshed on demand; webhooks with their
+  health, edited in place, a test, their last deliveries with redelivery,
+  and what the last one sent.
   Screens for statistics, RSS, the log and the other settings sections say
   they are still to come.
 - `cargo xtask web` (the UI's checks and end-to-end tests) and
