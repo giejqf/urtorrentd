@@ -1,6 +1,6 @@
 {
   "name": "@urtorrentd/web",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "private": true,
   "type": "module",
   "description": "The web UI of urtorrentd: a client of the HTTP API (see AGENTS.md).",

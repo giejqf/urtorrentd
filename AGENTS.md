@@ -579,8 +579,9 @@ rows: every item of the checklist is now done or unsupported with its reason. **
 adds search: the list by name, category, tag, tracker host or info-hash prefix, and
 file names across torrents; it requires urtorrent 0.13.4, which closed the last open gap
 (HTTP trackers and web seeds leave from the listen address). **0.13.0** adds first-run
-setup: the first client chooses the credentials (ADR 0007). Unreleased: urtorrent 0.13.5 (the
-queue's slow flag in list rows, a queue position set in one call).
+setup: the first client chooses the credentials (ADR 0007). **0.14.0** adds the web UI
+(`frontend/`, ADR 0008), served by the daemon, with the API it needed; it requires urtorrent
+0.13.5 (the queue's slow flag in list rows, a queue position set in one call).
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
@@ -601,10 +602,11 @@ queue's slow flag in list rows, a queue position set in one call).
   0.6.0 geolocation (country and ASN on live peers and in history; done); 0.7.0 breakdowns,
   tracker reliability, idle-seed report, opt-in scrape for completed-download counts (done).
   Later: data-usage caps (needs wire-level counters upstream), Prometheus `/metrics`.
-- **Web UI** (the plan of 2026-09-24): milestones W0 to W7 in `frontend/AGENTS.md`. W0 (done)
+- **Web UI** (the plan of 2026-09-24): milestones W0 to W7 in `frontend/AGENTS.md`. W0
   changed the daemon too: `--initial-settings` (for offline end-to-end tests), serving the
-  UI, and a CORS allowlist. W1 (sign-in, setup) and W2 (the torrents screen) are done but for
-  previews in the add dialog.
+  UI, and a CORS allowlist. Released in 0.14.0 with W0 to W6 done; W7 has the palette, the
+  light theme and phones, and still lacks the full browser matrix and the 10 000-torrent
+  budgets.
 - **Not planned** (maintainer decision, 2026-09-24): e-mail notifications (webhooks
   notify) and HTTPS in the daemon (TLS belongs to a reverse proxy). What else the
   checklist marks unsupported stays so for the reasons given there.
