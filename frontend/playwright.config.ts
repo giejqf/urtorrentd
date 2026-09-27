@@ -22,6 +22,9 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     viewport,
+    // The theme follows the system by default: the suite runs in the dark
+    // one, and the palette spec checks the light one.
+    colorScheme: "dark",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"], viewport } },

@@ -144,6 +144,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a bar saying since when the figures are while the daemon is away; and a
   card instead of a blank page when a page fails, offering a reload when
   the daemon serves a newer UI.
+- Web UI: the designed ⌘K palette (torrents by the daemon's search, removed
+  ones from their history, files across torrents, commands; ⌘K or / opens
+  it, , opens Settings and ⌥S switches the alternative limits anywhere);
+  the light theme, following the system or chosen from the instance menu
+  and kept with the user's preferences; and the designed phone screens:
+  the list with its status chips and tab bar, one torrent on the whole
+  screen with its actions below, and every other page fitted to the width.
 - `POST /rss/dry-run`: a rule as being edited, unsaved, over its feeds'
   articles: each one's verdict (`take`, `taken` by a rule already,
   `filtered`) and why the filters leave it.

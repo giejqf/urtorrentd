@@ -11,6 +11,7 @@ import { createEffect, createSignal, type JSX, onCleanup, onMount, Show } from "
 import uPlot from "uplot";
 
 import { formatClock, formatShortDate, type TimeOptions } from "~/lib/format";
+import { appliedTheme } from "~/lib/theme";
 
 export interface ChartSeries {
   label: string;
@@ -92,6 +93,8 @@ export function TimeChart(props: {
   const [hover, setHover] = createSignal<{ i: number; x: number; y: number } | null>(null);
 
   const build = () => {
+    // Colours are copied from the tokens: built again for another theme.
+    appliedTheme();
     plot?.destroy();
     setHover(null);
     const grid = cssVar("--grid-line");

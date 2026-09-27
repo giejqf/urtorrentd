@@ -7,9 +7,9 @@
 // Enter opens, Delete asks. Each row's box adds it to the selection or
 // takes it out (shown on hover, and on every row while several are
 // chosen); it is the option's own state, so it is not a control of its own.
-// On a phone (AGENTS.md 6.3) a row takes two lines, the name above its
-// state, progress, rate and size, and every row shows its box, since there
-// is no hover and no modifier key to choose several.
+// On a phone (Torrents — phone) a row takes two lines, the name above its
+// size, ratio and time left, with the rate or progress on the right; its
+// box shows only while several are chosen.
 
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import Check from "lucide-solid/icons/check";
@@ -31,7 +31,7 @@ import {
 import { categoryTone, stateLook, tagSummary, toneBg, type Tone } from "~/lib/torrent";
 import { cn } from "~/lib/utils";
 
-import type { ListItem } from "./view";
+import { type ListItem, phoneMeta } from "./view";
 
 type TorrentSummary = Schemas["TorrentSummary"];
 
@@ -46,9 +46,10 @@ const toneStroke: Record<Tone, string> = {
 };
 
 export const ROW = 40;
-/** A phone's two-line row. */
-export const ROW_COMPACT = 52;
 export const GROUP = 32;
+/** A phone's two-line row and its group headers. */
+export const ROW_COMPACT = 60;
+export const GROUP_COMPACT = 34;
 
 export type SelectMode = "one" | "toggle" | "range";
 
@@ -83,6 +84,8 @@ function Row(props: {
   onToggle: () => void;
 }) {
   const look = () => stateLook(props.t);
+  // A phone shows the box only while several are chosen.
+  const box = () => !props.compact || props.checkboxes;
   return (
     <div
       id={`row-${props.t.hash}`}
@@ -90,36 +93,38 @@ function Row(props: {
       aria-selected={props.selected}
       class={cn(
         "group grid w-full cursor-pointer items-center gap-3 border-b border-row-divider px-4 text-left select-none",
-        props.compact
-          ? "h-[52px] grid-cols-[16px_20px_minmax(0,1fr)]"
-          : "h-10 grid-cols-[16px_20px_minmax(0,1fr)_64px_84px_48px_56px_88px]",
+        !props.compact && "h-10 grid-cols-[16px_20px_minmax(0,1fr)_64px_84px_48px_56px_88px]",
+        props.compact && "h-[60px] py-2",
+        props.compact &&
+          (box()
+            ? "grid-cols-[16px_20px_minmax(0,1fr)_auto]"
+            : "grid-cols-[20px_minmax(0,1fr)_auto]"),
         props.selected ? "bg-accent" : "hover:bg-muted",
         props.focused && "shadow-[inset_2px_0_0_var(--brand)]",
       )}
       onClick={(e) => props.onPointer(e)}
       onContextMenu={(e) => props.onPointer(e)}
     >
-      <span
-        aria-hidden="true"
-        class={cn(
-          "flex size-3.5 items-center justify-center rounded-sm border transition-opacity",
-          props.selected
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-border-strong bg-background",
-          !props.checkboxes &&
-            !props.compact &&
-            !props.selected &&
-            "opacity-0 group-hover:opacity-100",
-        )}
-        onClick={(e) => {
-          e.stopPropagation();
-          props.onToggle();
-        }}
-      >
-        <Show when={props.selected}>
-          <Check size={10} stroke-width={3.5} />
-        </Show>
-      </span>
+      <Show when={box()}>
+        <span
+          aria-hidden="true"
+          class={cn(
+            "flex size-3.5 items-center justify-center rounded-sm border transition-opacity",
+            props.selected
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border-strong bg-background",
+            !props.checkboxes && !props.selected && "opacity-0 group-hover:opacity-100",
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onToggle();
+          }}
+        >
+          <Show when={props.selected}>
+            <Check size={10} stroke-width={3.5} />
+          </Show>
+        </span>
+      </Show>
       <ProgressRing
         progress={props.t.has_metadata ? props.t.progress : 0}
         class={toneStroke[look().tone]}
@@ -150,31 +155,43 @@ function Row(props: {
           </>
         }
       >
-        <div class="flex min-w-0 flex-col gap-0.5">
-          <Name t={props.t} label={look().label} />
-          <div class="flex min-w-0 items-center gap-2 mono text-xs text-muted-foreground">
-            <span class="flex-none">
-              {props.t.complete || !props.t.has_metadata
-                ? look().label
-                : formatPercent(props.t.progress, 1)}
-            </span>
-            <span class="min-w-0 truncate">
-              <Show
-                when={props.t.download_rate > 0 || props.t.upload_rate > 0}
-                fallback={props.t.complete || !props.t.has_metadata ? "" : look().label}
-              >
-                <Rate t={props.t} />
-              </Show>
-            </span>
-            <Show when={!props.t.complete && props.t.eta !== null}>
-              <span class="flex-none">{formatEta(props.t.eta)}</span>
-            </Show>
-            <span class="flex-1" />
-            <span class="flex-none">{props.t.has_metadata ? formatBytes(props.t.size) : dash}</span>
-          </div>
-        </div>
+        <PhoneCells t={props.t} label={look().label} />
       </Show>
     </div>
+  );
+}
+
+/** A phone's row (Torrents — phone): the name over its size, ratio and time
+ * left; on the right the rate, or how far it is. */
+function PhoneCells(props: { t: TorrentSummary; label: string }) {
+  const moving = () => props.t.download_rate > 0 || props.t.upload_rate > 0;
+  return (
+    <>
+      <div class="flex min-w-0 flex-col gap-[3px]">
+        <span class="truncate text-[14px] font-medium">
+          {props.t.name}
+          <span class="sr-only">, {props.label}</span>
+        </span>
+        <span class="truncate mono text-sm text-subtle">{phoneMeta(props.t, props.label)}</span>
+      </div>
+      <div class="flex flex-col items-end gap-[3px] mono">
+        <Show
+          when={moving()}
+          fallback={
+            <span class="text-[13px] text-subtle">
+              {props.t.has_metadata ? formatPercent(props.t.progress) : "0%"}
+            </span>
+          }
+        >
+          <span class="text-[13px] whitespace-nowrap">
+            <Rate t={props.t} />
+          </span>
+          <Show when={!props.t.complete}>
+            <span class="text-sm text-subtle">{formatPercent(props.t.progress)}</span>
+          </Show>
+        </Show>
+      </div>
+    </>
   );
 }
 
@@ -198,11 +215,14 @@ function Name(props: { t: TorrentSummary; label: string }) {
   );
 }
 
-function GroupHeader(props: { item: Extract<ListItem, { kind: "group" }> }) {
+function GroupHeader(props: { item: Extract<ListItem, { kind: "group" }>; compact: boolean }) {
   return (
     <div
       aria-hidden="true"
-      class="flex h-8 items-center gap-2 border-y border-divider bg-card px-4 text-sm font-medium text-foreground-2"
+      class={cn(
+        "flex items-center gap-2 border-y border-divider bg-card px-4 text-sm font-medium text-foreground-2",
+        props.compact ? "h-[34px]" : "h-8",
+      )}
     >
       <StatusDot class={toneBg[props.item.group.tone]} />
       {props.item.group.label}
@@ -240,7 +260,13 @@ export function TorrentList(props: {
     },
     getScrollElement: () => scroller ?? null,
     estimateSize: (i) =>
-      props.items[i]?.kind === "group" ? GROUP : props.compact ? ROW_COMPACT : ROW,
+      props.items[i]?.kind === "group"
+        ? props.compact
+          ? GROUP_COMPACT
+          : GROUP
+        : props.compact
+          ? ROW_COMPACT
+          : ROW,
     getItemKey: (i) => {
       const item = props.items[i];
       if (!item) return i;
@@ -302,7 +328,7 @@ export function TorrentList(props: {
                         return it?.kind === "group" ? it : null;
                       })()}
                     >
-                      {(g) => <GroupHeader item={g()} />}
+                      {(g) => <GroupHeader item={g()} compact={props.compact} />}
                     </Match>
                     <Match
                       when={(() => {

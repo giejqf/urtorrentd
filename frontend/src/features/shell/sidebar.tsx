@@ -6,7 +6,7 @@
 // tags are managed there too, organize.tsx), and the session's transfer
 // state.
 
-import { A, useLocation, useNavigate, useSearchParams } from "@solidjs/router";
+import { A, useLocation, useSearchParams } from "@solidjs/router";
 import ChartLine from "lucide-solid/icons/chart-line";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import LogOut from "lucide-solid/icons/log-out";
@@ -15,6 +15,7 @@ import Power from "lucide-solid/icons/power";
 import Rss from "lucide-solid/icons/rss";
 import Search from "lucide-solid/icons/search";
 import Settings from "lucide-solid/icons/settings";
+import SunMoon from "lucide-solid/icons/sun-moon";
 import TextAlignStart from "lucide-solid/icons/text-align-start";
 import {
   type Component,
@@ -23,8 +24,6 @@ import {
   For,
   lazy,
   Match,
-  onCleanup,
-  onMount,
   Show,
   Suspense,
   Switch,
@@ -50,7 +49,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
@@ -64,9 +68,11 @@ import {
   trackerLabel,
 } from "~/features/torrents/view";
 import { formatCount, formatBytes, formatRate } from "~/lib/format";
+import { isThemeChoice, setThemeChoice, THEME_CHOICES, themeChoice } from "~/lib/theme";
 import { cn } from "~/lib/utils";
 
 import { useLive } from "./live";
+import { useShell } from "./protected";
 import { CategorySection, TagSection } from "./organize";
 import { FilterItem, Section } from "./sidebar-items";
 
@@ -88,7 +94,7 @@ export const STATUS_LABELS: Record<StatusFilter, string> = {
   queued: "Queued",
 };
 
-const STATUS_DOTS: Record<StatusFilter, string> = {
+export const STATUS_DOTS: Record<StatusFilter, string> = {
   all: "bg-foreground",
   downloading: "bg-brand",
   seeding: "bg-ok",
@@ -216,6 +222,22 @@ export function InstanceMenu() {
             </span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <SunMoon size={14} />
+              Theme
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent class="min-w-40">
+              <DropdownMenuRadioGroup
+                value={themeChoice()}
+                onChange={(v) => isThemeChoice(v) && setThemeChoice(v)}
+              >
+                <For each={THEME_CHOICES}>
+                  {(c) => <DropdownMenuRadioItem value={c.value}>{c.label}</DropdownMenuRadioItem>}
+                </For>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           <DropdownMenuItem onSelect={() => void auth.signOut()}>
             <LogOut size={14} />
             Sign out
@@ -249,65 +271,24 @@ export function InstanceMenu() {
   );
 }
 
-function SearchBox(props: { onNavigate?: () => void }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [params, setParams] = useSearchParams<FilterParams>();
-  const [text, setText] = createSignal(params.q ?? "");
-  let input: HTMLInputElement | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  const apply = (q: string) => {
-    const value = q.trim() === "" ? undefined : q.trim();
-    if (location.pathname.startsWith("/torrents")) setParams({ q: value }, { replace: true });
-    else navigate(value ? `/torrents?q=${encodeURIComponent(value)}` : "/torrents");
-  };
-  const onKey = (e: KeyboardEvent) => {
-    const typing =
-      e.target instanceof HTMLElement &&
-      (e.target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName));
-    if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || (e.key === "/" && !typing)) {
-      e.preventDefault();
-      input?.focus();
-      input?.select();
-    }
-  };
-  onMount(() => document.addEventListener("keydown", onKey));
-  onCleanup(() => {
-    document.removeEventListener("keydown", onKey);
-    clearTimeout(timer);
-  });
-
+/** The design's search: a button that opens the command palette (⌘K). */
+function SearchButton(props: { onNavigate?: () => void }) {
+  const shell = useShell();
   return (
-    <label class="flex h-[30px] items-center gap-2 rounded-md border border-border bg-background px-2 text-muted-foreground focus-within:border-ring focus-within:shadow-focus">
-      <Search size={14} class="flex-none" />
-      <input
-        ref={input}
-        type="search"
-        placeholder="Search"
-        aria-label="Search torrents"
-        class="min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
-        value={text()}
-        onInput={(e) => {
-          setText(e.currentTarget.value);
-          clearTimeout(timer);
-          timer = setTimeout(() => apply(text()), 250);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            clearTimeout(timer);
-            apply(text());
-            props.onNavigate?.();
-          } else if (e.key === "Escape") {
-            setText("");
-            clearTimeout(timer);
-            apply("");
-            e.currentTarget.blur();
-          }
-        }}
-      />
+    <button
+      type="button"
+      class="flex h-[30px] w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-2 text-base font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+      onClick={() => {
+        props.onNavigate?.();
+        shell.openPalette();
+      }}
+    >
+      <span class="flex items-center gap-2">
+        <Search size={14} class="flex-none" />
+        Search
+      </span>
       <Kbd>{isMac() ? "⌘K" : "Ctrl K"}</Kbd>
-    </label>
+    </button>
   );
 }
 
@@ -429,7 +410,7 @@ export function Sidebar(props: { class?: string; onNavigate?: () => void }) {
         <ConnectionDot />
       </div>
       <div class="flex-none px-2 pb-2">
-        <SearchBox onNavigate={props.onNavigate} />
+        <SearchButton onNavigate={props.onNavigate} />
       </div>
       <nav aria-label="Main" class="flex flex-none flex-col gap-px px-2">
         <NavItem

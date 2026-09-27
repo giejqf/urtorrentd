@@ -200,12 +200,17 @@ test("filters count as the daemon's do; search, keys and bulk actions", async ({
   await expect(list.getByRole("option", { name: /Big Buck Bunny/ })).toBeVisible();
   await status.getByRole("button", { name: /^All\s*3$/ }).click();
 
-  // Search is the daemon's: words match the name, any order.
+  // Search is the daemon's: words match the name, any order. The palette
+  // finds them and shows them in the list.
   await page.keyboard.press("/");
-  await page.keyboard.type("iso debian");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("combobox").fill("iso debian");
+  const results = palette.getByRole("listbox", { name: "Results" });
+  await expect(results.getByRole("option", { name: /^debian/ })).toBeVisible();
+  await results.getByRole("option", { name: /^Show the 1 in the list/ }).click();
   await expect(list.getByRole("option")).toHaveCount(1);
-  await expect(list.getByRole("option", { name: /debian/ })).toBeVisible();
-  await page.getByRole("searchbox", { name: "Search torrents" }).press("Escape");
+  await expect(page.getByRole("heading", { name: "All torrents · “iso debian”" })).toBeVisible();
+  await page.getByRole("button", { name: "Clear the search" }).click();
   await expect(list.getByRole("option")).toHaveCount(3);
 
   // Keyboard: pick two, stop them with Space, delete them.

@@ -18,6 +18,7 @@ import { createStore } from "solid-js/store";
 import type { Schemas } from "~/api/client";
 import { applySync, type Connection, connectLive, emptyLive, type LiveState } from "~/api/live";
 import { useAuth } from "~/features/auth/auth";
+import { loadThemeChoice } from "~/lib/theme";
 
 interface Live {
   state: LiveState;
@@ -50,6 +51,8 @@ export const LiveProvider: ParentComponent = (props) => {
     },
   });
   onCleanup(() => stream.close());
+  // Signed in: the user's theme, as the daemon keeps it.
+  void loadThemeChoice();
   const torrents = createMemo(() => Object.values(state.torrents));
   const ready = () => state.rev !== null;
   return (

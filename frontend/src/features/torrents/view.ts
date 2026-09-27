@@ -6,6 +6,7 @@
 // live store in single passes. Pure functions, tested without a DOM.
 
 import type { Schemas } from "~/api/client";
+import { dash, formatBytes, formatCount, formatEta, formatRatio } from "~/lib/format";
 import { filterMatches, GROUPS, type Group, stateLook } from "~/lib/torrent";
 
 type TorrentSummary = Schemas["TorrentSummary"];
@@ -211,11 +212,13 @@ export function listItems(sorted: readonly TorrentSummary[], group: boolean): Li
 export function viewTitle(
   f: Pick<ListFilter, "status" | "category" | "tag" | "tracker">,
   labels: Record<StatusFilter, string>,
+  search = "",
 ): string {
   const parts = [f.status === "all" ? "All torrents" : labels[f.status]];
   if (f.category !== null) parts.push(f.category === "" ? "No category" : f.category);
   if (f.tag !== null) parts.push(`#${f.tag}`);
   if (f.tracker !== null) parts.push(trackerLabel(f.tracker));
+  if (search !== "") parts.push(`“${search}”`);
   return parts.join(" · ");
 }
 
@@ -223,4 +226,20 @@ export function trackerLabel(key: string): string {
   if (key === NO_TRACKER) return "No tracker";
   if (key === TRACKER_DOWN) return "Not working";
   return key;
+}
+
+/** "3.7 GB · ratio 0.31 · 3m 12s": what a phone's row says under the name. */
+export function phoneMeta(
+  t: Pick<
+    Schemas["TorrentSummary"],
+    "has_metadata" | "size" | "ratio" | "complete" | "eta" | "state" | "peers" | "error_kind"
+  >,
+  label: string,
+): string {
+  const parts = [t.has_metadata ? formatBytes(t.size) : dash];
+  if (t.ratio !== null) parts.push(`ratio ${formatRatio(t.ratio)}`);
+  if (t.state === "metadata") parts.push(`${formatCount(t.peers)} peers`);
+  else if (t.state === "error") parts.push(label.toLowerCase());
+  else if (!t.complete && t.eta !== null) parts.push(formatEta(t.eta));
+  return parts.join(" · ");
 }

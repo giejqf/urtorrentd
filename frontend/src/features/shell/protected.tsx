@@ -24,17 +24,29 @@ import { Button } from "~/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "~/components/ui/sheet";
 import { useAuth } from "~/features/auth/auth";
 import { SettingsNav } from "~/features/settings/nav";
+import { AddDialog } from "~/features/torrents/add/add-dialog";
+import { useNarrow } from "~/lib/use-wide";
 
 import { ConnectionBanner } from "./connection-banner";
 import { LiveProvider } from "./live";
+import { CommandPalette } from "./palette";
+import { TabBar } from "./tab-bar";
 import { Sidebar } from "./sidebar";
 
 interface Shell {
   /** Open the sidebar (a sheet on narrow screens). */
   openNav: () => void;
+  /** Open the add dialog, from any page. */
+  openAdd: () => void;
+  /** Open the command palette (⌘K). */
+  openPalette: () => void;
 }
 
-const ShellContext = createContext<Shell>({ openNav: () => undefined });
+const ShellContext = createContext<Shell>({
+  openNav: () => undefined,
+  openAdd: () => undefined,
+  openPalette: () => undefined,
+});
 
 export function useShell(): Shell {
   return useContext(ShellContext);
@@ -66,11 +78,21 @@ function Unreachable() {
 
 const ShellLayout: ParentComponent = (props) => {
   const [navOpen, setNavOpen] = createSignal(false);
+  const [adding, setAdding] = createSignal(false);
+  const [palette, setPalette] = createSignal(false);
   const location = useLocation();
   const inSettings = () => location.pathname.startsWith("/settings");
+  const narrow = useNarrow();
+  // A phone shows one torrent full screen, with its own actions below.
+  const detailOpen = () => /^\/torrents\/[0-9a-f]{40}/.test(location.pathname);
+  const shell: Shell = {
+    openNav: () => setNavOpen(true),
+    openAdd: () => setAdding(true),
+    openPalette: () => setPalette(true),
+  };
   return (
-    <ShellContext.Provider value={{ openNav: () => setNavOpen(true) }}>
-      <div class="flex h-full overflow-hidden bg-background">
+    <ShellContext.Provider value={shell}>
+      <div class="flex h-full overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
         <Show
           when={inSettings()}
           fallback={<Sidebar class="hidden w-56 flex-none border-r border-divider lg:flex" />}
@@ -90,13 +112,19 @@ const ShellLayout: ParentComponent = (props) => {
         </Sheet>
         <div class="flex min-w-0 flex-1 flex-col">
           <ConnectionBanner />
-          <div class="flex min-h-0 min-w-0 flex-1">
+          {/* Focusable, so focus has a place to go when a dialog closes. */}
+          <div id="content" tabindex="-1" class="flex min-h-0 min-w-0 flex-1 outline-none">
             <ErrorBoundary fallback={(error, reset) => <PageError error={error} reset={reset} />}>
               {props.children}
             </ErrorBoundary>
           </div>
+          <Show when={narrow() && !detailOpen()}>
+            <TabBar />
+          </Show>
         </div>
       </div>
+      <AddDialog open={adding()} onClose={() => setAdding(false)} />
+      <CommandPalette open={palette()} onOpenChange={setPalette} />
     </ShellContext.Provider>
   );
 };

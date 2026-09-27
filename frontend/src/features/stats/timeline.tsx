@@ -261,6 +261,7 @@ function Lanes(props: {
   const height = () => TOP + list().length * ROW + 6;
   return (
     <Card
+      class="max-sm:hidden"
       title="Lifecycles"
       sub="One lane per torrent that changed in the range: its state between events, the events on the lane"
       actions={

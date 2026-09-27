@@ -11,6 +11,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "@solidjs/r
 import { createQuery, keepPreviousData } from "@tanstack/solid-query";
 import LayoutGrid from "lucide-solid/icons/layout-grid";
 import ListFilterIcon from "lucide-solid/icons/list-filter";
+import X from "lucide-solid/icons/x";
 import Plus from "lucide-solid/icons/plus";
 import { createEffect, createMemo, createSignal, For, Match, on, Show, Switch } from "solid-js";
 
@@ -34,6 +35,8 @@ import { Sheet, SheetContent, SheetTitle } from "~/components/ui/sheet";
 import { Skeleton } from "~/components/ui/skeleton";
 import { useLive } from "~/features/shell/live";
 import { PageHeader } from "~/features/shell/page-header";
+import { useAuth } from "~/features/auth/auth";
+import { useShell } from "~/features/shell/protected";
 import { type FilterParams, STATUS_LABELS } from "~/features/shell/sidebar";
 import { formatCount } from "~/lib/format";
 import { FILTERS } from "~/lib/torrent";
@@ -42,16 +45,17 @@ import { useNarrow, useWide } from "~/lib/use-wide";
 import { cn } from "~/lib/utils";
 
 import { actions, copy, isRunning } from "./actions";
-import { AddDialog } from "./add/add-dialog";
 import { BulkPanel, SelectionBar } from "./bulk-panel";
 import { DetailPanel } from "./detail-panel";
 import { RowMenu } from "./row-menu";
 import { TorrentDialogsProvider, useTorrentDialogs } from "./torrent-dialogs";
+import { StatusChips, TransferStrip } from "./phone-parts";
 import { type SelectMode, TorrentList } from "./torrent-list";
 import {
   DEFAULT_DISPLAY,
   type Display,
   type ListFilter,
+  countAll,
   listItems,
   matches,
   SORT_KEYS,
@@ -132,7 +136,8 @@ function Screen() {
   const wide = useWide();
   const narrow = useNarrow();
   const [display, setDisplay] = usePref("torrents.display", DEFAULT_DISPLAY, isDisplay);
-  const [adding, setAdding] = createSignal(false);
+  const shell = useShell();
+  const auth = useAuth();
   const [prompt, setPrompt] = createSignal<"category" | "tag" | null>(null);
 
   // The daemon's search: which info-hashes match (AGENTS.md 4.4).
@@ -269,8 +274,8 @@ function Screen() {
   const onKey = (e: KeyboardEvent) => {
     const key = e.key;
     const mod = e.metaKey || e.ctrlKey;
-    if (key === "ArrowDown" || key === "j") move(1, e.shiftKey);
-    else if (key === "ArrowUp" || key === "k") move(-1, e.shiftKey);
+    if (key === "ArrowDown" || (key === "j" && !mod)) move(1, e.shiftKey);
+    else if (key === "ArrowUp" || (key === "k" && !mod)) move(-1, e.shiftKey);
     else if (key === "Home") move(-order().length, e.shiftKey);
     else if (key === "End") move(order().length, e.shiftKey);
     else if (key === " " || (key === "s" && !mod)) toggleRun();
@@ -288,7 +293,75 @@ function Screen() {
   };
 
   const labels = STATUS_LABELS as Record<StatusFilter, string>;
-  const title = () => viewTitle(filter(), labels);
+  const title = () => viewTitle(filter(), labels, q());
+
+  const clearFilters = () =>
+    setSearch({
+      status: undefined,
+      category: undefined,
+      tag: undefined,
+      tracker: undefined,
+      q: undefined,
+    });
+  const filterItems = () => (
+    <>
+      <DropdownMenuGroup>
+        <DropdownMenuGroupLabel>Status</DropdownMenuGroupLabel>
+        <DropdownMenuRadioGroup
+          value={filter().status}
+          onChange={(v) => setSearch({ status: v === "all" ? undefined : v })}
+        >
+          <For each={[...FILTERS, "queued" as const]}>
+            {(s) => <DropdownMenuRadioItem value={s}>{labels[s]}</DropdownMenuRadioItem>}
+          </For>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem disabled={!filtered()} onSelect={clearFilters}>
+        Clear every filter
+      </DropdownMenuItem>
+    </>
+  );
+  const displayItems = () => (
+    <>
+      <DropdownMenuCheckboxItem
+        checked={display().group}
+        onChange={(group) => setDisplay({ ...display(), group })}
+      >
+        Group by state
+      </DropdownMenuCheckboxItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
+        <DropdownMenuGroupLabel>Sort by</DropdownMenuGroupLabel>
+        <DropdownMenuRadioGroup
+          value={display().sort}
+          onChange={(sort) =>
+            setDisplay({
+              ...display(),
+              sort: sort as SortKey,
+              reverse: SORT_KEYS.find((k) => k.key === sort)?.reverse ?? false,
+            })
+          }
+        >
+          <For each={SORT_KEYS}>
+            {(k) => <DropdownMenuRadioItem value={k.key}>{k.label}</DropdownMenuRadioItem>}
+          </For>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuCheckboxItem
+        checked={display().reverse}
+        onChange={(reverse) => setDisplay({ ...display(), reverse })}
+      >
+        Descending
+      </DropdownMenuCheckboxItem>
+    </>
+  );
+  const instance = () => {
+    const a = auth.state();
+    return a.kind === "signed-in" ? (a.app.instance_name ?? "urtorrentd") : "urtorrentd";
+  };
+  const counts = createMemo(() => countAll(live.torrents()));
 
   // The detail stays mounted (hidden) while several are chosen, so its
   // unsaved options outlast the multi-selection.
@@ -320,89 +393,91 @@ function Screen() {
 
   return (
     <div class="flex min-w-0 flex-1">
-      <main class="relative flex min-w-0 flex-1 flex-col border-r border-divider">
+      <main
+        class={cn(
+          "relative flex min-w-0 flex-1 flex-col border-r border-divider max-sm:border-r-0",
+          narrow() && focused() && "hidden",
+        )}
+      >
         <PageHeader
           title={title()}
-          count={<span class="mono text-xs text-subtle">{formatCount(visible().length)}</span>}
+          sub={`${instance()} · ${formatCount(visible().length)} torrents`}
+          flush
+          count={
+            <>
+              <span class="mono text-xs text-subtle">{formatCount(visible().length)}</span>
+              <Show when={q() !== ""}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="size-6 text-subtle"
+                  aria-label="Clear the search"
+                  onClick={() => setSearch({ q: undefined })}
+                >
+                  <X />
+                </Button>
+              </Show>
+            </>
+          }
         >
-          <DropdownMenu>
-            <DropdownMenuTrigger as={Button} variant="outline" size="sm">
-              <ListFilterIcon />
-              <span class="max-sm:sr-only">Filter</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent class="min-w-52">
-              <DropdownMenuGroup>
-                <DropdownMenuGroupLabel>Status</DropdownMenuGroupLabel>
-                <DropdownMenuRadioGroup
-                  value={filter().status}
-                  onChange={(v) => setSearch({ status: v === "all" ? undefined : v })}
-                >
-                  <For each={[...FILTERS, "queued" as const]}>
-                    {(s) => <DropdownMenuRadioItem value={s}>{labels[s]}</DropdownMenuRadioItem>}
-                  </For>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                disabled={!filtered()}
-                onSelect={() =>
-                  setSearch({
-                    status: undefined,
-                    category: undefined,
-                    tag: undefined,
-                    tracker: undefined,
-                    q: undefined,
-                  })
-                }
+          <Show when={narrow()}>
+            <Show when={q() !== ""}>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="size-11"
+                aria-label="Clear the search"
+                onClick={() => setSearch({ q: undefined })}
               >
-                Clear every filter
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger as={Button} variant="outline" size="sm">
-              <LayoutGrid />
-              <span class="max-sm:sr-only">Display</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent class="min-w-52">
-              <DropdownMenuCheckboxItem
-                checked={display().group}
-                onChange={(group) => setDisplay({ ...display(), group })}
+                <X class="size-5" />
+              </Button>
+            </Show>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                as={Button}
+                variant="ghost"
+                size="icon"
+                class="size-11"
+                aria-label="Filter and display"
               >
-                Group by state
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuGroupLabel>Sort by</DropdownMenuGroupLabel>
-                <DropdownMenuRadioGroup
-                  value={display().sort}
-                  onChange={(sort) =>
-                    setDisplay({
-                      ...display(),
-                      sort: sort as SortKey,
-                      reverse: SORT_KEYS.find((k) => k.key === sort)?.reverse ?? false,
-                    })
-                  }
-                >
-                  <For each={SORT_KEYS}>
-                    {(k) => <DropdownMenuRadioItem value={k.key}>{k.label}</DropdownMenuRadioItem>}
-                  </For>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={display().reverse}
-                onChange={(reverse) => setDisplay({ ...display(), reverse })}
-              >
-                Descending
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button size="sm" onClick={() => setAdding(true)}>
-            <Plus class="stroke-[2.5]" />
-            Add
-          </Button>
+                <ListFilterIcon class="size-5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent class="min-w-56">
+                {filterItems()}
+                <DropdownMenuSeparator />
+                {displayItems()}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </Show>
+          <Show when={!narrow()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger as={Button} variant="outline" size="sm">
+                <ListFilterIcon />
+                Filter
+              </DropdownMenuTrigger>
+              <DropdownMenuContent class="min-w-52">{filterItems()}</DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger as={Button} variant="outline" size="sm">
+                <LayoutGrid />
+                Display
+              </DropdownMenuTrigger>
+              <DropdownMenuContent class="min-w-52">{displayItems()}</DropdownMenuContent>
+            </DropdownMenu>
+            <Button size="sm" onClick={() => shell.openAdd()}>
+              <Plus class="stroke-[2.5]" />
+              Add
+            </Button>
+          </Show>
         </PageHeader>
+        <Show when={narrow()}>
+          <StatusChips
+            status={filter().status}
+            counts={counts().status}
+            labels={labels}
+            onPick={(st) => setSearch({ status: st === "all" ? undefined : st })}
+          />
+        </Show>
 
         <ContextMenu>
           <ContextMenuTrigger class="flex min-h-0 flex-1 flex-col">
@@ -427,7 +502,7 @@ function Screen() {
                         <EmptyState
                           title="No torrents yet"
                           text="Add a magnet link or a .torrent file to start."
-                          action={() => setAdding(true)}
+                          action={() => shell.openAdd()}
                           label="Add torrents"
                         />
                       }
@@ -435,15 +510,7 @@ function Screen() {
                       <EmptyState
                         title="No torrents match"
                         text="No torrent passes the filters and search in use."
-                        action={() =>
-                          setSearch({
-                            status: undefined,
-                            category: undefined,
-                            tag: undefined,
-                            tracker: undefined,
-                            q: undefined,
-                          })
-                        }
+                        action={clearFilters}
                         label="Clear every filter"
                       />
                     </Show>
@@ -459,7 +526,21 @@ function Screen() {
         <Show when={selection().size > 1}>
           <SelectionBar hashes={chosen()} onClear={clear} />
         </Show>
+        <Show when={narrow()}>
+          <TransferStrip />
+        </Show>
       </main>
+      <Show when={narrow() && focused()}>
+        {(t) => (
+          <DetailPanel
+            torrent={t()}
+            onDelete={dialogs.remove}
+            phone
+            onBack={() => open(null)}
+            class="min-w-0 flex-1"
+          />
+        )}
+      </Show>
 
       <Show when={wide()}>
         <aside class="flex w-[420px] flex-none flex-col" aria-label="Torrent details">
@@ -467,7 +548,7 @@ function Screen() {
         </aside>
       </Show>
       <Sheet
-        open={!wide() && focused() !== null}
+        open={!wide() && !narrow() && focused() !== null}
         onOpenChange={(o) => {
           if (!o) open(null);
         }}
@@ -478,7 +559,6 @@ function Screen() {
         </SheetContent>
       </Sheet>
 
-      <AddDialog open={adding()} onClose={() => setAdding(false)} />
       <PromptDialog
         open={prompt() === "category"}
         title="New category"

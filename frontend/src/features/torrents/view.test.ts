@@ -14,6 +14,7 @@ import {
   sortTorrents,
   TRACKER_DOWN,
   trackerKeys,
+  phoneMeta,
   viewTitle,
 } from "./view";
 
@@ -153,11 +154,39 @@ describe("order and groups", () => {
   it("titles the view", () => {
     const labels = { seeding: "Seeding" } as Parameters<typeof viewTitle>[1];
     expect(viewTitle(NO_FILTER, labels)).toBe("All torrents");
+    expect(viewTitle(NO_FILTER, labels, "deb")).toBe("All torrents · “deb”");
     expect(viewTitle({ ...NO_FILTER, status: "seeding", category: "linux" }, labels)).toBe(
       "Seeding · linux",
     );
     expect(viewTitle({ ...NO_FILTER, tag: "iso", tracker: NO_TRACKER }, labels)).toBe(
       "All torrents · #iso · No tracker",
+    );
+  });
+});
+
+describe("phoneMeta", () => {
+  const base = {
+    has_metadata: true,
+    size: 3_700_000_000,
+    ratio: 0.31,
+    complete: false,
+    eta: 192,
+    state: "downloading",
+    peers: 24,
+    error_kind: null,
+  } as const;
+  it("says size, ratio and time left", () => {
+    expect(phoneMeta(base, "Downloading")).toBe("3.7 GB · ratio 0.31 · 3m 12s");
+    expect(phoneMeta({ ...base, complete: true, ratio: 4.21 }, "Seeding")).toBe(
+      "3.7 GB · ratio 4.21",
+    );
+  });
+  it("says peers while fetching metadata, and the error", () => {
+    expect(
+      phoneMeta({ ...base, has_metadata: false, ratio: null, state: "metadata", peers: 3 }, "x"),
+    ).toBe("— · 3 peers");
+    expect(phoneMeta({ ...base, state: "error" }, "Missing files")).toBe(
+      "3.7 GB · ratio 0.31 · missing files",
     );
   });
 });

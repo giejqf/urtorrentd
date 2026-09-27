@@ -12,8 +12,9 @@ Engine, About) and the Log screen. W6 has every Stats report: Overview, Trackers
 Idle seeds and Timeline. W3 has the detail panel's tabs (Files, Peers, Trackers, History,
 Options), several torrents at once (the panel, the selection bar, the context menu and its
 keys), the move, remove, share limits, folder and piece hashes dialogs, and categories and tags
-managed from the sidebar. RSS rules are edited in the designed rule dialog. What has no design
-yet is in 6.5. Section 10 has the milestones.
+managed from the sidebar. RSS rules are edited in the designed rule dialog. W7 has the ⌘K
+palette, the light theme and the phone screens as designed. What has no design yet is in 6.5.
+Section 10 has the milestones.
 
 ## 1. What this is
 
@@ -88,7 +89,6 @@ manager is npm, as in `sdk/typescript`, and the runtime is Node 22, as in CI.
 | `@tanstack/solid-virtual` | The torrent list and other long lists. |
 | `openapi-typescript`, `openapi-fetch` | Types from `openapi.json` and the typed client, at the same versions as `sdk/typescript`. |
 | `solid-sonner` | Toasts (the library shadcn uses). |
-| `cmdk-solid` | The ⌘K palette (solid-ui's command component). |
 | `@fontsource-variable/geist`, `@fontsource-variable/geist-mono` | The design's fonts, bundled. |
 | `uplot` | Time-series charts for statistics, added in the statistics milestone. |
 | dev: `vitest` | Unit tests. |
@@ -127,14 +127,18 @@ frontend/
       format.ts         bytes, rates, durations, times, ratios: the only place units turn into text and back
       torrent.ts        state → label, colour and group; filters; tracker hosts
       prefs.ts          UI preferences in /client-data (4.2)
+      theme.ts          the theme: dark, light or the system's (6.2)
     components/
       ui/               shadcn primitives from solid-ui, restyled to the tokens; our code now
       *.tsx             shared pieces: progress ring, status dot, kbd, empty state, the folder
                         dialog behind every Browse (folder-picker.tsx; folder-paths.ts)
     features/           one folder per area, following the API's groups
       auth/             the session (auth.tsx), first-run setup, sign-in
-      shell/            the signed-in gate (protected.tsx), the live store (live.tsx), sidebar,
-                        navigation, transfer footer, instance menu
+      shell/            the signed-in gate and the page frame (protected.tsx), the live store
+                        (live.tsx), sidebar (sidebar.tsx; its rows in sidebar-items.tsx,
+                        categories and tags in organize.tsx), navigation, transfer footer,
+                        instance menu, the ⌘K palette (palette.tsx; palette-view.ts), a
+                        phone's tab bar (tab-bar.tsx), the connection bar
       torrents/         the screen (torrents.tsx), the list, filters and sort (view.ts), the
                         detail panel (detail-panel.tsx: the header, the tabs, the Overview),
                         pieces (pieces.ts), detail/ (the tabs: Files with files.ts, Peers,
@@ -216,7 +220,7 @@ Unit tests sit next to their code (`format.test.ts`). The root `.gitignore` has
 | Torrents, categories, tags, transfer state | The live store, fed by the event stream (4.3). Nothing polls `/torrents`. |
 | Everything else from the API (detail tabs, settings, RSS, logs, statistics) | TanStack Query, one key per resource. A tab refetches on an interval only while it is visible (peers, files, pieces: every 2 s; trackers every 5 s). A mutation invalidates the keys it changes. |
 | View state: section, filters, search, selection, open tab | The URL, so reload, back and shared links work. |
-| Preferences: columns, grouping, sort, accent, units, panel sizes | `/client-data`, under keys starting with `webui.`, so they follow the user to any browser (64 KiB per value). Mirrored in `localStorage` only so the sign-in page can render before it is allowed to read them. |
+| Preferences: columns, grouping, sort, accent, units, panel sizes, theme | `/client-data`, under keys starting with `webui.`, so they follow the user to any browser (64 KiB per value). Mirrored in `localStorage` only so the sign-in page can render before it is allowed to read them. |
 | Everything else | Component signals. |
 
 ### 4.3 The live store
@@ -455,8 +459,15 @@ locally.
 - `API_key_shown_once-html.zip`, `Edit_category-html.zip`, `Add_feed-html.zip`: the new API
   key (`DialogApiKey.dc.html`), a category (`DialogCategory.dc.html`) and a feed
   (`DialogFeed.dc.html`) dialogs.
+- `Command_palette__K-html.zip` (`CommandPalette.dc.html`): the ⌘K palette over the torrents
+  screen: torrents, files across torrents and commands, with scopes.
+- `Color_tokens___dark__light-html.zip` (`Palette.dc.html`): every token in both themes, and
+  the torrents screen in light.
+- `Torrents___phone-html.zip`, `Torrent___phone-html.zip` (`MobileList.dc.html`,
+  `MobileDetail.dc.html`): the list and one torrent at 390×844, with the tab bar.
 
-They are exports from a design tool: `*.dc.html` artboards at 1440×900, whose inline styles and
+They are exports from a design tool: `*.dc.html` artboards at 1440×900 (the phone ones at
+390×844), whose inline styles and
 `<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
 view one, unzip it into a scratch directory outside the repository and serve it with
 `python3 -m http.server`. Replicate the values in our components and never copy the markup.
@@ -467,7 +478,7 @@ and primitives, at the same density. Never invent a new visual language.
 `.design/` is not in git, so section 6.2 records its values. Once `app.css` exists it becomes the
 source of truth, and 6.2 is kept in step with it.
 
-### 6.2 Tokens (dark, the only theme designed)
+### 6.2 Tokens
 
 Colours are CSS variables in `app.css` (Tailwind v4 `@theme inline`), with shadcn's names where
 one fits:
@@ -500,6 +511,23 @@ one fits:
 
 The design calls `--brand` "accent". It has a different name here because shadcn's `--accent` is
 the hover surface. Hex values appear only in `app.css`. Components use tokens.
+
+**The light theme** (`Color tokens — dark & light`) is `:root[data-theme="light"]` in `app.css`:
+the zinc scale reversed, panels (`--card`, `--sidebar`) on `#fafafa` beside a `#ffffff` list,
+`--muted` `#fafafa`, `--accent` `#f4f4f5`, `--selected` and `--divider` `#e4e4e7`, `--border`
+`#d4d4d8`, text `#09090b` / `#3f3f46` / `#52525b`, `--primary` `#18181b`. The design's
+semantic colours keep 3:1; text must pass AA, so they are darkened just enough for 4.5:1 on the
+page, card and hover surfaces: download `#2670c8` (design `#2a78d6`), upload `#bc4d21`
+(`#d95926`), seeding `#0c7f57` (`#0e8f62`), attention `#a26000` (`#b26a00`), error `#cf3636`
+(`#d03b3b`), captions `#6b6b74` (`#71717a`); connected is `#007a00` as designed. Seeding days
+get darker, not lighter, with more. A switch is grey when off with a white thumb (`--switch-thumb`).
+The palette's chosen row and scope are `--highlight` (`#27272a` dark, `#e4e4e7` light).
+
+`lib/theme.ts` sets `data-theme` before the first render: the viewer's choice (dark, light, or
+the system's, the default), kept in this browser for the first paint and the sign-in page, and
+in `/client-data` (`webui.theme`) so it follows the user; after sign-in the daemon's wins. It is
+chosen from the instance menu (Theme) or the palette. uPlot charts copy colours, so they are
+built again when the theme changes.
 
 **Type.**
 
@@ -536,8 +564,8 @@ on sign-in.
 ### 6.3 Layout and behaviour
 
 - **Main screen (1280px and wider)** has three panes:
-  - Sidebar: instance menu, search (⌘K), navigation, filters with counts (by status, category,
-    tag and tracker), and a transfer footer.
+  - Sidebar: instance menu, the Search button that opens the palette (⌘K), navigation,
+    filters with counts (by status, category, tag and tracker), and a transfer footer.
   - List: title and count; Filter, Display and Add buttons; rows grouped by state, each group
     header with its count and summed rate.
   - Detail: breadcrumb (category › short hash) and start / stop / recheck / more, then tabs
@@ -553,9 +581,17 @@ on sign-in.
   design in the same language:
   - 1024–1279px: the detail panel becomes a sheet over the list.
   - Below 1024px: the sidebar becomes a sheet too.
-  - Below 640px: rows show two lines (name and tag; progress or state, rate, time left and
-    size) with every row's box shown (there is no hover or modifier key to choose several),
-    the detail is full screen, and a page header's actions that do not fit go to a second line.
+  - Below 640px, a phone (`Torrents — phone`, `Torrent — phone`): the header is 52px (menu,
+    title with "instance · N torrents", one Filter menu that holds Display too), status chips
+    under it (All, then the statuses that have torrents), 60px rows (the name over size, ratio
+    and time left; the rate, or how far it is, on the right; the box only while several are
+    chosen), the transfer line and a tab bar (Torrents, Stats, Add, Search, Settings; RSS and
+    Log are in the menu). One torrent takes the whole screen: back, its breadcrumb and "more",
+    then the state with its rates, the pieces, four figures and the properties, and Stop /
+    Start, Recheck, Files and Peers below; Trackers, History and Options are in "more", and
+    back from a tab returns to the overview. Other pages reflow: headers put what does not fit
+    on a second line, wide tables scroll in their cards, and the Peers & geo map, the idle
+    seeds scatter and the timeline's lanes are left out.
 - **Keyboard.**
 
   | Key | Action |
@@ -570,8 +606,9 @@ on sign-in.
   | L / M | Share limits / move (dialogs) |
   | ⌘C | Copy the magnet links |
   | Delete or ⌫ | Remove (asks first) |
-  | / | Search |
-  | ⌘K | Open the palette |
+  | / or ⌘K | Open the palette (anywhere) |
+  | , | Settings (anywhere) |
+  | ⌥S | Switch the alternative limits (anywhere) |
 
   ⌘-click and Shift-click select several rows (so does a row's box), and a context menu on
   rows offers the bulk actions with these keys beside them.
@@ -738,25 +775,29 @@ These are the known differences. Resolve each as noted, never by faking.
 | Sidebar: categories and tags as filters only; tags made only from a torrent | `/categories`; `POST /tags` and `POST /tags/remove` | Not designed: a "+" beside Categories and Tags, and a row's menu (Edit category…, Remove category…, Delete tag…), as the RSS sidebar has them. The category is the Downloads page's dialog; removing asks alone. Deleting a tag says how many torrents lose it. A filter on one that goes goes with it. |
 | No design for piece hashes | `GET /torrents/{hash}/pieces/hashes` | Not designed: "Piece hashes…" in the detail's more menu, once the metadata is known: each piece's number, state now and SHA-1, drawn as they scroll; found by number or the start of a hash; "Copy all" and "Save as text" (one hash per line). |
 | No design for a lost event stream | Updates stop; the store keeps the last ones | Not designed: after 2 s without the stream, a bar over the page: reconnecting or unreachable, "What is shown is as of 10:41:02", and Try now. |
+| Palette: "Add torrent… A", "Open Settings › Downloads ,", "Toggle alternative speed limits ⌥S" | A is Reannounce in the list (the context menu's design) | Add torrent… has no key; `,` opens Settings and ⌥S switches the alternative limits from any page (not while typing or in a dialog). |
+| Palette: "Torrents t", "Files f", "Commands >" | — | The scopes: a click, Tab and Shift+Tab, or a prefix typed first: `t `, `f ` (the letter and a space) or `>`. Everything shows five of each. |
+| Palette: "debian-12.11.0-amd64-netinst.iso · removed Sep 15 · history only → Stats" | `GET /stats/torrents` (added for the UI): the torrents with history, removed ones included, by name | As shown; Enter opens its Timeline. A removed torrent's size is not always known (removed before the recorder saw it). |
+| Palette: a folder as one result ("…/DEBS/libobasis… · 42 files") | `GET /torrents/files` lists files | Files only, each with its size, progress (or "skipped") and torrent; Enter opens its torrent's Files tab. |
+| Palette: the sidebar's search as a button | The list's own search (`?q=`) had its field there | The palette's "Show the N in the list" row filters the list; the list's title shows the search (“deb”) with a clear button. |
+| Palette: "⌘↵ open in Stats", "2 314 files indexed" | `GET /torrents/files?limit=1` gives the files' total | ⌘↵ opens a torrent's (or a file's torrent's) Timeline; the footer counts the files the daemon indexes. Theme and sign-out are commands too. |
+| Color tokens: semantic colours at 3:1 in light | Text meets AA (6.3) | The light theme's text colours darkened for 4.5:1 (6.2). |
+| Torrents — phone: no boxes, no bulk | Several at once needs the panel | The box shows only while several are chosen (from the keyboard); the context menu opens on a long press. |
+| Torrent — phone: no Trackers section | The Overview has one | Left out on a phone, as designed; the Trackers tab is in "more". |
 | No design for a page that fails | A render error, or a chunk gone because the daemon serves a newer build | Not designed: a card in the sign-in style in place of the page (the sidebar stays): the error and Reload / Try again, or "The web UI was updated" and Reload. Moving to another page tries again. |
 
 ### 6.5 Designs wanted
 
-What the UI has no mockup for. The first two need a design before they are built; the rest
-were built in the same language (6.4 says how) and are worth a designer's look.
+What the UI has no mockup for; each was built in the same language (6.4 says how) and is worth
+a designer's look:
 
-- **The ⌘K palette** (W7). The sidebar's search box carries the ⌘K hint and filters the list
-  as one types. Wanted: whether ⌘K opens a palette over the page or keeps focusing that box;
-  what a palette finds (torrents by name, files across torrents with `GET /torrents/files`,
-  pages and settings, actions on the chosen torrents) and how results are grouped; and the
-  keyboard help (6.3's keys) inside it or on its own.
-- **A light theme.** The tokens make it possible (6.2), but only the dark theme is designed:
-  its values, and whether it follows the system or is a choice.
-- **Phones and tablets.** The artboards are 1440×900; 6.3 has what was built below that. The
-  settings rows, Stats cards and dialogs only reflow.
+- **Tablets** (640–1279px): the detail panel and the sidebar as sheets over the list.
+- **Phones beyond the two designed screens**: Stats, RSS, Log, Settings and the dialogs only
+  reflow (6.3).
 - **Built without a design:** the share limits dialog (the Options rows), managing categories
   and tags from the sidebar, piece hashes, the connection bar, the page error card, the
-  first-run setup card, the instance menu, and the one-line prompt and confirm dialogs.
+  first-run setup card, the instance menu (with the theme), and the one-line prompt and confirm
+  dialogs.
 
 ## 7. Testing
 
@@ -818,6 +859,9 @@ Playwright, in `e2e/`.
   where nothing accessible fits, and never select on Tailwind classes. Use web-first assertions
   and `expect.poll` with timeouts that fit the work, never a fixed sleep.
 - **Accessibility.** `@axe-core/playwright` runs on every screen. A violation fails the test.
+- **Themes and phones.** The browser prefers the dark scheme (`playwright.config.ts`), so the
+  suite runs in the dark theme; the palette spec switches to light and runs axe on every kind
+  of page, and the phone spec checks that no page is wider than 390px.
 - **Scale** (tagged `@slow`, W7). The test adds 10 000 magnets through the API: random info-hashes,
   no trackers, DHT off, so they all wait in `metadata`. The list must render, scroll, filter and
   search within set time budgets.
@@ -957,8 +1001,10 @@ Each milestone ends with its end-to-end tests green.
   CSV) as designed. A torrent's own history (its seeding days and last day's traffic) is the
   detail panel's History tab (W3).
 - **W7 Finish.** The ⌘K palette, small screens, the full browser matrix, and the 10 000-torrent
-  budgets. Done so far: phones' two-line rows and wrapping headers (6.3); the connection bar
-  and the page error card. The palette waits for a design (6.5).
+  budgets. Done so far: the palette as designed (torrents, removed ones, files across torrents,
+  commands and their keys); the light theme; the phone list and torrent as designed with the
+  tab bar, and every other page fitted to a phone (6.3); the connection bar and the page error
+  card. Left: the full browser matrix and the 10 000-torrent budgets.
 
 ## 11. Decisions and open questions
 
@@ -977,5 +1023,5 @@ Each milestone ends with its end-to-end tests green.
 
 ### Still open (defaults assumed)
 
-- **Light theme.** Not designed yet; the tokens make it possible. Default: dark only.
+- **Theme.** Dark and light are designed. Default: follow the system; the viewer can pick one.
 - **Solid 2.0.** Default: stay on 1.9 until its ecosystem moves.

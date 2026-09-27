@@ -11,7 +11,8 @@ import * as SwitchPrimitive from "@kobalte/core/switch";
 import { cn } from "~/lib/utils";
 
 // The design's `.sw`: a 36×20 pill, dark when off, white when on, its
-// 16px thumb white when off and dark when on.
+// 16px thumb white when off and dark when on (in the light theme: a grey
+// pill when off, dark when on, the thumb white both ways).
 const Switch = SwitchPrimitive.Root;
 const SwitchDescription = SwitchPrimitive.Description;
 
@@ -34,7 +35,7 @@ const SwitchControl = <T extends ValidComponent = "input">(
         )}
         {...others}
       >
-        <SwitchPrimitive.Thumb class="pointer-events-none absolute top-0.5 left-0.5 block size-4 rounded-full bg-primary transition-transform data-[checked]:translate-x-4 data-[checked]:bg-primary-foreground" />
+        <SwitchPrimitive.Thumb class="pointer-events-none absolute top-0.5 left-0.5 block size-4 rounded-full bg-switch-thumb shadow-sm transition-transform data-[checked]:translate-x-4 data-[checked]:bg-primary-foreground" />
         {local.children}
       </SwitchPrimitive.Control>
     </>

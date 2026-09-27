@@ -185,9 +185,10 @@ export default function PeersGeo() {
         </DropdownMenu>
       </PageHeader>
       <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
+        {/* A phone leaves the map out: its overlays do not fit. */}
         <section
           aria-label="Map"
-          class="relative flex min-h-[300px] flex-col justify-center overflow-hidden rounded-xl border border-divider bg-card p-4"
+          class="relative flex min-h-[300px] flex-col justify-center overflow-hidden rounded-xl border border-divider bg-card p-4 max-sm:hidden"
         >
           <WorldMap
             label={

@@ -104,7 +104,7 @@ export default function IdleSeeds() {
           </span>
         }
       >
-        <span class="text-sm text-subtle">Window</span>
+        <span class="text-sm text-subtle max-sm:hidden">Window</span>
         <Segmented
           label="Window"
           options={WINDOWS}
@@ -150,7 +150,9 @@ export default function IdleSeeds() {
             />
             <Kpi value={cover().value} sub={<span class="truncate">{cover().sub}</span>} />
           </div>
+          {/* A phone leaves the scatter out: too narrow to read. */}
           <Card
+            class="max-sm:hidden"
             title="Worth its space?"
             sub={`Size on disk against how many times over it was uploaded in the last ${days()} days · dot size = seeding time`}
             actions={

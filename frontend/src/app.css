@@ -26,6 +26,10 @@
   --secondary: #18181b;
   --secondary-foreground: #fafafa;
   --selected: #1f1f23;
+  /* The palette's chosen row and scope (the design's #27272a). */
+  --highlight: #27272a;
+  /* A switch's thumb while off. */
+  --switch-thumb: #fafafa;
 
   /* Lines */
   --divider: #1f1f23;
@@ -92,6 +96,94 @@
   --brand: #eb6834;
 }
 
+/*
+ * The light theme (Color tokens — dark & light): the zinc scale reversed,
+ * panels on #fafafa beside a #ffffff list. Text colours are the design's,
+ * darkened just enough to pass WCAG AA (4.5:1) on the page, card and hover
+ * surfaces, as --subtle is lifted in the dark theme (AGENTS.md 6.2):
+ * download #2a78d6 → #2670c8, upload #d95926 → #bc4d21, seeding #0e8f62 →
+ * #0c7f57, attention #b26a00 → #a26000, error #d03b3b → #cf3636, captions
+ * #71717a → #6b6b74. `data-theme` is set from the viewer's choice
+ * (lib/theme.ts): dark, light, or the system's.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --background: #ffffff;
+  --card: #fafafa;
+  --card-foreground: #09090b;
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+  --sidebar: #fafafa;
+  --muted: #fafafa;
+  --accent: #f4f4f5;
+  --accent-foreground: #09090b;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #09090b;
+  --selected: #e4e4e7;
+  --highlight: #e4e4e7;
+  --switch-thumb: #ffffff;
+
+  --divider: #e4e4e7;
+  --row-divider: #f4f4f5;
+  --border: #d4d4d8;
+  --border-strong: #a1a1aa;
+  --input: #d4d4d8;
+  --ring: #71717a;
+  --ring-soft: rgb(9 9 11 / 0.08);
+
+  --foreground: #09090b;
+  --foreground-2: #3f3f46;
+  --muted-foreground: #52525b;
+  --subtle: #6b6b74;
+  --faint: #a1a1aa;
+
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --primary-hover: #27272a;
+
+  --brand: #2670c8;
+  --ok: #0c7f57;
+  --warn: #a26000;
+  --danger: #cf3636;
+  --destructive: #cf3636;
+  --destructive-foreground: #ffffff;
+  --upload: #bc4d21;
+  --online: #007a00;
+
+  /* Seeding days: more is darker on a light page. */
+  --heat-1: color-mix(in srgb, var(--brand) 25%, var(--background));
+  --heat-2: color-mix(in srgb, var(--brand) 55%, var(--background));
+  --heat-3: var(--brand);
+  --heat-4: color-mix(in srgb, var(--brand) 65%, black);
+
+  --cat-1: #2670c8;
+  --cat-2: #4a3aa7;
+  --cat-3: #0c7f57;
+  --cat-4: #bc4d21;
+  --cat-5: #a26000;
+  --cat-6: #c03c87;
+
+  --grid-line: #ececec;
+  --overlay: rgb(9 9 11 / 0.35);
+  --shadow-color: rgb(0 0 0 / 0.12);
+}
+:root[data-theme="light"][data-accent="green"] {
+  --brand: #0c7f57;
+}
+:root[data-theme="light"][data-accent="violet"] {
+  --brand: #4a3aa7;
+}
+:root[data-theme="light"][data-accent="orange"] {
+  --brand: #bc4d21;
+}
+/* Before the script sets a theme, a light system does not flash dark. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    background: #ffffff;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -111,6 +203,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-selected: var(--selected);
+  --color-highlight: var(--highlight);
+  --color-switch-thumb: var(--switch-thumb);
   --color-divider: var(--divider);
   --color-row-divider: var(--row-divider);
   --color-border: var(--border);
