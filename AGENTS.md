@@ -587,7 +587,9 @@ file names across torrents; it requires urtorrent 0.13.4, which closed the last 
 (HTTP trackers and web seeds leave from the listen address). **0.13.0** adds first-run
 setup: the first client chooses the credentials (ADR 0007). **0.14.0** adds the web UI
 (`frontend/`, ADR 0008), served by the daemon, with the API it needed; it requires urtorrent
-0.13.5 (the queue's slow flag in list rows, a queue position set in one call).
+0.13.5 (the queue's slow flag in list rows, a queue position set in one call). **0.15.0**
+keeps sync small at 10 000 torrents: clock-only row changes once a minute, other changes in
+batches of 1000 (4.6), measured by the web UI's scale benchmark.
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage

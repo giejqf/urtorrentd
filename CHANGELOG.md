@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.15.0] - 2026-09-27
 
 ### Changed
 
@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   second of rows that differed only there. Other changes still go at once,
   at most 1000 torrents per revision, the rest in the next ones. After 5 s
   without a snapshot, the next revision has everything as it is.
+- Web UI: the Peers tab's next-announce countdown comes from the torrent's
+  detail (every 2 s), since the list row's clocks are up to a minute old.
+
+### Added
+
+- Web UI: a scale benchmark (`frontend/e2e/scale.spec.ts`, run with
+  `SLOW=1`) that loads 10 000 torrents from a real daemon and records
+  loading, scrolling, interactions, the live stream's idle cost and memory
+  in `target/bench/web-<N>.json`.
 
 ## [0.14.1] - 2026-09-27
 
