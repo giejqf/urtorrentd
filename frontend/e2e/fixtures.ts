@@ -102,6 +102,17 @@ export { expect };
 
 /** No WCAG 2.1 A/AA violation on the page as it is now. */
 export async function expectAccessible(page: Page): Promise<void> {
+  // The page at rest: a menu still fading out behind the dialog it opened
+  // is half transparent, and axe would measure its contrast mid-fade.
+  // Endless animations (a loading pulse) never settle and are left alone.
+  await page.waitForFunction(
+    () =>
+      document
+        .getAnimations()
+        .every((a) => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity),
+    undefined,
+    { timeout: 5_000 },
+  );
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();
