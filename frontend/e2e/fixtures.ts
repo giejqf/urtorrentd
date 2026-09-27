@@ -5,6 +5,9 @@
 // page, and guards every test runs under: no request may leave loopback,
 // and no Content-Security-Policy violation may happen.
 
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+
 import AxeBuilder from "@axe-core/playwright";
 import { test as base, expect, type Page } from "@playwright/test";
 
@@ -23,6 +26,11 @@ function isLoopback(host: string): boolean {
 }
 
 interface Fixtures {
+  /**
+   * A local stand-in for DB-IP's downloads ({@link daemon}'s
+   * `--geoip-mirror`): the files a test puts in `files`, by name, else 404.
+   */
+  mirror: { url: string; files: Map<string, Buffer> };
   /** A daemon whose credentials are set ({@link CREDENTIALS}). */
   daemon: Daemon;
   /** A daemon still waiting for first-run setup. */
@@ -55,8 +63,20 @@ export const test = base.extend<Fixtures>({
     },
     { auto: true },
   ],
-  daemon: async ({}, use, info) => {
-    const d = await Daemon.start({ peerIp: peerIp(info.workerIndex) });
+  mirror: async ({}, use) => {
+    const files = new Map<string, Buffer>();
+    const server = createServer((req, res) => {
+      const body = files.get((req.url ?? "").replace(/^\/free\//, ""));
+      res.writeHead(body ? 200 : 404);
+      res.end(body ?? "");
+    });
+    await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+    const { port } = server.address() as AddressInfo;
+    await use({ url: `http://127.0.0.1:${port}/free`, files });
+    await new Promise((ok) => server.close(ok));
+  },
+  daemon: async ({ mirror }, use, info) => {
+    const d = await Daemon.start({ peerIp: peerIp(info.workerIndex), geoipMirror: mirror.url });
     await use(d);
     await d.stop();
   },

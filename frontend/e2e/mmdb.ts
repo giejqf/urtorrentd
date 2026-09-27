@@ -2,7 +2,7 @@
 // Copyright (c) 2026 urtorrentd contributors
 
 // A MaxMind DB writer for tests (format: maxmind.github.io/MaxMind-DB), the
-// daemon's own `tests/common/mmdb.rs` in TypeScript: GeoLite2-Country
+// daemon's own `tests/common/mmdb.rs` in TypeScript: country or ASN
 // records for IPv4 networks, so tests locate loopback addresses without a
 // real database. 24-bit records; more specific networks must come after the
 // ones they split.
@@ -75,10 +75,22 @@ export function country(code: string, name: string): V {
   };
 }
 
+/** GeoLite2-ASN's (and DB-IP ASN Lite's) layout. */
+export function asn(number: number, org: string): V {
+  return { autonomous_system_number: { u32: number }, autonomous_system_organization: org };
+}
+
 type Child = { kind: "empty" } | { kind: "node"; at: number } | { kind: "data"; at: number };
 
 /** Write an IPv4 country database: each network (`127.0.10.0/24`) with its record. */
 export function writeCountryDb(path: string, entries: [string, V][]): void {
+  writeFileSync(`${path}.tmp`, mmdbBytes("GeoLite2-Country", entries));
+  // Written then renamed, as a download would be.
+  renameSync(`${path}.tmp`, path);
+}
+
+/** An IPv4 database of `type` (`DBIP-ASN-Lite`, ...): each network with its record. */
+export function mmdbBytes(type: string, entries: [string, V][]): Buffer {
   const nodes: [Child, Child][] = [[{ kind: "empty" }, { kind: "empty" }]];
   const data: number[] = [];
   const offsets: number[] = [];
@@ -123,7 +135,7 @@ export function writeCountryDb(path: string, entries: [string, V][]): void {
       binary_format_major_version: { u16: 2 },
       binary_format_minor_version: { u16: 0 },
       build_epoch: { u64: 1_700_000_000n },
-      database_type: "GeoLite2-Country",
+      database_type: type,
       description: { en: "urtorrentd test data" },
       ip_version: { u16: 4 },
       languages: ["en"],
@@ -132,7 +144,5 @@ export function writeCountryDb(path: string, entries: [string, V][]): void {
     },
     out,
   );
-  // Written then renamed, as a download would be.
-  writeFileSync(`${path}.tmp`, Buffer.from(out));
-  renameSync(`${path}.tmp`, path);
+  return Buffer.from(out);
 }

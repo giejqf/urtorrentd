@@ -27,6 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import { GeoCredit } from "~/features/settings/geoip";
 import { CountryCode, PeerBadge } from "~/features/stats/parts";
 import { peerIp } from "~/features/stats/peers-view";
 import { dash, formatCount, formatDuration, formatPercent, formatRate } from "~/lib/format";
@@ -266,6 +267,9 @@ export function PeersTab(props: { torrent: TorrentSummary }) {
         <span class="flex-none">
           next announce {nextAnnounce() === null ? dash : formatDuration(nextAnnounce() ?? 0)}
         </span>
+      </div>
+      <div class="flex-none text-right text-xs">
+        <GeoCredit />
       </div>
       <ConfirmDialog
         open={banning() !== null}

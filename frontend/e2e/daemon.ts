@@ -46,6 +46,11 @@ export interface DaemonOptions {
   settings?: Record<string, unknown>;
   /** Leave first-run setup open (no credentials). */
   fresh?: boolean;
+  /**
+   * Where GeoIP downloads come from (`--geoip-mirror`); by default a closed
+   * local port, so no test reaches db-ip.com.
+   */
+  geoipMirror?: string;
 }
 
 export class Daemon {
@@ -106,6 +111,8 @@ export class Daemon {
         initial,
         "--web-ui",
         UI_DIR,
+        "--geoip-mirror",
+        opts.geoipMirror ?? "http://127.0.0.1:9/free",
       ],
       { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, RUST_LOG: "warn" } },
     );

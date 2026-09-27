@@ -38,6 +38,7 @@ import { cn } from "~/lib/utils";
 import { useAppInfo, useStatsInfo } from "./app-info";
 import { InfoBox, RowSwitch, SettingRow, SettingsGroup, Tag, UnitInput } from "./controls";
 import { createSettingsForm, SettingsPage, WithSettings } from "./form";
+import { DbIpCredit, DownloadGeoIp } from "./geoip";
 import {
   axis,
   locatedShare,
@@ -426,11 +427,24 @@ function StatisticsForm(props: { saved: Schemas["Settings"] }) {
         title="GeoIP"
         aside={
           <>
-            MaxMind DB files. Never downloaded by the daemon: point it at files{" "}
-            <span class="mono">geoipupdate</span> keeps fresh.
+            MaxMind DB files: DB-IP Lite downloaded here (free, no account), or files you keep fresh
+            yourself, such as <span class="mono">geoipupdate</span>&apos;s.
           </>
         }
       >
+        <SettingRow
+          label="DB-IP Lite"
+          description={
+            <>
+              Country and ASN, about 17 MB from db-ip.com into the data directory, and in use at
+              once. A new month comes out on the 1st: update the same way. <DbIpCredit />
+            </>
+          }
+        >
+          <DownloadGeoIp
+            blocked={form.dirty() ? "Save or discard the changes on this page first" : undefined}
+          />
+        </SettingRow>
         {pathRow(
           "geoip_database",
           "Country database",

@@ -33,6 +33,7 @@ import { cn } from "~/lib/utils";
 
 import { diagnostics, uptime } from "./about-view";
 import { useAppInfo, useStatsInfo, useSystemInfo } from "./app-info";
+import { GeoCredit } from "./geoip";
 import { SettingRow, SettingsGroup, Tag, UnitInput } from "./controls";
 import { pendingChanges } from "./engine-form";
 import { createSettingsForm, type FormDiff, SettingsPage, WithSettings } from "./form";
@@ -253,6 +254,7 @@ function AboutForm(props: { saved: Schemas["Settings"] }) {
                 <Show when={g().built}>
                   {(b) => <span class="font-sans text-subtle">built {formatShortDate(b())}</span>}
                 </Show>
+                <GeoCredit class="font-sans" />
               </>
             )}
           </Show>

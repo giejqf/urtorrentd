@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never downloads one on its own. `--geoip-mirror <URL>` fetches from a
   mirror. New dependency: `flate2` (gzip; its backend, `miniz_oxide`, was
   in the tree already).
+- Web UI: Settings › Statistics & GeoIP downloads or updates DB-IP Lite
+  with one button (so does Stats › Peers & geo while nothing places
+  peers), and DB-IP is credited with their licence (CC BY 4.0) wherever
+  their data is shown: the GeoIP settings, a torrent's Peers tab, Stats ›
+  Peers & geo and About.
+
 - urtorrent 0.14.0. `GET /torrents/trackers`: each host's `interval` (what
   it asks for) and `response_time` (how long it takes to answer), the
   median of its trackers' latest replies. `POST

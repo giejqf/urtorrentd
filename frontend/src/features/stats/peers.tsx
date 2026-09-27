@@ -38,6 +38,7 @@ import {
 } from "~/components/ui/dropdown-menu";
 import { useAppInfo } from "~/features/settings/app-info";
 import { Segmented } from "~/features/settings/controls";
+import { DownloadGeoIp, GeoCredit } from "~/features/settings/geoip";
 import { useLive } from "~/features/shell/live";
 import { PageHeader } from "~/features/shell/page-header";
 import { dash, formatAgo, formatBytes, formatCount, formatPercent, formatRate } from "~/lib/format";
@@ -279,6 +280,7 @@ export default function PeersGeo() {
                 ? `${geoip()?.country?.database_type ?? "GeoIP"} · read ${formatAgo(geoip()?.country?.loaded ?? null, Date.now() / 1000)}`
                 : "No GeoIP database"}
             </span>
+            <GeoCredit />
             <Show when={located() && !here()}>
               <span class="text-subtle">· where this daemon is: not known yet</span>
             </Show>
@@ -297,9 +299,13 @@ export default function PeersGeo() {
             </div>
           </Show>
           <Show when={app.data && !located()}>
-            <p class="absolute inset-x-0 top-1/2 m-0 -translate-y-1/2 text-center text-sm text-muted-foreground">
-              Without a GeoIP database peers cannot be placed: Settings › Statistics &amp; GeoIP.
-            </p>
+            <div class="absolute inset-x-0 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2.5 text-center text-sm text-muted-foreground">
+              <p class="m-0">
+                Without a GeoIP database peers cannot be placed. DB-IP Lite is free, or choose files
+                in Settings › Statistics &amp; GeoIP.
+              </p>
+              <DownloadGeoIp />
+            </div>
           </Show>
         </section>
         <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_372px]">

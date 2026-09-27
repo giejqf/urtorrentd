@@ -161,7 +161,8 @@ frontend/
                         (banned.tsx; bans.ts), Watch folders (watch-folders.tsx;
                         watch-form.ts), RSS (rss-settings.tsx; rss-view.ts) and Webhooks
                         (webhooks.tsx; webhooks-view.ts), Statistics & GeoIP (statistics.tsx;
-                        statistics-form.ts), Security & API (security.tsx; security-form.ts),
+                        statistics-form.ts; geoip.tsx and geoip-view.ts: DB-IP Lite's
+                        download and credit), Security & API (security.tsx; security-form.ts),
                         Engine (engine.tsx; engine-form.ts) and About (about.tsx;
                         about-view.ts)
       rss/              the RSS screen (rss.tsx): its sidebar sections (sidebar.tsx: feeds in
@@ -181,8 +182,9 @@ frontend/
     daemon.ts           starts and stops real daemons, one per test that asks (7.4)
     torrent.ts          makes .torrent files for tests (bencode, SHA-1)
     servers.ts          a page on another origin (CORS), a Caddy-like forwarding proxy
-    fixtures.ts         Playwright fixtures: daemons, a signed-in page, the offline and CSP guard
-    mmdb.ts             writes GeoIP files for tests (MaxMind DB, country records)
+    fixtures.ts         Playwright fixtures: daemons, a signed-in page, the offline and CSP guard,
+                        a local stand-in for DB-IP's downloads (--geoip-mirror)
+    mmdb.ts             writes GeoIP files for tests (MaxMind DB, country and ASN records)
     *.spec.ts
 ```
 
@@ -694,6 +696,7 @@ These are the known differences. Resolve each as noted, never by faking.
 | Settings › Statistics: "97% of peers located by GeoIP", "146 of 148 peers matched to an AS right now" | Live peers are per torrent (an N+1); `GET /stats/geo` has peer traffic by country | "of peer traffic located, last day" from the country rows; the ASN count is left out. |
 | Settings › Statistics: "112 torrents with history · 100 removed" | `removed` in `GET /stats` (added for the UI) | As shown. |
 | Settings › Statistics: removed history "Review", "21.9 MB of the database" | No size per torrent; the statistics screen is W6 | "Delete all" (`DELETE /stats/removed`, added for the UI); no size, and no Review until W6. |
+| Settings › Statistics: GeoIP, no download in the design | `POST /app/geoip/download` (ADR 0009, maintainer decision 2026-09-27): DB-IP Lite's country and ASN files on request | A "DB-IP Lite" row with Download (Update once DB-IP's files are loaded; held while the page has unsaved changes, which a download's new settings would replace), and the same button in Stats › Peers & geo when nothing places peers. DB-IP's credit ("IP Geolocation by DB-IP", CC BY 4.0, both linked) wherever their data is shown: that row, the Peers tab, Stats › Peers & geo, About. |
 | Settings › Statistics: GeoIP "Reload now", "last read Sep 16 04:12" | Files are re-read when they change (checked every 2 s); `loaded` on each database (added for the UI) | No reload button (it would change nothing); "read" with its time. |
 | Settings › About: "up to date" | No update check (rule 5) | Left out. |
 | Settings › About: "Seen as" | The transfer state's `external_v4` / `external_v6` | As shown; "not known yet" until trackers or peers agree on one. |
@@ -814,7 +817,8 @@ a designer's look:
   and tags from the sidebar, piece hashes, the connection bar, the page error card, the
   first-run setup card, the instance menu (with the theme, accent, units and notifications),
   the one-line prompt and confirm dialogs, the speed limits popover, the keyboard shortcuts,
-  the drop overlay, the add dialog's download path, a peer's menu and a tracker's endpoints.
+  the drop overlay, the add dialog's download path, a peer's menu, a tracker's endpoints, and
+  the DB-IP Lite download with DB-IP's credit.
 
 ## 7. Testing
 
