@@ -207,6 +207,8 @@ pub struct Daemon {
     pub(crate) temporary_password: Option<String>,
     pub(crate) http: reqwest::Client,
     pub(crate) sync: Mutex<SyncState>,
+    /// Serializes sync snapshot builds: each publishes from the one before.
+    pub(crate) sync_build: tokio::sync::Mutex<()>,
     /// The statistics recorder, or why `stats.db` could not be opened (the
     /// daemon runs without statistics then).
     pub(crate) stats: Result<Stats, String>,
@@ -352,6 +354,7 @@ impl Daemon {
             temporary_password,
             http,
             sync: Mutex::new(SyncState::default()),
+            sync_build: tokio::sync::Mutex::new(()),
             stats,
             geo: GeoIp::default(),
             webhooks: Arc::new(webhooks),

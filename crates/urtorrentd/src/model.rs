@@ -1654,7 +1654,11 @@ pub struct EventsQuery {
 /// Changes since a revision. With `full`, the maps hold everything and the
 /// client replaces its state; otherwise they hold only what changed and the
 /// `*_removed` lists say what went away. Torrents and categories are sent
-/// whole whenever any field changed.
+/// whole whenever any field changed. A torrent whose clocks alone changed
+/// (`active_time`, `seeding_time`, `next_announce_in`, `last_activity`,
+/// `seen_complete`, `popularity`) is sent once a minute; at most 1000
+/// changed torrents go in one revision, the rest in the next ones
+/// (`GET /torrents` has every row as it is now).
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SyncResponse {
     /// Pass this as `rev` next time.

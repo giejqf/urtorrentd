@@ -12,6 +12,7 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use common::{TestDaemon, fixture};
 use serde_json::{Value, json};
+use urtorrentd::sync;
 
 #[tokio::test]
 async fn leech_from_a_seeding_daemon() {
@@ -396,6 +397,51 @@ async fn sync_sends_changes_only() {
     let full = t.get("/api/v1/sync?rev=999999").await;
     assert_eq!(full["full"], true);
     assert_eq!(full["torrents"].as_object().unwrap().len(), 1);
+    t.stop().await;
+}
+
+/// A running torrent's clocks tick every second, but a diff carries a row
+/// whose clocks alone changed only once a minute (at a second of its own),
+/// and everything after a pause without snapshots.
+#[tokio::test]
+async fn sync_holds_back_clocks() {
+    let t = TestDaemon::start(98, |_| {}).await;
+    let a = fixture("run.bin", &[("run.bin", 40_000)], 16_384, None, false, 98);
+    let h = t.add(&a, json!({})).await;
+    // Running with no peers: only its clocks move once it is downloading.
+    let start = t
+        .wait_for(&h, "downloading", 20, |v| {
+            v["state"] == "downloading" && v["active_time"].as_u64() >= Some(1)
+        })
+        .await;
+    let mut rev = t.get("/api/v1/sync").await["rev"].as_u64().unwrap();
+    let mut sent = 0;
+    for _ in 0..6 {
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        let diff = t.get(&format!("/api/v1/sync?rev={rev}")).await;
+        assert_eq!(diff["full"], false);
+        if let Some(row) = diff["torrents"].get(&h) {
+            assert_eq!(row["state"], "downloading", "{row}");
+            sent += 1;
+        }
+        rev = diff["rev"].as_u64().unwrap();
+    }
+    // A minute turns at most once in 3.6 s.
+    assert!(sent <= 1, "the row went {sent} times");
+    let now = t.torrent(&h).await;
+    assert!(
+        now["active_time"].as_u64().unwrap() >= start["active_time"].as_u64().unwrap() + 3,
+        "{now}"
+    );
+
+    // After a pause, everything as it is now.
+    tokio::time::sleep(sync::LONG_PAUSE + std::time::Duration::from_millis(1_100)).await;
+    let diff = t.get(&format!("/api/v1/sync?rev={rev}")).await;
+    let row = &diff["torrents"][&h];
+    assert!(
+        row["active_time"].as_u64().unwrap() >= now["active_time"].as_u64().unwrap() + 5,
+        "{diff}"
+    );
     t.stop().await;
 }
 

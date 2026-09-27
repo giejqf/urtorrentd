@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Sync (`GET /sync`, `GET /events`): a torrent whose clocks alone changed
+  (active and seeding time, next announce, last activity, seen complete,
+  popularity) is sent once a minute, spread over the minute by info-hash,
+  instead of every second: with 1000 running torrents a diff was 1.4 MB a
+  second of rows that differed only there. Other changes still go at once,
+  at most 1000 torrents per revision, the rest in the next ones. After 5 s
+  without a snapshot, the next revision has everything as it is.
+
 ## [0.14.1] - 2026-09-27
 
 ### Changed

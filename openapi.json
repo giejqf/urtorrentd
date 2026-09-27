@@ -19628,7 +19628,7 @@
       },
       "SyncResponse": {
         "type": "object",
-        "description": "Changes since a revision. With `full`, the maps hold everything and the\nclient replaces its state; otherwise they hold only what changed and the\n`*_removed` lists say what went away. Torrents and categories are sent\nwhole whenever any field changed.",
+        "description": "Changes since a revision. With `full`, the maps hold everything and the\nclient replaces its state; otherwise they hold only what changed and the\n`*_removed` lists say what went away. Torrents and categories are sent\nwhole whenever any field changed. A torrent whose clocks alone changed\n(`active_time`, `seeding_time`, `next_announce_in`, `last_activity`,\n`seen_complete`, `popularity`) is sent once a minute; at most 1000\nchanged torrents go in one revision, the rest in the next ones\n(`GET /torrents` has every row as it is now).",
         "required": [
           "rev",
           "full",

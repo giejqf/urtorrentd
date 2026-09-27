@@ -84,6 +84,22 @@ events.addEventListener("sync", (e) => {
 });
 ```
 
+What a revision holds is the list as the daemon last *published* it, which
+keeps a diff small however many torrents there are:
+
+- A torrent whose clocks alone changed (`active_time`, `seeding_time`,
+  `next_announce_in`, `last_activity`, `seen_complete`, `popularity`: they
+  tick every second on every running torrent) is published once a minute,
+  at a second of the minute of its own, so a sixtieth of the running
+  torrents go each second, never all of them at once. Clocks in a
+  revision are at most a minute old; `GET /torrents/{hash}` and
+  `GET /torrents` have them as they are now.
+- Any other change goes at once, at most 1000 torrents per revision (in
+  turn, by info-hash): after "stop all" on 10 000 torrents, the rows follow
+  over the next ten revisions. Added and removed torrents always go at once.
+- After 5 s without a snapshot (a script polling now and then), the next
+  revision publishes everything as it is.
+
 `EventSource` reconnects on its own and sends the last id back, so a client
 resumes where it left off (or gets everything, if that revision is too old).
 Browsers cannot set headers on `EventSource`: use the login cookie; other

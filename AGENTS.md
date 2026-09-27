@@ -293,6 +293,12 @@ includes removals (torrents, categories, tags) and the session's transfer state.
   per-client state.
 - Changed torrents and categories are sent whole (typed objects, not field-level
   patches), so SDK types stay exact.
+- A snapshot holds rows as *published* (`sync.rs` `publish`), so that a diff stays small
+  with 10 000 torrents: a row whose clocks alone changed (active and seeding time, next
+  announce, last activity, seen complete, popularity) goes once a minute at a second of
+  its own (from its hash); other changes go at once, 1000 rows per snapshot at most, in
+  turn, with a quarter of that kept for due clocks; new and removed rows always go; after
+  5 s without a snapshot everything goes. Published values are the library's, only older.
 - The same diffs are pushed as server-sent events (`GET /events`, `sync.rs`
   `event_stream`): at once, then at most every second when something changed; the event
   id is the revision, so `EventSource` resumes with `Last-Event-ID`. Nothing is queued
