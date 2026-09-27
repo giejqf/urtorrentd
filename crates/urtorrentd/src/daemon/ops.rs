@@ -843,6 +843,38 @@ impl Daemon {
         Ok(())
     }
 
+    /// Reannounce to these trackers alone, as soon as each one's minimum
+    /// interval allows (even when another tracker of its tier works).
+    pub(crate) async fn reannounce_trackers(
+        &self,
+        id: TorrentId,
+        urls: &[String],
+    ) -> ApiResult<()> {
+        let existing = self.session.trackers(id).await?;
+        if let Some(u) = urls.iter().find(|u| !existing.iter().any(|t| &t.url == *u)) {
+            return Err(ApiError::not_found(format!("no tracker {u:?}")));
+        }
+        for u in urls {
+            self.session.force_reannounce_tracker(id, u.clone()).await?;
+        }
+        Ok(())
+    }
+
+    /// Reannounce to every tracker on some hosts alone; torrents with none
+    /// are left as they are.
+    pub(crate) async fn reannounce_tracker_hosts(
+        &self,
+        id: TorrentId,
+        hosts: &[String],
+    ) -> ApiResult<()> {
+        for t in self.session.trackers(id).await? {
+            if crate::stats::db::tracker_host(&t.url).is_some_and(|h| hosts.contains(&h)) {
+                self.session.force_reannounce_tracker(id, t.url).await?;
+            }
+        }
+        Ok(())
+    }
+
     /// Replace a tracker's URL, keeping its tier.
     pub(crate) async fn edit_tracker(
         &self,

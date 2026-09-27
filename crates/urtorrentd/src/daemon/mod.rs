@@ -116,6 +116,8 @@ pub(crate) struct Entry {
     /// Its trackers whose last announce failed, by URL (from the engine's
     /// events; an answer removes the tracker).
     pub tracker_failures: HashMap<String, TrackerFailure>,
+    /// Its trackers' latest replies in this run, by URL.
+    pub tracker_replies: HashMap<String, TrackerReplyInfo>,
     /// Payload moved at the last tick (its peers are sampled).
     pub flowing: bool,
     /// Its pieces, as of the last tick (for the peers' progress).
@@ -135,6 +137,15 @@ pub(crate) struct TrackerFailure {
     pub last: u64,
 }
 
+/// What a tracker's latest reply to an announce said.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TrackerReplyInfo {
+    /// The interval it asked for, seconds.
+    pub interval: u64,
+    /// From the start of the announce to the reply, seconds.
+    pub response_time: f64,
+}
+
 impl Entry {
     fn new(id: TorrentId, record: TorrentRecord) -> Entry {
         Entry {
@@ -152,6 +163,7 @@ impl Entry {
             has_trackers: false,
             last_scrape: None,
             tracker_failures: HashMap::new(),
+            tracker_replies: HashMap::new(),
             flowing: false,
             pieces_total: 0,
         }
@@ -161,6 +173,7 @@ impl Entry {
     /// longer on it are dropped.
     pub(crate) fn set_tracker_urls(&mut self, urls: Vec<String>) {
         self.tracker_failures.retain(|u, _| urls.contains(u));
+        self.tracker_replies.retain(|u, _| urls.contains(u));
         self.tracker_urls = Some(urls);
     }
 }

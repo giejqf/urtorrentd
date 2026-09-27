@@ -11096,6 +11096,107 @@
         }
       }
     },
+    "/api/v1/torrents/trackers/reannounce": {
+      "post": {
+        "tags": [
+          "torrents"
+        ],
+        "summary": "Reannounce to the trackers on some hosts alone (each torrent's trackers\nthere, as soon as their minimum interval allows); torrents with none are\nleft as they are.",
+        "operationId": "reannounce_tracker_hosts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReannounceHostsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/torrents/trackers/remove": {
       "post": {
         "tags": [
@@ -12582,6 +12683,111 @@
         "responses": {
           "204": {
             "description": "Replaced."
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/torrents/{hash}/trackers/reannounce": {
+      "post": {
+        "tags": [
+          "torrent"
+        ],
+        "summary": "Reannounce to these trackers alone, as soon as each one's minimum\ninterval allows, even when another tracker of its tier is working (the\ntier rules would leave it idle); later announces follow the tier rules\nagain. 404 when the torrent has no such tracker.",
+        "operationId": "reannounce_trackers",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "description": "Info-hash, 40 hex characters.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UrlsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Asked."
           },
           "400": {
             "description": "Malformed request or invalid value.",
@@ -17472,6 +17678,27 @@
         ],
         "description": "A per-torrent ratio limit."
       },
+      "ReannounceHostsRequest": {
+        "type": "object",
+        "description": "Reannounce to the trackers on some hosts alone.",
+        "required": [
+          "hashes",
+          "hosts"
+        ],
+        "properties": {
+          "hashes": {
+            "$ref": "#/components/schemas/Hashes",
+            "description": "Target torrents."
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Hosts, as `GET /torrents/trackers` lists them (`tracker.example.org`)."
+          }
+        }
+      },
       "RemoveTrackerHostsRequest": {
         "type": "object",
         "description": "Remove every tracker on some hosts from torrents.",
@@ -20535,6 +20762,7 @@
           "has_metadata",
           "piece_size",
           "pieces_have",
+          "pieces_checked",
           "pieces_total",
           "tracker",
           "trackers_count",
@@ -20869,6 +21097,11 @@
             "description": "Verified pieces.",
             "minimum": 0
           },
+          "pieces_checked": {
+            "type": "integer",
+            "description": "While `checking`: the pieces the check has gone through so far, out\nof `pieces_total` (`pieces_have` moves only when the check ends); 0\nin every other state.",
+            "minimum": 0
+          },
           "pieces_total": {
             "type": "integer",
             "description": "All pieces.",
@@ -21088,7 +21321,9 @@
           "fails",
           "error",
           "failing_since",
-          "last_failure"
+          "last_failure",
+          "interval",
+          "response_time"
         ],
         "properties": {
           "host": {
@@ -21150,6 +21385,23 @@
             "format": "int64",
             "description": "The latest failure, unix seconds.",
             "minimum": 0
+          },
+          "interval": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The announce interval it asks for, seconds: the median over its\ntrackers' latest replies in this run; `null` before a reply.",
+            "minimum": 0
+          },
+          "response_time": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "How long it takes to answer an announce, seconds (name resolution,\nconnecting and the reply): the median over its trackers' latest\nreplies in this run; `null` before a reply."
           }
         }
       },

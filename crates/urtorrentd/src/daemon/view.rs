@@ -7,7 +7,7 @@
 //! urtorrent 0.12), plus two caches that only change on edits: tracker URLs
 //! for magnet links and the content path (AGENTS.md 4.4).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use urtorrent::{InfoHash, TorrentId, TorrentStatus};
@@ -216,6 +216,7 @@ pub(crate) fn summary(s: &TorrentStatus, e: &Entry, st: &State) -> TorrentSummar
         has_metadata: s.has_metadata,
         piece_size: s.piece_length,
         pieces_have: s.pieces_have,
+        pieces_checked: s.pieces_checked,
         pieces_total: s.pieces_total,
         tracker: s.working_tracker.clone(),
         trackers_count: s.trackers_count,
@@ -347,6 +348,8 @@ impl Daemon {
         self.refresh_caches(&statuses).await;
         let st = self.state();
         let mut hosts: BTreeMap<String, TrackerHost> = BTreeMap::new();
+        // Each host's trackers' latest replies: intervals and response times.
+        let mut replies: HashMap<String, (Vec<u64>, Vec<f64>)> = HashMap::new();
         for s in &statuses {
             let Some(e) = st.torrents.get(&s.info_hash) else {
                 continue;
@@ -372,7 +375,14 @@ impl Daemon {
                     error: None,
                     failing_since: None,
                     last_failure: None,
+                    interval: None,
+                    response_time: None,
                 });
+                if let Some(r) = e.tracker_replies.get(url) {
+                    let (intervals, times) = replies.entry(host.clone()).or_default();
+                    intervals.push(r.interval);
+                    times.push(r.response_time);
+                }
                 if !seen.contains(&host) {
                     seen.push(host);
                     h.torrents += 1;
@@ -391,6 +401,14 @@ impl Daemon {
                     h.error = Some(f.error.clone());
                 }
                 h.failing_since = Some(h.failing_since.map_or(f.since, |x| x.min(f.since)));
+            }
+        }
+        for (host, (mut intervals, mut times)) in replies {
+            if let Some(h) = hosts.get_mut(&host) {
+                intervals.sort_unstable();
+                times.sort_by(f64::total_cmp);
+                h.interval = intervals.get(intervals.len() / 2).copied();
+                h.response_time = times.get(times.len() / 2).copied();
             }
         }
         let mut out: Vec<TrackerHost> = hosts.into_values().collect();

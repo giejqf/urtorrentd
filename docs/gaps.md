@@ -1,36 +1,26 @@
 # What the daemon needs from urtorrent
 
-Things the daemon wants from the library (the `urtorrent` facade, 0.13.5)
+Things the daemon wants from the library (the `urtorrent` facade, 0.14.0)
 that it does not offer or does not do right, with what the daemon does in
 the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 ## Open
 
-- **The announce interval and the response time of tracker replies**, for
-  the Trackers report (the web UI's Stats › Trackers: the interval trackers
-  ask for, and trackers that answer slowly). `Event::TrackerReply` carries
-  the URL and the peer count only; `TrackerStatus` has the time to the next
-  announce but not the interval the tracker asked for. The daemon sees the
-  reply event and not the request, so it cannot time an announce itself.
-  Wanted: the `interval` (and `min interval`) of the reply, and how long the
-  announce took from request to reply, in the event. In the meantime the
-  report shows neither.
-- **Reannouncing to one tracker**, for the web UI's Trackers tab (a
-  torrent's detail: "Reannounce" on each tracker). `Session::force_reannounce`
-  takes the torrent only and announces to every tracker (libtorrent's
-  `force_reannounce` takes a tracker index). Wanted: a tracker (its URL or
-  index) to announce to, alone. In the meantime the tab offers "Reannounce
-  all" only.
-- **How far a check has got**, for list rows and the web UI while a torrent
-  is `checking` (qBittorrent shows the check's percentage). `TorrentStatus`
-  has no check progress, and `pieces_have` / `total_wanted_done` stay at 0
-  until the check ends: on the seedbox (2026-09-27) a 75 GB torrent showed
-  0 % for its whole check (9½ minutes), then 100 %. Wanted: the bytes (or
-  pieces) checked so far while checking. In the meantime the state says
-  `checking`, with no percentage.
+Nothing open.
 
 ## Resolved upstream
 
+- 0.14.0: `Event::TrackerReply` carries the `interval` the tracker asked
+  for, its `min_interval` and the announce's `response_time`: each host in
+  `GET /torrents/trackers` has the median interval and response time of
+  its trackers' latest replies, and the web UI's Stats › Trackers shows
+  slow hosts and the intervals asked for.
+  `Session::force_reannounce_tracker` announces to one tracker alone:
+  `POST /torrents/{hash}/trackers/reannounce` (the Trackers tab's
+  Reannounce on each tracker) and `POST /torrents/trackers/reannounce` by
+  host (Stats › Trackers). `TorrentStatus::pieces_checked` says how far a
+  check has got: list rows carry it, and the UI shows the percentage while
+  a torrent is checking.
 - 0.13.5: `TorrentStatus::slow`, the queue's slow torrent (60 s below
   2 KiB/s both ways, holding no slot unless `count_slow`): list rows carry
   it as `slow`, and the web UI's queue picture uses it instead of reading

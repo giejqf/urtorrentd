@@ -647,6 +647,10 @@ pub struct TorrentSummary {
     pub piece_size: u32,
     /// Verified pieces.
     pub pieces_have: usize,
+    /// While `checking`: the pieces the check has gone through so far, out
+    /// of `pieces_total` (`pieces_have` moves only when the check ends); 0
+    /// in every other state.
+    pub pieces_checked: usize,
     /// All pieces.
     pub pieces_total: usize,
     /// The tracker currently working; `null` if none is.
@@ -881,7 +885,7 @@ pub struct RemoveTrackerHostsRequest {
 
 /// A tracker host across the session's torrents, as it stands now. Only
 /// the host is shown: private trackers' URLs carry passkeys.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 pub struct TrackerHost {
     /// The host (`tracker.example.org`).
     pub host: String,
@@ -905,6 +909,24 @@ pub struct TrackerHost {
     /// The latest failure, unix seconds.
     #[schema(required = true)]
     pub last_failure: Option<u64>,
+    /// The announce interval it asks for, seconds: the median over its
+    /// trackers' latest replies in this run; `null` before a reply.
+    #[schema(required = true)]
+    pub interval: Option<u64>,
+    /// How long it takes to answer an announce, seconds (name resolution,
+    /// connecting and the reply): the median over its trackers' latest
+    /// replies in this run; `null` before a reply.
+    #[schema(required = true)]
+    pub response_time: Option<f64>,
+}
+
+/// Reannounce to the trackers on some hosts alone.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ReannounceHostsRequest {
+    /// Target torrents.
+    pub hashes: Hashes,
+    /// Hosts, as `GET /torrents/trackers` lists them (`tracker.example.org`).
+    pub hosts: Vec<String>,
 }
 
 /// URLs to remove.

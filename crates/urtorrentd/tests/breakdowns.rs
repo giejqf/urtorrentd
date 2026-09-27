@@ -272,7 +272,17 @@ async fn traffic_broken_down_by_peer_group_and_tracker() {
     );
     assert_eq!(ok["failing"], json!([]));
     assert_eq!(ok["error"], Value::Null);
+    // What its replies say: the interval it asks for, and how fast it is.
+    assert_eq!(ok["interval"], 1800, "{v}");
+    assert!(
+        ok["response_time"]
+            .as_f64()
+            .is_some_and(|t| t > 0.0 && t < 5.0),
+        "{v}"
+    );
     let bad = host(&v, "localhost").unwrap();
+    assert_eq!(bad["interval"], Value::Null, "no reply: {v}");
+    assert_eq!(bad["response_time"], Value::Null, "{v}");
     assert_eq!(bad["working"], 0);
     assert!(bad["fails"].as_u64() >= Some(1), "{v}");
     assert!(bad["error"].as_str().is_some_and(|e| !e.is_empty()), "{v}");

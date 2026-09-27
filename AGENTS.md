@@ -132,7 +132,7 @@ our endpoints are named in `docs/api.md`, which keeps the full, current table.
 | `transfer` | `banPeers` | L `ban_ip` (per IP) |
 | `torrents` | `count`, `info`, `properties`, `files`, `trackers`, `webseeds`, `pieceStates`, `pieceHashes`, `pieceAvailability`, `export` | L `statuses` / `status` / `files` / `trackers` / `pieces` / `torrent_file`, plus metainfo parsing of the `.torrent` |
 | `torrents` | `add` | L `add_torrent`, plus D for URL fetch, category, tags, stop condition, content layout, add-to-top, share limits, automatic management, download path and rename (4.7) |
-| `torrents` | `start`, `stop`, `setForceStart`, `delete`, `recheck`, `reannounce` | L `resume` / `pause` / `force_resume` + `set_auto_managed` / `remove_torrent(_with_files)` / `force_recheck` / `force_reannounce` |
+| `torrents` | `start`, `stop`, `setForceStart`, `delete`, `recheck`, `reannounce` | L `resume` / `pause` / `force_resume` + `set_auto_managed` / `remove_torrent(_with_files)` / `force_recheck` / `force_reannounce` (`force_reannounce_tracker` for one tracker) |
 | `torrents` | `topPrio`, `bottomPrio`, `increasePrio`, `decreasePrio` | L `move_in_queue` |
 | `torrents` | `filePrio`, `renameFile`, `toggleSequentialDownload`, `setLocation`, `setSavePath` | L `set_file_priorities` / `rename_file` / `set_sequential` / `move_storage` |
 | `torrents` | `renameFolder` | P: one `rename_file` per file, not atomic |
@@ -200,7 +200,7 @@ docs/adr/               design decisions
 ```
 
 Depend on the facade only: `urtorrent = { path = "../urtorrent/crates/urtorrent", version =
-"0.13.5" }` during development (the version is the oldest library release the daemon is
+"0.14.0" }` during development (the version is the oldest library release the daemon is
 tested against; raise it when the daemon starts using something newer). CI checks both repos out side by side. Switch to a pinned git revision or a
 crates.io version once one is published. The library is `0.x`, so a minor bump is
 breaking: pin the minor. The facade re-exports what the daemon needs, including

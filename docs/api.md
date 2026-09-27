@@ -284,13 +284,19 @@ not followed; no answer, 429 and 5xx are retried after 2 s, 10 s and 60 s.
 stands now. A running torrent is `failing` on a host when its last announce
 there failed and it does not work with another tracker on that host. The
 failures come from this run's announces: after a restart a host shows as
-failing again once an announce to it fails.
+failing again once an announce to it fails. So do `interval` (what the host
+asks for, seconds) and `response_time` (how long it takes to answer,
+seconds, from name resolution to the reply): the median over its trackers'
+latest replies, `null` until one answers.
 
 ```sh
 GET /api/v1/torrents/trackers
 [{"host": "tracker.example.org", "torrents": 4, "private": 4, "working": 3,
   "failing": ["0123...cdef"], "fails": 7, "error": "connection timed out",
-  "failing_since": 1790200000, "last_failure": 1790203300}, ...]
+  "failing_since": 1790200000, "last_failure": 1790203300,
+  "interval": 1800, "response_time": 0.42}, ...]
+# Announce to one host now (its trackers alone, on each torrent)
+POST /api/v1/torrents/trackers/reannounce {"hashes": "all", "hosts": ["tracker.example.org"]}
 # Stop using a dead tracker, or give torrents more trackers, in bulk
 POST /api/v1/torrents/trackers/remove  {"hashes": ["0123...cdef"], "hosts": ["tracker.example.org"]}
 POST /api/v1/torrents/trackers         {"hashes": ["0123...cdef"], "urls": ["udp://open.example:6969/announce"]}
@@ -503,8 +509,10 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | POST | `/torrents/{hash}/files/priority`, `/files/rename`, `/folders/rename` | File priorities and renames |
 | GET, POST | `/torrents/trackers` | Tracker hosts across the torrents now: torrents on each, working, failing with the latest error ([Trackers](#trackers-across-torrents)); add trackers to many torrents |
 | POST | `/torrents/trackers/remove` | Remove every tracker on some hosts from many torrents |
+| POST | `/torrents/trackers/reannounce` | Reannounce to the trackers on some hosts alone, on many torrents |
 | GET, POST | `/torrents/{hash}/trackers` | Trackers (with a row per listen socket) and DHT / PEX / LSD sources; add trackers |
 | POST | `/torrents/{hash}/trackers/remove`, `/trackers/edit` | Remove or replace trackers |
+| POST | `/torrents/{hash}/trackers/reannounce` | Reannounce to some trackers alone, even when another of their tier works |
 | GET, POST | `/torrents/{hash}/webseeds` | Web seeds; add |
 | POST | `/torrents/{hash}/webseeds/remove`, `/webseeds/edit` | Remove or replace web seeds |
 | GET | `/torrents/{hash}/peers` | Connected peers, with country and network (GeoIP) |
@@ -661,7 +669,7 @@ column names the endpoint). **planned**: a daemon feature not built yet.
 | `torrents/setComment` | done | `PATCH /torrents/{hash}` (`comment`) |
 | `torrents/setAutoManagement` | done | `POST /torrents/auto-management` |
 | `torrents/recheck` | done | `POST /torrents/recheck` |
-| `torrents/reannounce` | done | `POST /torrents/reannounce` (all trackers) |
+| `torrents/reannounce` | done | `POST /torrents/reannounce` (all trackers); one tracker alone: `POST /torrents/{hash}/trackers/reannounce`, one host alone: `POST /torrents/trackers/reannounce` |
 | `torrents/setCategory` | done | `POST /torrents/category` |
 | `torrents/createCategory` | done | `POST /categories` |
 | `torrents/editCategory` | done | `PUT /categories` |

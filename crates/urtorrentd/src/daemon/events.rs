@@ -10,7 +10,7 @@ use std::sync::{Arc, Weak};
 
 use urtorrent::{ErrorKind, Event, EventStream, InfoHash, TorrentId};
 
-use super::{Daemon, ResumeSave, TrackerFailure};
+use super::{Daemon, ResumeSave, TrackerFailure, TrackerReplyInfo};
 use crate::log::LogTopic;
 use crate::log::{LogLevel, PeerLogSource};
 use crate::model::TimelineKind;
@@ -108,7 +108,13 @@ impl Daemon {
                     stats.peer_closed(now(), h, &PeerSample::of(&info), &|ip| self.geo.lookup(ip));
                 }
             }
-            Event::TrackerReply { id, url, .. } => {
+            Event::TrackerReply {
+                id,
+                url,
+                interval,
+                response_time,
+                ..
+            } => {
                 if let Ok(stats) = &self.stats {
                     stats.announce(now(), &url, true);
                 }
@@ -116,6 +122,13 @@ impl Daemon {
                     && let Some(e) = self.state().torrents.get_mut(&h)
                 {
                     e.tracker_failures.remove(&url);
+                    e.tracker_replies.insert(
+                        url,
+                        TrackerReplyInfo {
+                            interval: interval.as_secs(),
+                            response_time: response_time.as_secs_f64(),
+                        },
+                    );
                 }
             }
             Event::TrackerError { id, url, error } => {

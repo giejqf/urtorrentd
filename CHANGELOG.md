@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- urtorrent 0.14.0. `GET /torrents/trackers`: each host's `interval` (what
+  it asks for) and `response_time` (how long it takes to answer), the
+  median of its trackers' latest replies. `POST
+  /torrents/{hash}/trackers/reannounce` announces to some trackers of a
+  torrent alone, even when another tracker of their tier works; `POST
+  /torrents/trackers/reannounce` to the trackers on some hosts alone.
+  List rows' `pieces_checked`: how far a check has got.
+
 ## [0.15.0] - 2026-09-27
 
 ### Changed

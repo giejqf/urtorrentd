@@ -12,7 +12,7 @@ use axum::response::{IntoResponse, Response};
 
 use super::{HashPath, Json, Path, no_content};
 use crate::daemon::Daemon;
-use crate::error::ApiResult;
+use crate::error::{ApiError, ApiResult};
 use crate::model::{
     AddTrackersRequest, EditUrlRequest, FileInfo, FilePriorityRequest, PeerInfo, PiecesResponse,
     QueuePositionRequest, RenameRequest, TorrentDetail, TorrentPatch, TrackersResponse,
@@ -134,6 +134,24 @@ pub(crate) async fn remove_trackers(
 ) -> ApiResult<StatusCode> {
     let (h, id) = d.resolve(&p.hash)?;
     d.remove_trackers(h, id, &req.urls).await?;
+    Ok(no_content())
+}
+
+/// Reannounce to these trackers alone, as soon as each one's minimum
+/// interval allows, even when another tracker of its tier is working (the
+/// tier rules would leave it idle); later announces follow the tier rules
+/// again. 404 when the torrent has no such tracker.
+#[utoipa::path(post, path = "/torrents/{hash}/trackers/reannounce", tag = "torrent", params(HashPath), responses((status = 204, description = "Asked.")))]
+pub(crate) async fn reannounce_trackers(
+    State(d): State<Arc<Daemon>>,
+    Path(p): Path<HashPath>,
+    Json(req): Json<UrlsRequest>,
+) -> ApiResult<StatusCode> {
+    let (_, id) = d.resolve(&p.hash)?;
+    if req.urls.is_empty() {
+        return Err(ApiError::bad_request("no tracker URL"));
+    }
+    d.reannounce_trackers(id, &req.urls).await?;
     Ok(no_content())
 }
 

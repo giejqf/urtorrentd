@@ -284,9 +284,11 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
             torrents::add_trackers_to_torrents
         ))
         .routes(routes!(torrents::remove_tracker_hosts))
+        .routes(routes!(torrents::reannounce_tracker_hosts))
         .routes(routes!(torrent::list_trackers, torrent::add_trackers))
         .routes(routes!(torrent::remove_trackers))
         .routes(routes!(torrent::edit_tracker))
+        .routes(routes!(torrent::reannounce_trackers))
         .routes(routes!(torrent::list_web_seeds, torrent::add_web_seeds))
         .routes(routes!(torrent::remove_web_seeds))
         .routes(routes!(torrent::edit_web_seed))

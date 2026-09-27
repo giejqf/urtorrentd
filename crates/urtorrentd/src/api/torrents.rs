@@ -15,8 +15,8 @@ use crate::model::{
     AddPeersRequest, AddTorrentsRequest, AddTorrentsResponse, AddTrackersBulkRequest, BulkResult,
     CategoryRequest, CountResponse, DeleteRequest, DownloadPathRequest, FileSearch,
     FileSearchQuery, HashesRequest, LimitsRequest, LocationRequest, ParseTorrentRequest,
-    QueueRequest, RemoveTrackerHostsRequest, ShareLimitsRequest, TagsRequest, ToggleRequest,
-    TorrentListQuery, TorrentMetadata, TorrentSummary, TrackerHost,
+    QueueRequest, ReannounceHostsRequest, RemoveTrackerHostsRequest, ShareLimitsRequest,
+    TagsRequest, ToggleRequest, TorrentListQuery, TorrentMetadata, TorrentSummary, TrackerHost,
 };
 use crate::settings::valid_tracker_url;
 
@@ -192,6 +192,30 @@ pub(crate) async fn remove_tracker_hosts(
     let hosts = &hosts;
     Ok(Json(
         d.bulk(&req.hashes, |h, id| d.remove_tracker_hosts(h, id, hosts))
+            .await?,
+    ))
+}
+
+/// Reannounce to the trackers on some hosts alone (each torrent's trackers
+/// there, as soon as their minimum interval allows); torrents with none are
+/// left as they are.
+#[utoipa::path(post, path = "/torrents/trackers/reannounce", tag = "torrents", responses((status = 200, body = BulkResult)))]
+pub(crate) async fn reannounce_tracker_hosts(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<ReannounceHostsRequest>,
+) -> ApiResult<Json<BulkResult>> {
+    let hosts: Vec<String> = req
+        .hosts
+        .iter()
+        .map(|h| h.trim().to_ascii_lowercase())
+        .filter(|h| !h.is_empty())
+        .collect();
+    if hosts.is_empty() {
+        return Err(ApiError::bad_request("no host"));
+    }
+    let hosts = &hosts;
+    Ok(Json(
+        d.bulk(&req.hashes, |_, id| d.reannounce_tracker_hosts(id, hosts))
             .await?,
     ))
 }
