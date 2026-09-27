@@ -163,7 +163,7 @@ function AboutForm(props: { saved: Schemas["Settings"] }) {
         aria-label="urtorrentd"
         class="flex flex-wrap items-center gap-5 rounded-tile border border-divider bg-card p-5"
       >
-        <LogoMark class="size-14 rounded-[14px] [&_svg]:size-[30px]" />
+        <LogoMark class="size-14" />
         <div class="flex min-w-[240px] flex-1 flex-col gap-1">
           <div class="flex items-baseline gap-2.5">
             <span class="text-xl font-semibold tracking-[-0.01em]">urtorrentd</span>

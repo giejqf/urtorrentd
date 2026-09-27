@@ -557,9 +557,13 @@ built again when the theme changes.
 - **Sign-in card:** 400px wide, padding 32, shadow `0 24px 64px rgb(0 0 0 / .5)`, on a 48px grid
   (`#18181b`) that fades radially into the background.
 
-**Icons.** Lucide at 13–15px, stroke 2 (2.5 for the logo mark and "+"). The logo mark is
-`arrow-down-to-line` on a `#fafafa` tile: 22px with radius 6 in the sidebar, 40px with radius 10
-on sign-in.
+**Icons.** Lucide at 13–15px, stroke 2 (2.5 for "+"). The logo mark is one stroke that rises
+in a U and runs on into a ring round it, each end tucked behind the other (the maintainer's
+artwork, 2026-09-27), drawn as SVG in the text colour (`components/logo.tsx`): 22px in the
+sidebar, 40px on sign-in, 56px on About. Its geometry, measured from the artwork, is a
+362-unit box centred on the ring: the ring's centre line at 164.5, strokes 33 wide, the U's
+legs at ±78.5 with rounded ends centred at y −85 and 14.5, and 13-unit gaps where the ends
+tuck in. `public/favicon.svg` draws the same, dark or light as the browser is.
 
 ### 6.3 Layout and behaviour
 
