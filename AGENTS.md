@@ -599,7 +599,10 @@ setup: the first client chooses the credentials (ADR 0007). **0.14.0** adds the 
 (`frontend/`, ADR 0008), served by the daemon, with the API it needed; it requires urtorrent
 0.13.5 (the queue's slow flag in list rows, a queue position set in one call). **0.15.0**
 keeps sync small at 10 000 torrents: clock-only row changes once a minute, other changes in
-batches of 1000 (4.6), measured by the web UI's scale benchmark.
+batches of 1000 (4.6), measured by the web UI's scale benchmark. **0.16.0** takes urtorrent
+from crates.io (0.14.2, which closed the last gaps: tracker reply intervals and response
+times, one tracker reannounced, check progress) and downloads DB-IP Lite when a client asks
+(ADR 0009), credited in the web UI.
 
 - **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
   (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
