@@ -15,6 +15,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
+  // The scale benchmark (e2e/scale.spec.ts) runs only when asked: SLOW=1.
+  grepInvert: process.env.SLOW ? undefined : /@slow/,
   // Each test may run two daemons next to its browser: half the cores.
   workers: "50%",
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",

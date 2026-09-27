@@ -879,9 +879,14 @@ Playwright, in `e2e/`.
 - **Themes and phones.** The browser prefers the dark scheme (`playwright.config.ts`), so the
   suite runs in the dark theme; the palette spec switches to light and runs axe on every kind
   of page, and the phone spec checks that no page is wider than 390px.
-- **Scale** (tagged `@slow`, W7). The test adds 10 000 magnets through the API: random info-hashes,
-  no trackers, DHT off, so they all wait in `metadata`. The list must render, scroll, filter and
-  search within set time budgets.
+- **Scale** (`e2e/scale.spec.ts`, tagged `@slow`, W7; runs only with `SLOW=1`). A real daemon
+  gets 10 000 torrents (`BENCH_N`) through the API: magnets that wait in `metadata` (no
+  trackers, DHT off) and `.torrent` files without content, a third stopped, in categories and
+  tags. The spec measures in the page, from the input to the frame that shows the result:
+  loading, scrolling, filters, sorting, search, one torrent, choosing all, the palette, the
+  idle cost of the live stream (main thread, events and bytes), memory and the bundle. It
+  writes `target/bench/web-<N>.json`. Run it against a release daemon. It asserts no budgets
+  yet.
 - **Serving.** Specs cover:
   - the fallback, the cache headers and the CSP (no violation reported on any screen);
   - the whole app behind a local forwarding proxy that acts like Caddy (it keeps `Host` and adds
@@ -940,6 +945,9 @@ like every other daemon feature.
 - `npm run e2e`: `vite build`, `cargo build -p urtorrentd`, then Playwright in Chromium.
   `npm run e2e:all` runs Firefox and WebKit too. Install the browsers once with
   `npx playwright install chromium` (add `--with-deps` on a fresh machine).
+- The scale benchmark (7), after `npm run build` and `cargo build --release -p urtorrentd`:
+  `URTORRENTD_BIN=../target/release/urtorrentd SLOW=1 npx playwright test --grep @slow
+  --project=chromium` (`BENCH_N=1000` for fewer torrents).
 - From the repository root:
   - `cargo xtask web`: `npm ci` if needed, then check and e2e.
   - `cargo xtask dist`: build the UI, then `cargo build --release --features web-ui`.
@@ -1021,7 +1029,9 @@ Each milestone ends with its end-to-end tests green.
   budgets. Done so far: the palette as designed (torrents, removed ones, files across torrents,
   commands and their keys); the light theme; the phone list and torrent as designed with the
   tab bar, and every other page fitted to a phone (6.3); the connection bar and the page error
-  card. Left: the full browser matrix and the 10 000-torrent budgets.
+  card; the scale benchmark (7), whose first run (2026-09-27) made the daemon send clock-only
+  row changes once a minute. Left: the full browser matrix, and budgets asserted from the
+  benchmark's numbers.
 
 ## 11. Decisions and open questions
 
