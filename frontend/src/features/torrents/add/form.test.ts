@@ -27,6 +27,7 @@ const form = (more: Partial<AddForm> = {}): AddForm => ({
   downloadLimit: "",
   uploadLimit: "",
   ratio: "",
+  download: { touched: false, on: false, path: "" },
   ...more,
 });
 
@@ -115,5 +116,25 @@ describe("files and paths", () => {
     expect(categoryPath("/data/", "tv", cat("series"))).toBe("/data/series");
     expect(categoryPath("/data", "tv", cat("/srv/tv"))).toBe("/srv/tv");
     expect(categoryPath("/data", null, undefined)).toBe("/data");
+  });
+});
+
+describe("the download path", () => {
+  it("is the daemon's to decide until chosen", () => {
+    const o = addOptions(form());
+    expect("options" in o && o.options.download_path).toBeUndefined();
+    expect("options" in o && o.options.use_download_path).toBeUndefined();
+  });
+  it("sends a folder, or none at all", () => {
+    const on = addOptions(
+      form({ download: { touched: true, on: true, path: " /data/incoming " } }),
+    );
+    expect("options" in on && on.options.download_path).toBe("/data/incoming");
+    const off = addOptions(form({ download: { touched: true, on: false, path: "/x" } }));
+    expect("options" in off && off.options.use_download_path).toBe(false);
+    expect("options" in off && off.options.download_path).toBeUndefined();
+    expect(addOptions(form({ download: { touched: true, on: true, path: " " } }))).toEqual({
+      error: "Keep incomplete in: a folder, or turn it off.",
+    });
   });
 });

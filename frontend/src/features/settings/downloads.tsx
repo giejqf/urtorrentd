@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 import { useLive } from "~/features/shell/live";
+import { canHandleMagnets, handleMagnets } from "~/lib/magnets";
 import { formatAgo, formatCount } from "~/lib/format";
 
 import { useAppInfo } from "./app-info";
@@ -310,6 +311,7 @@ function DownloadsForm(props: { saved: Schemas["Settings"] }) {
           "Recheck on completion",
           "Verify the data again after the download finishes and any move.",
         )}
+        <MagnetRow />
       </SettingsGroup>
 
       <SettingsGroup title="Files">
@@ -445,5 +447,38 @@ function DownloadsForm(props: { saved: Schemas["Settings"] }) {
 export default function Downloads() {
   return (
     <WithSettings title="Downloads">{(saved) => <DownloadsForm saved={saved()} />}</WithSettings>
+  );
+}
+
+/** Not a setting of the daemon's: this browser opens magnet links here. */
+function MagnetRow() {
+  const [asked, setAsked] = createSignal(false);
+  return (
+    <SettingRow
+      label="Magnet links in this browser"
+      description={
+        canHandleMagnets()
+          ? asked()
+            ? "Asked: the browser shows its own question (in the address bar, or a dialog) to confirm."
+            : "Clicking a magnet link on any site opens it in this page's add dialog. The browser asks you to confirm."
+          : "Browsers only let a page open magnet links over HTTPS (or on localhost)."
+      }
+    >
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!canHandleMagnets()}
+        onClick={() => {
+          try {
+            handleMagnets();
+            setAsked(true);
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : "The browser refused.");
+          }
+        }}
+      >
+        Open them here
+      </Button>
+    </SettingRow>
   );
 }

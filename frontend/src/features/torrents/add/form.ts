@@ -108,6 +108,9 @@ export interface AddForm {
   uploadLimit: string;
   /** Used when not inheriting; empty = no ratio limit. */
   ratio: string;
+  /** Where the incomplete content stays; untouched, the daemon decides
+   * (the category's while automatic management is on, else the setting). */
+  download: { touched: boolean; on: boolean; path: string };
 }
 
 function kiloToBytes(text: string, what: string): number | null | string {
@@ -137,6 +140,12 @@ export function addOptions(f: AddForm): { options: AddOptions } | { error: strin
     download_limit: down,
     upload_limit: up,
   };
+  if (f.download.touched) {
+    if (!f.download.on) options.use_download_path = false;
+    else if (f.download.path.trim() === "") {
+      return { error: "Keep incomplete in: a folder, or turn it off." };
+    } else options.download_path = f.download.path.trim();
+  }
   if (!f.inheritLimits) {
     const t = f.ratio.trim().replace(",", ".");
     let ratio: Schemas["RatioLimit"] = { mode: "unlimited" };

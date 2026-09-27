@@ -35,8 +35,19 @@ import { SECTIONS } from "~/features/settings/nav-sections";
 import { kbText } from "~/features/settings/speed-form";
 import { REPORTS } from "~/features/stats/sidebar";
 import { formatBytes, formatCount, formatPercent, formatShortDate } from "~/lib/format";
+import { canHandleMagnets, handleMagnets } from "~/lib/magnets";
 import { useSettled } from "~/lib/settled";
-import { THEME_CHOICES, setThemeChoice, themeChoice } from "~/lib/theme";
+import {
+  ACCENTS,
+  accentChoice,
+  setAccentChoice,
+  setThemeChoice,
+  setUnitsChoice,
+  THEME_CHOICES,
+  themeChoice,
+  UNITS,
+  unitsChoice,
+} from "~/lib/theme";
 import { stateLook, type Tone } from "~/lib/torrent";
 import { cn } from "~/lib/utils";
 
@@ -45,12 +56,14 @@ import {
   commandMatches,
   cycleScope,
   highlight,
+  isOpenModal,
   isTyping,
   parseQuery,
   type Scope,
   SCOPES,
 } from "./palette-view";
 import { useShell } from "./protected";
+import { ShortcutsDialog } from "./shortcuts";
 
 type TorrentSummary = Schemas["TorrentSummary"];
 
@@ -94,10 +107,6 @@ interface Group {
 
 /** Everything's share of each group, and a scope's own. */
 const LIMIT = { everything: 5, scoped: 50 };
-
-function isOpenModal(): boolean {
-  return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
-}
 
 export function CommandPalette(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const live = useLive();
@@ -174,11 +183,44 @@ export function CommandPalette(props: { open: boolean; onOpenChange: (open: bool
         keywords: "appearance colours colors dark light mode",
         run: () => setThemeChoice(c.value),
       })),
+      ...(canHandleMagnets()
+        ? [
+            {
+              id: "magnets",
+              label: "Open magnet links here",
+              sub: "in this browser, once it asks you to confirm",
+              keywords: "magnet handler protocol browser links",
+              run: () => handleMagnets(),
+            },
+          ]
+        : []),
+      ...ACCENTS.map((c) => ({
+        id: `accent:${c.value}`,
+        label: `Accent: ${c.label}`,
+        sub: accentChoice() === c.value ? "in use" : undefined,
+        keywords: "appearance colour color brand",
+        run: () => setAccentChoice(c.value),
+      })),
+      ...UNITS.map((c) => ({
+        id: `units:${c.value}`,
+        label: `Units: ${c.label}`,
+        sub: unitsChoice() === c.value ? "in use" : undefined,
+        keywords: "sizes rates bytes mebibytes megabytes",
+        run: () => setUnitsChoice(c.value),
+      })),
+      {
+        id: "shortcuts",
+        label: "Keyboard shortcuts",
+        keywords: "keys help hotkeys",
+        key: "?",
+        run: () => setShortcuts(true),
+      },
       { id: "sign-out", label: "Sign out", keywords: "log out", run: () => void auth.signOut() },
     ];
   });
 
   let before: Element | null = null;
+  const [shortcuts, setShortcuts] = createSignal(false);
   const setOpen = (open: boolean) => {
     // Where focus was before the palette, to go back to.
     if (open && !props.open) before = document.activeElement;
@@ -197,6 +239,9 @@ export function CommandPalette(props: { open: boolean; onOpenChange: (open: bool
     if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       setOpen(true);
+    } else if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      setShortcuts(true);
     } else if (e.key === "," && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       go("/settings");
@@ -210,34 +255,37 @@ export function CommandPalette(props: { open: boolean; onOpenChange: (open: bool
   onCleanup(() => document.removeEventListener("keydown", onKey, true));
 
   return (
-    <DialogPrimitive.Root open={props.open} onOpenChange={setOpen}>
-      <DialogPrimitive.Portal>
-        {/* It closes at once, no fade: focus goes back before the next key. */}
-        <DialogPrimitive.Overlay class="fixed inset-0 z-50 bg-overlay data-[expanded]:animate-in data-[expanded]:fade-in-0" />
-        <div class="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[min(120px,12vh)] max-sm:px-2 max-sm:pt-2">
-          <DialogPrimitive.Content
-            onCloseAutoFocus={(e) => {
-              // Back where the user was, or to the page itself: focus left
-              // on the removed field would swallow every key after.
-              e.preventDefault();
-              const back = before;
-              before = null;
-              if (back instanceof HTMLElement && back.isConnected && back !== document.body) {
-                back.focus();
-              } else {
-                document.getElementById("content")?.focus({ preventScroll: true });
-              }
-            }}
-            class="flex max-h-[calc(100dvh-2rem)] w-full max-w-[680px] flex-col overflow-hidden rounded-card border border-border bg-card text-card-foreground shadow-card outline-none data-[expanded]:animate-in data-[expanded]:fade-in-0"
-            aria-label="Command palette"
-          >
-            <Show when={props.open}>
-              <Palette commands={commands()} onClose={() => setOpen(false)} />
-            </Show>
-          </DialogPrimitive.Content>
-        </div>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+    <>
+      <DialogPrimitive.Root open={props.open} onOpenChange={setOpen}>
+        <DialogPrimitive.Portal>
+          {/* It closes at once, no fade: focus goes back before the next key. */}
+          <DialogPrimitive.Overlay class="fixed inset-0 z-50 bg-overlay data-[expanded]:animate-in data-[expanded]:fade-in-0" />
+          <div class="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[min(120px,12vh)] max-sm:px-2 max-sm:pt-2">
+            <DialogPrimitive.Content
+              onCloseAutoFocus={(e) => {
+                // Back where the user was, or to the page itself: focus left
+                // on the removed field would swallow every key after.
+                e.preventDefault();
+                const back = before;
+                before = null;
+                if (back instanceof HTMLElement && back.isConnected && back !== document.body) {
+                  back.focus();
+                } else {
+                  document.getElementById("content")?.focus({ preventScroll: true });
+                }
+              }}
+              class="flex max-h-[calc(100dvh-2rem)] w-full max-w-[680px] flex-col overflow-hidden rounded-card border border-border bg-card text-card-foreground shadow-card outline-none data-[expanded]:animate-in data-[expanded]:fade-in-0"
+              aria-label="Command palette"
+            >
+              <Show when={props.open}>
+                <Palette commands={commands()} onClose={() => setOpen(false)} />
+              </Show>
+            </DialogPrimitive.Content>
+          </div>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
+      <ShortcutsDialog open={shortcuts()} onClose={() => setShortcuts(false)} />
+    </>
   );
 }
 

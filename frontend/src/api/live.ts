@@ -11,6 +11,7 @@ import { produce, reconcile, type SetStoreFunction } from "solid-js/store";
 import type { Schemas } from "~/api/client";
 
 type SyncResponse = Schemas["SyncResponse"];
+type TorrentSummary = Schemas["TorrentSummary"];
 
 export interface LiveState {
   /** The revision held; `null` before the first update. */
@@ -23,6 +24,20 @@ export interface LiveState {
 
 export function emptyLive(): LiveState {
   return { rev: null, torrents: {}, categories: {}, tags: [], transfer: null };
+}
+
+/**
+ * The torrents an update finishes: known before as incomplete, complete in
+ * it (a full snapshot says nothing about what changed, so none).
+ */
+export function finishedIn(
+  before: Readonly<Record<string, Pick<TorrentSummary, "complete">>>,
+  u: SyncResponse,
+): TorrentSummary[] {
+  if (u.full) return [];
+  return Object.entries(u.torrents).flatMap(([hash, t]) =>
+    before[hash]?.complete === false && t.complete ? [t] : [],
+  );
 }
 
 /**

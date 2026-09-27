@@ -26,6 +26,7 @@ import {
   trackerScheme,
   trackerUrlProblem,
   typedUrls,
+  endpointLine,
 } from "./trackers";
 
 const file = (index: number, path: string, size: number, priority = 4, progress = 0) =>
@@ -377,5 +378,35 @@ describe("options", () => {
     const next = optionsDraft({ ...t, upload_limit: 1_000_000, sequential: true });
     const merged = mergeDraft({ ...base, comment: "mine" }, base, next);
     expect(merged).toMatchObject({ comment: "mine", upload_limit: "1 000", sequential: true });
+  });
+});
+
+describe("tracker endpoints", () => {
+  const e = {
+    local: "0.0.0.0:6881",
+    working: false,
+    updating: false,
+    fails: 0,
+    message: null,
+    seeders: null,
+    leechers: null,
+    next_announce_in: null,
+  } satisfies Schemas["TrackerEndpointInfo"];
+  it("says how each socket's announce went", () => {
+    expect(endpointLine(e)).toEqual({ text: "not contacted yet", tone: "muted" });
+    expect(endpointLine({ ...e, working: true, seeders: 3, leechers: 1 })).toEqual({
+      text: "working · 3 seeds · 1 leechers",
+      tone: "ok",
+    });
+    expect(endpointLine({ ...e, updating: true }).text).toBe("announcing…");
+  });
+  it("cuts URLs in an error to their host", () => {
+    expect(
+      endpointLine({
+        ...e,
+        fails: 3,
+        message: "GET https://t.example/abc123passkey/announce: 403",
+      }),
+    ).toEqual({ text: "GET t.example/… 403 · failed 3 times", tone: "danger" });
   });
 });

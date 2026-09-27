@@ -3,24 +3,36 @@
 
 // The Peers tab: the torrent's connected peers, fastest first, with where
 // they are (GeoIP), their client and how they are connected, what flows
-// each way and how much of the torrent they have; peers to add by hand; the
-// swarm as the trackers report it.
+// each way and how much of the torrent they have; a peer's address to copy
+// or ban (every torrent, after a question); peers to add by hand; the swarm
+// as the trackers report it.
 
 import { A } from "@solidjs/router";
-import { createQuery } from "@tanstack/solid-query";
+import { createQuery, useQueryClient } from "@tanstack/solid-query";
+import Ellipsis from "lucide-solid/icons/ellipsis";
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { toast } from "solid-sonner";
 
 import { api, ApiError, type Schemas, unwrap } from "~/api/client";
 import { keys } from "~/api/keys";
+import { ConfirmDialog } from "~/components/confirm-dialog";
 import { PromptDialog } from "~/components/prompt-dialog";
 import { StatusDot } from "~/components/status-dot";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import { CountryCode, PeerBadge } from "~/features/stats/parts";
+import { peerIp } from "~/features/stats/peers-view";
 import { dash, formatCount, formatDuration, formatPercent, formatRate } from "~/lib/format";
 import { cn } from "~/lib/utils";
 
+import { copy } from "../actions";
 import { TabHeading } from "./parts";
 
 type TorrentSummary = Schemas["TorrentSummary"];
@@ -67,6 +79,7 @@ export function PeersTab(props: { torrent: TorrentSummary }) {
     refetchInterval: 5_000,
   }));
   const [adding, setAdding] = createSignal(false);
+  const client = useQueryClient();
   const all = () => peers.data ?? [];
   const sorted = createMemo(() =>
     [...all()].sort(
@@ -106,7 +119,17 @@ export function PeersTab(props: { torrent: TorrentSummary }) {
       toast.error(`Add peers: ${e instanceof ApiError ? e.message : "failed"}`);
     }
   };
-  const cols = "grid-cols-[26px_minmax(0,1fr)_58px_58px_44px]";
+  const [banning, setBanning] = createSignal<string | null>(null);
+  const ban = async (ip: string) => {
+    try {
+      await unwrap(api.POST("/api/v1/transfer/bans", { body: { peers: [ip] } }));
+      toast.success(`Banned ${ip}`);
+      void client.invalidateQueries({ queryKey: keys.torrentPart(hash(), "peers") });
+    } catch (e) {
+      toast.error(`Ban: ${e instanceof ApiError ? e.message : "failed"}`);
+    }
+  };
+  const cols = "grid-cols-[26px_minmax(0,1fr)_58px_58px_44px_24px]";
 
   return (
     <div class="flex min-h-0 flex-1 flex-col gap-2.5 px-4 pt-3 pb-4">
@@ -138,6 +161,7 @@ export function PeersTab(props: { torrent: TorrentSummary }) {
           <span class="text-right">Down</span>
           <span class="text-right">Up</span>
           <span class="text-right">Have</span>
+          <span />
         </div>
         <Show
           when={sorted().length > 0}
@@ -203,6 +227,27 @@ export function PeersTab(props: { torrent: TorrentSummary }) {
                           />
                         </span>
                       </span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          as="button"
+                          aria-label={`Peer ${p().address}: actions`}
+                          class="flex size-6 items-center justify-center rounded-md text-subtle hover:bg-accent hover:text-foreground"
+                        >
+                          <Ellipsis size={14} />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent class="min-w-44">
+                          <DropdownMenuItem onSelect={() => void copy(p().address, "Peer address")}>
+                            Copy address
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            class="text-danger"
+                            onSelect={() => setBanning(peerIp(p().address))}
+                          >
+                            Ban this address…
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </li>
                   )}
                 </Show>
@@ -220,6 +265,17 @@ export function PeersTab(props: { torrent: TorrentSummary }) {
             : formatDuration(props.torrent.next_announce_in)}
         </span>
       </div>
+      <ConfirmDialog
+        open={banning() !== null}
+        title={`Ban ${banning() ?? ""}?`}
+        description="Its connections close, on every torrent, and it cannot connect again. Bans are kept in Settings › Banned addresses."
+        action="Ban"
+        onClose={() => setBanning(null)}
+        onConfirm={() => {
+          const ip = banning();
+          if (ip !== null) void ban(ip);
+        }}
+      />
       <PromptDialog
         open={adding()}
         title="Add peers"

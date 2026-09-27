@@ -609,6 +609,8 @@ on sign-in.
   | / or ⌘K | Open the palette (anywhere) |
   | , | Settings (anywhere) |
   | ⌥S | Switch the alternative limits (anywhere) |
+  | ? | The keyboard shortcuts (anywhere) |
+  | ⌘V | Add the magnet link, URL or `.torrent` pasted (anywhere) |
 
   ⌘-click and Shift-click select several rows (so does a row's box), and a context menu on
   rows offers the bulk actions with these keys beside them.
@@ -784,6 +786,16 @@ These are the known differences. Resolve each as noted, never by faking.
 | Color tokens: semantic colours at 3:1 in light | Text meets AA (6.3) | The light theme's text colours darkened for 4.5:1 (6.2). |
 | Torrents — phone: no boxes, no bulk | Several at once needs the panel | The box shows only while several are chosen (from the keyboard); the context menu opens on a long press. |
 | Torrent — phone: no Trackers section | The Overview has one | Left out on a phone, as designed; the Trackers tab is in "more". |
+| Not designed: magnet links clicked in the browser | `registerProtocolHandler` needs a secure page (HTTPS or localhost) | Settings › Downloads › "Magnet links in this browser" (and the palette) ask the browser to hand them to `/torrents?add=<link>`, which opens the add dialog and takes the link out of the address at once (it can carry a passkey). |
+| Not designed: sources from anywhere | The add dialog's own sources | A magnet link, URL or `.torrent` pasted on any page, or dropped on it, opens the add dialog with it. |
+| Not designed: the add dialog's download path | `download_path` / `use_download_path` in the add options: the daemon's rule when absent (the category's with automatic management, else the setting) | "Keep incomplete in": the path the daemon would use until changed; typing turns it on, the switch off sends none. |
+| Not designed: the tab's title | — | The session's rates, then the instance ("↓ 8.1 MB/s ↑ 3.2 MB/s · seedbox-01"), as qBittorrent's WebUI does. |
+| Not designed: limits from the torrents screen | `PATCH /settings` (global limits), `PUT /transfer/alt-speed` | The sidebar footer's rates open a popover: the download and upload limits (applied on Enter or leaving the field) and the alternative limits' switch, with a link to Settings › Speed. |
+| Peers: no way to ban or copy a peer | `POST /transfer/bans` | Each peer's "⋯": Copy address, and Ban this address… after a question (every torrent; kept in Settings › Banned addresses). |
+| Trackers: one line per tracker | `endpoints` on each tracker: its announce through each listen socket | "N endpoints" opens them: the local address, working or its error (URLs cut to their host), what it reported, the next announce. |
+| 6.2: the accent and binary units as preferences | `data-accent` tokens; `formatBytes` in binary | The instance menu (and the palette): Theme, Accent (blue, green, violet, orange), Units (decimal or binary, for every size and rate shown), kept like the theme. |
+| Not designed: a notification when a download finishes | The live store sees a torrent turn complete | Opt-in from the instance menu ("Notify when downloads finish"), after the browser's permission; kept like the theme. |
+| Not designed: the keyboard shortcuts | 6.3's keys | ? or the palette opens them in a dialog. |
 | No design for a page that fails | A render error, or a chunk gone because the daemon serves a newer build | Not designed: a card in the sign-in style in place of the page (the sidebar stays): the error and Reload / Try again, or "The web UI was updated" and Reload. Moving to another page tries again. |
 
 ### 6.5 Designs wanted
@@ -796,8 +808,9 @@ a designer's look:
   reflow (6.3).
 - **Built without a design:** the share limits dialog (the Options rows), managing categories
   and tags from the sidebar, piece hashes, the connection bar, the page error card, the
-  first-run setup card, the instance menu (with the theme), and the one-line prompt and confirm
-  dialogs.
+  first-run setup card, the instance menu (with the theme, accent, units and notifications),
+  the one-line prompt and confirm dialogs, the speed limits popover, the keyboard shortcuts,
+  the drop overlay, the add dialog's download path, a peer's menu and a tracker's endpoints.
 
 ## 7. Testing
 

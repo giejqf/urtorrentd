@@ -151,6 +151,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and kept with the user's preferences; and the designed phone screens:
   the list with its status chips and tab bar, one torrent on the whole
   screen with its actions below, and every other page fitted to the width.
+- Web UI: magnet links clicked in the browser open the add dialog (once the
+  browser is allowed, from Settings › Downloads), and so do links and
+  `.torrent` files pasted or dropped on any page; the add dialog chooses
+  where incomplete content stays; the tab's title shows the rates; the
+  sidebar's rates open the global and alternative limits; a peer can be
+  copied or banned from a torrent's peers, and a tracker shows its
+  endpoints; the keyboard shortcuts (?); the accent and binary units as
+  preferences; and an opt-in notification when a download finishes.
 - `POST /rss/dry-run`: a rule as being edited, unsaved, over its feeds'
   articles: each one's verdict (`take`, `taken` by a rule already,
   `filtered`) and why the filters leave it.

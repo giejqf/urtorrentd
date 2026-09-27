@@ -15,6 +15,8 @@ import Power from "lucide-solid/icons/power";
 import Rss from "lucide-solid/icons/rss";
 import Search from "lucide-solid/icons/search";
 import Settings from "lucide-solid/icons/settings";
+import Palette from "lucide-solid/icons/palette";
+import Ruler from "lucide-solid/icons/ruler";
 import SunMoon from "lucide-solid/icons/sun-moon";
 import TextAlignStart from "lucide-solid/icons/text-align-start";
 import {
@@ -46,6 +48,7 @@ import {
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -68,11 +71,28 @@ import {
   trackerLabel,
 } from "~/features/torrents/view";
 import { formatCount, formatBytes, formatRate } from "~/lib/format";
-import { isThemeChoice, setThemeChoice, THEME_CHOICES, themeChoice } from "~/lib/theme";
+import { askToNotify, canNotify } from "~/lib/notify";
+import {
+  ACCENTS,
+  accentChoice,
+  isAccent,
+  isThemeChoice,
+  isUnits,
+  notifyChoice,
+  setAccentChoice,
+  setNotifyChoice,
+  setThemeChoice,
+  setUnitsChoice,
+  THEME_CHOICES,
+  themeChoice,
+  UNITS,
+  unitsChoice,
+} from "~/lib/theme";
 import { cn } from "~/lib/utils";
 
 import { useLive } from "./live";
 import { useShell } from "./protected";
+import { SpeedPopover } from "./speed-popover";
 import { CategorySection, TagSection } from "./organize";
 import { FilterItem, Section } from "./sidebar-items";
 
@@ -92,6 +112,14 @@ export const STATUS_LABELS: Record<StatusFilter, string> = {
   moving: "Moving",
   errored: "Errored",
   queued: "Queued",
+};
+
+/** The accents' own colours (the category palette has them). */
+const ACCENT_DOTS: Record<string, string> = {
+  blue: "bg-cat-1",
+  violet: "bg-cat-2",
+  green: "bg-cat-3",
+  orange: "bg-cat-4",
 };
 
 export const STATUS_DOTS: Record<StatusFilter, string> = {
@@ -186,6 +214,15 @@ export function ConnectionDot() {
   );
 }
 
+/** Finished downloads notify once the browser allows it. */
+async function switchNotify(on: boolean): Promise<void> {
+  if (on && !(await askToNotify())) {
+    toast.error("The browser does not allow notifications for this page: see its site settings.");
+    return;
+  }
+  setNotifyChoice(on ? "on" : "off");
+}
+
 export function InstanceMenu() {
   const auth = useAuth();
   const [confirm, setConfirm] = createSignal(false);
@@ -238,6 +275,54 @@ export function InstanceMenu() {
               </DropdownMenuRadioGroup>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Palette size={14} />
+              Accent
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent class="min-w-40">
+              <DropdownMenuRadioGroup
+                value={accentChoice()}
+                onChange={(v) => isAccent(v) && setAccentChoice(v)}
+              >
+                <For each={ACCENTS}>
+                  {(c) => (
+                    <DropdownMenuRadioItem value={c.value}>
+                      <span class="flex items-center gap-2">
+                        <StatusDot class={ACCENT_DOTS[c.value]} />
+                        {c.label}
+                      </span>
+                    </DropdownMenuRadioItem>
+                  )}
+                </For>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Ruler size={14} />
+              Units
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent class="min-w-44">
+              <DropdownMenuRadioGroup
+                value={unitsChoice()}
+                onChange={(v) => isUnits(v) && setUnitsChoice(v)}
+              >
+                <For each={UNITS}>
+                  {(c) => <DropdownMenuRadioItem value={c.value}>{c.label}</DropdownMenuRadioItem>}
+                </For>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <Show when={canNotify()}>
+            <DropdownMenuCheckboxItem
+              checked={notifyChoice() === "on"}
+              onChange={(on) => void switchNotify(on)}
+            >
+              Notify when downloads finish
+            </DropdownMenuCheckboxItem>
+          </Show>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => void auth.signOut()}>
             <LogOut size={14} />
             Sign out
@@ -373,20 +458,26 @@ function TransferFooter() {
   const t = () => live.state.transfer;
   return (
     <div class="flex flex-col gap-1.5 border-t border-divider px-3 py-2.5 mono text-xs text-subtle">
-      <div class="flex justify-between">
+      <SpeedPopover
+        label={`Speed limits: ${formatRate(t()?.download_rate ?? 0)} down, ${formatRate(t()?.upload_rate ?? 0)} up${t()?.alt_speed_enabled ? ", alternative limits on" : ""}`}
+        class="-mx-1.5 -my-1 flex justify-between gap-2 rounded-md px-1.5 py-1 text-left hover:bg-accent hover:text-muted-foreground"
+      >
         <span>
           <span class="text-brand" aria-hidden="true">
             ↓
-          </span>
-          <span class="sr-only">Download</span> {formatRate(t()?.download_rate ?? 0)}
+          </span>{" "}
+          {formatRate(t()?.download_rate ?? 0)}
         </span>
+        <Show when={t()?.alt_speed_enabled}>
+          <span class="rounded-sm border border-border px-1 text-2xs">alt</span>
+        </Show>
         <span>
           <span class="text-upload" aria-hidden="true">
             ↑
-          </span>
-          <span class="sr-only">Upload</span> {formatRate(t()?.upload_rate ?? 0)}
+          </span>{" "}
+          {formatRate(t()?.upload_rate ?? 0)}
         </span>
-      </div>
+      </SpeedPopover>
       <div class="flex justify-between gap-2">
         <span class="truncate">
           {formatCount(t()?.peers ?? 0)} peers · DHT {formatCount(t()?.dht_nodes ?? 0)}

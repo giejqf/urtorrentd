@@ -7,9 +7,11 @@
 // the whole URL appears only in its edit field. Pure and tested.
 
 import type { Schemas } from "~/api/client";
+import { hideUrls } from "~/features/stats/trackers-view";
 import { formatCount } from "~/lib/format";
 
 type Tracker = Schemas["TrackerInfo"];
+type Endpoint = Schemas["TrackerEndpointInfo"];
 
 /** The URL's scheme (`udp`, `https`), or `null` when it has none. */
 export function trackerScheme(url: string): string | null {
@@ -30,7 +32,7 @@ export function trackerLine(t: Tracker): { text: string; tone: "ok" | "danger" |
     case "updating":
       return { text: "announcing…", tone: "muted" };
     case "not_working": {
-      const why = t.message ?? "not working";
+      const why = t.message === null ? "not working" : hideUrls(t.message);
       return {
         text: t.fails > 1 ? `${why} · failed ${formatCount(t.fails)} times` : why,
         tone: "danger",
@@ -39,6 +41,25 @@ export function trackerLine(t: Tracker): { text: string; tone: "ok" | "danger" |
     case "not_contacted":
       return { text: "not contacted yet", tone: "muted" };
   }
+}
+
+/** How a tracker stands through one listen socket (it is announced once per socket). */
+export function endpointLine(e: Endpoint): { text: string; tone: "ok" | "danger" | "muted" } {
+  if (e.updating) return { text: "announcing…", tone: "muted" };
+  if (e.working) {
+    const parts = ["working"];
+    if (e.seeders !== null) parts.push(`${formatCount(e.seeders)} seeds`);
+    if (e.leechers !== null) parts.push(`${formatCount(e.leechers)} leechers`);
+    return { text: parts.join(" · "), tone: "ok" };
+  }
+  if (e.fails > 0 || e.message !== null) {
+    const why = e.message === null ? "not working" : hideUrls(e.message);
+    return {
+      text: e.fails > 1 ? `${why} · failed ${formatCount(e.fails)} times` : why,
+      tone: "danger",
+    };
+  }
+  return { text: "not contacted yet", tone: "muted" };
 }
 
 /** URLs typed one per line (or separated by spaces), each once. */

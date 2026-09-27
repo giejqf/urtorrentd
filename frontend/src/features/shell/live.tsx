@@ -16,8 +16,16 @@ import {
 import { createStore } from "solid-js/store";
 
 import type { Schemas } from "~/api/client";
-import { applySync, type Connection, connectLive, emptyLive, type LiveState } from "~/api/live";
+import {
+  applySync,
+  type Connection,
+  connectLive,
+  emptyLive,
+  finishedIn,
+  type LiveState,
+} from "~/api/live";
 import { useAuth } from "~/features/auth/auth";
+import { notifyFinished } from "~/lib/notify";
 import { loadThemeChoice } from "~/lib/theme";
 
 interface Live {
@@ -42,8 +50,10 @@ export const LiveProvider: ParentComponent = (props) => {
   const [updatedAt, setUpdatedAt] = createSignal<number | null>(null);
   const stream = connectLive({
     onUpdate: (u) => {
+      const done = finishedIn(state.torrents, u);
       applySync(setState, u);
       setUpdatedAt(Date.now());
+      notifyFinished(done);
     },
     onConnection: (c) => {
       setConnection(c);

@@ -9,6 +9,7 @@
 // torrent but what is typed here (charter rule 2).
 
 import { createQuery, useQueryClient } from "@tanstack/solid-query";
+import ChevronDown from "lucide-solid/icons/chevron-down";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { toast } from "solid-sonner";
 
@@ -35,6 +36,7 @@ import { cn } from "~/lib/utils";
 import { actions } from "../actions";
 import { SectionHead, TabHeading, trackerTone } from "./parts";
 import {
+  endpointLine,
   missingTrackers,
   nextTier,
   trackerLine,
@@ -158,6 +160,14 @@ export function TrackersTab(props: { torrent: TorrentSummary }) {
   );
 
   const [editing, setEditing] = createSignal<string | null>(null);
+  // Trackers whose endpoints are shown.
+  const [opened, setOpened] = createSignal<ReadonlySet<string>>(new Set());
+  const toggleOpened = (url: string) => {
+    const next = new Set(opened());
+    if (next.has(url)) next.delete(url);
+    else next.add(url);
+    setOpened(next);
+  };
   const [removing, setRemoving] = createSignal<Tracker | null>(null);
   const [typed, setTyped] = createSignal("");
   const [typedError, setTypedError] = createSignal<string | null>(null);
@@ -276,7 +286,69 @@ export function TrackersTab(props: { torrent: TorrentSummary }) {
                             >
                               Remove
                             </Button>
+                            <span class="flex-1" />
+                            <Show when={t.endpoints.length > 0}>
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                class="h-[22px] text-subtle"
+                                aria-expanded={opened().has(t.url)}
+                                onClick={() => toggleOpened(t.url)}
+                              >
+                                {formatCount(t.endpoints.length)}{" "}
+                                {t.endpoints.length === 1 ? "endpoint" : "endpoints"}
+                                <ChevronDown
+                                  class={cn(
+                                    "size-3 transition-transform",
+                                    opened().has(t.url) && "rotate-180",
+                                  )}
+                                />
+                              </Button>
+                            </Show>
                           </div>
+                          <Show when={opened().has(t.url)}>
+                            <ul
+                              class="m-0 flex list-none flex-col gap-1 border-t border-divider p-0 pt-1.5"
+                              aria-label={`Endpoints of ${trackerHost(t.url) ?? "the tracker"}`}
+                            >
+                              <For each={t.endpoints}>
+                                {(e) => {
+                                  const el = () => endpointLine(e);
+                                  return (
+                                    <li class="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 text-xs">
+                                      <StatusDot
+                                        class={
+                                          el().tone === "ok"
+                                            ? "bg-online"
+                                            : el().tone === "danger"
+                                              ? "bg-danger"
+                                              : "bg-faint"
+                                        }
+                                        small
+                                      />
+                                      <span class="flex min-w-0 flex-col">
+                                        <span class="truncate mono">from {e.local}</span>
+                                        <span
+                                          class={cn(
+                                            "truncate",
+                                            el().tone === "danger" ? "text-danger" : "text-subtle",
+                                          )}
+                                          title={el().text}
+                                        >
+                                          {el().text}
+                                        </span>
+                                      </span>
+                                      <span class="mono text-subtle">
+                                        <Show when={e.next_announce_in !== null && !e.updating}>
+                                          next in {formatDuration(e.next_announce_in ?? 0)}
+                                        </Show>
+                                      </span>
+                                    </li>
+                                  );
+                                }}
+                              </For>
+                            </ul>
+                          </Show>
                         </>
                       }
                     >

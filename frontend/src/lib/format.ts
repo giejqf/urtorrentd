@@ -6,13 +6,16 @@
 // (AGENTS.md 4.1, 8). Formatting never changes a value: `null` (unknown or
 // unlimited) is the caller's to show, as `dash` or `unlimited`.
 
+import { binaryUnits } from "./units";
+
 /** Shown for an unknown value. */
 export const dash = "—";
 /** Shown for an unlimited limit (`null` in a limit field). */
 export const unlimited = "∞";
 
 export interface UnitOptions {
-  /** Binary units (KiB, MiB: powers of 1024) instead of decimal (kB, MB). */
+  /** Binary units (KiB, MiB: powers of 1024) instead of decimal (kB, MB);
+   * absent: the viewer's preference (decimal unless chosen). */
   binary?: boolean;
 }
 
@@ -24,8 +27,9 @@ const BINARY = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"] as const;
  * below 100 of a unit, none from 100 on.
  */
 export function formatBytes(bytes: number, opts: UnitOptions = {}): string {
-  const units = opts.binary ? BINARY : DECIMAL;
-  const base = opts.binary ? 1024 : 1000;
+  const bin = opts.binary ?? binaryUnits();
+  const units = bin ? BINARY : DECIMAL;
+  const base = bin ? 1024 : 1000;
   if (!Number.isFinite(bytes) || bytes < 0) return dash;
   if (bytes < base) return `${Math.round(bytes)} B`;
   let value = bytes;
@@ -61,8 +65,9 @@ export function formatLimit(bytesPerSecond: number | null, opts: UnitOptions = {
  * `{ unit: "GB", size: 1e9 }`. Values are divided by `size` for their labels.
  */
 export function byteUnit(max: number, opts: UnitOptions = {}): { unit: string; size: number } {
-  const units = opts.binary ? BINARY : DECIMAL;
-  const base = opts.binary ? 1024 : 1000;
+  const bin = opts.binary ?? binaryUnits();
+  const units = bin ? BINARY : DECIMAL;
+  const base = bin ? 1024 : 1000;
   let unit = 0;
   let size = 1;
   while (max >= size * base && unit < units.length - 1) {

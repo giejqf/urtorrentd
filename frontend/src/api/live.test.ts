@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { sync, torrent, transfer } from "~/test/fixtures";
 
-import { applySync, connectLive, emptyLive, type Connection } from "./live";
+import { applySync, connectLive, emptyLive, finishedIn, type Connection } from "./live";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -189,5 +189,27 @@ describe("connectLive", () => {
     expect(h.states.at(-1)).toBe("stopped");
     expect(h.timers).toHaveLength(1);
     h.live.close();
+  });
+});
+
+describe("finishedIn", () => {
+  const before = {
+    [A]: torrent({ hash: A, complete: false }),
+    [B]: torrent({ hash: B, complete: true }),
+  };
+  it("names the torrents an update completes", () => {
+    const u = sync({
+      full: false,
+      torrents: {
+        [A]: torrent({ hash: A, complete: true, name: "done" }),
+        [B]: torrent({ hash: B, complete: true }),
+        [C]: torrent({ hash: C, complete: true }),
+      },
+    });
+    expect(finishedIn(before, u).map((t) => t.name)).toEqual(["done"]);
+  });
+  it("says nothing on a full snapshot", () => {
+    const u = sync({ torrents: { [A]: torrent({ hash: A, complete: true }) } });
+    expect(finishedIn(before, u)).toEqual([]);
   });
 });

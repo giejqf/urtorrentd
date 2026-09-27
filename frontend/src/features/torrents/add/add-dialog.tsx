@@ -50,6 +50,7 @@ import {
 import { Switch, SwitchControl, SwitchLabel } from "~/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { TextField, TextFieldLabel, TextFieldTextArea } from "~/components/ui/text-field";
+import { categoryDownloadPath } from "~/features/settings/paths";
 import { useAuth } from "~/features/auth/auth";
 import { useLive } from "~/features/shell/live";
 import { formatCount } from "~/lib/format";
@@ -193,6 +194,7 @@ function Body(props: {
   mode: Mode;
   setMode: (m: Mode) => void;
   links?: string;
+  files?: readonly File[];
 }) {
   const auth = useAuth();
   const live = useLive();
@@ -221,6 +223,7 @@ function Body(props: {
     downloadLimit: "",
     uploadLimit: "",
     ratio: "",
+    download: { touched: false, on: false, path: "" },
   });
   // The daemon's defaults, once known.
   createEffect(
@@ -253,6 +256,9 @@ function Body(props: {
 
   const sources = createSources((hash) => live.state.torrents[hash] !== undefined);
   onCleanup(() => sources.dropAll());
+  // Files it was opened with (dropped or pasted on the page).
+  const given = untrack(() => props.files ?? []);
+  if (given.length > 0) void sources.addFiles(given);
 
   // Follow the links as they are typed, once typing pauses.
   const parsed = createMemo(() => parseSources(links()));
@@ -269,6 +275,17 @@ function Body(props: {
   const category = () =>
     form.category === null ? undefined : live.state.categories[form.category];
   const managedPath = () => categoryPath(defaultPath(), form.category, category());
+  /** Where incomplete content stays unless chosen here: the daemon's rule. */
+  const defaultDownload = () => {
+    const global = settings.data?.download_path ?? null;
+    const c = category();
+    return form.autoManagement && c ? categoryDownloadPath(global, c) : global;
+  };
+  const downloadOn = () => (form.download.touched ? form.download.on : defaultDownload() !== null);
+  const downloadPath = () =>
+    form.download.touched ? form.download.path : (defaultDownload() ?? "");
+  const setDownload = (patch: Partial<AddForm["download"]>) =>
+    setForm("download", { touched: true, on: downloadOn(), path: downloadPath(), ...patch });
 
   /** What the torrent inherits: its category's ratio limit, else the setting. */
   const inheritedRatio = () => {
@@ -593,6 +610,44 @@ function Body(props: {
                 />
               </div>
             </Field>
+            <Field
+              label="Keep incomplete in"
+              for="add-download-path"
+              class="col-span-2"
+              hint={
+                !downloadOn()
+                  ? "Off: it downloads straight to the save path."
+                  : form.download.touched
+                    ? "Moved to the save path when complete."
+                    : form.autoManagement && form.category !== null
+                      ? "The category's download path; moved to the save path when complete."
+                      : "The download path in the settings; moved to the save path when complete."
+              }
+            >
+              <div class="flex items-center gap-2">
+                <input
+                  id="add-download-path"
+                  class={cn(pathInput, !downloadOn() && "text-subtle")}
+                  value={downloadPath()}
+                  placeholder="/path"
+                  spellcheck={false}
+                  onInput={(e) => setDownload({ path: e.currentTarget.value, on: true })}
+                />
+                <FolderPicker
+                  value={downloadPath() || defaultPath()}
+                  what="download path"
+                  onPick={(p) => setDownload({ path: p, on: true })}
+                />
+                <Switch
+                  checked={downloadOn()}
+                  onChange={(on) => setDownload({ on })}
+                  class="flex-none"
+                >
+                  <SwitchLabel class="sr-only">Keep incomplete downloads elsewhere</SwitchLabel>
+                  <SwitchControl />
+                </Switch>
+              </div>
+            </Field>
             <Select<string>
               modal
               class="flex min-w-0 flex-col gap-1.5"
@@ -797,15 +852,18 @@ function Body(props: {
 export function AddDialog(props: {
   open: boolean;
   onClose: () => void;
-  /** Links to start from (an RSS article's torrent). */
+  /** Links to start from (an RSS article's torrent, a pasted or clicked magnet). */
   links?: string;
+  /** `.torrent` files to start from (dropped or pasted on the page). */
+  files?: readonly File[];
 }) {
   const [mode, setMode] = createSignal<Mode>("links");
   createEffect(
     on(
       () => props.open,
       (open) => {
-        if (open && props.links) setMode("links");
+        if (open && (props.files?.length ?? 0) > 0) setMode("files");
+        else if (open && props.links) setMode("links");
       },
     ),
   );
@@ -820,7 +878,13 @@ export function AddDialog(props: {
         noClose
         class="flex h-[min(780px,calc(100dvh-2rem))] w-full max-w-[920px] flex-col gap-0 overflow-hidden p-0"
       >
-        <Body onClose={props.onClose} mode={mode()} setMode={setMode} links={props.links} />
+        <Body
+          onClose={props.onClose}
+          mode={mode()}
+          setMode={setMode}
+          links={props.links}
+          files={props.files}
+        />
       </DialogContent>
     </Dialog>
   );

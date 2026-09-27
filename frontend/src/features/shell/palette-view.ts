@@ -87,3 +87,8 @@ export function isTyping(target: EventTarget | null): boolean {
   const tag = target.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
+
+/** Whether a dialog is open: the page's own keys, paste and drop wait. */
+export function isOpenModal(): boolean {
+  return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
+}
