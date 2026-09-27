@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The library comes from crates.io: `urtorrent = "0.14.2"`, with its
+  `urtorrent-*` crates, instead of a sibling checkout (`../urtorrent`); CI
+  checks out this repository alone. 0.14.2 counts the blocks a peer sends
+  unrequested in that peer's `downloaded`, so traffic by peer, place and
+  client adds up to the torrents' own.
+
 ### Added
 
 - GeoIP in one click ([ADR 0009](docs/adr/0009-geoip-download.md)):

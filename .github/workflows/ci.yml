@@ -14,28 +14,18 @@ jobs:
     name: xtask check
     runs-on: ubuntu-24.04
     steps:
-      # The library is a path dependency (../urtorrent): check both out side by side.
+      # The library comes from crates.io (urtorrent and its urtorrent-* crates).
       - uses: actions/checkout@v4
-        with:
-          path: urtorrentd
-      - uses: actions/checkout@v4
-        with:
-          repository: giejqf/urtorrent
-          path: urtorrent
       - name: Install toolchain from rust-toolchain.toml
-        working-directory: urtorrentd
         run: rustup show
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: urtorrentd
       - name: Install cargo-deny
         run: |
           set -euo pipefail
           V=0.20.2
           curl -sSL -o cd.tgz "https://github.com/EmbarkStudios/cargo-deny/releases/download/${V}/cargo-deny-${V}-x86_64-unknown-linux-musl.tar.gz"
           tar xzf cd.tgz && install -m755 "cargo-deny-${V}-x86_64-unknown-linux-musl/cargo-deny" ~/.cargo/bin/
-      - working-directory: urtorrentd
-        run: cargo xtask check
+      - run: cargo xtask check
 
   sdk:
     name: TypeScript SDK from openapi.json
@@ -52,34 +42,23 @@ jobs:
     name: Web UI (checks and end-to-end tests)
     runs-on: ubuntu-24.04
     steps:
-      # The end-to-end tests run the real daemon, which needs ../urtorrent.
       - uses: actions/checkout@v4
-        with:
-          path: urtorrentd
-      - uses: actions/checkout@v4
-        with:
-          repository: giejqf/urtorrent
-          path: urtorrent
       - name: Install toolchain from rust-toolchain.toml
-        working-directory: urtorrentd
         run: rustup show
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: urtorrentd
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: urtorrentd/frontend/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies and Chromium
-        working-directory: urtorrentd/frontend
+        working-directory: frontend
         run: npm ci --no-audit --no-fund && npx playwright install --with-deps chromium
-      - working-directory: urtorrentd
-        run: cargo xtask web
+      - run: cargo xtask web
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: |
-            urtorrentd/frontend/playwright-report
-            urtorrentd/frontend/test-results
+            frontend/playwright-report
+            frontend/test-results

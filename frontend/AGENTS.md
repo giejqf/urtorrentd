@@ -957,8 +957,8 @@ like every other daemon feature.
   - `cargo xtask dist`: build the UI, then `cargo build --release --features web-ui`.
 
   `cargo xtask check` stays free of Node.
-- CI: the `web` job (Node 22, the Rust toolchain, both repositories side by side because the
-  daemon needs `../urtorrent`, Playwright's Chromium) runs `cargo xtask web`.
+- CI: the `web` job (Node 22, the Rust toolchain, Playwright's Chromium; the library comes
+  from crates.io) runs `cargo xtask web`.
 
 **Definition of done** for a UI change:
 

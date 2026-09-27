@@ -1,6 +1,6 @@
 # urtorrentd
 
-A BitTorrent daemon for Linux on the [urtorrent](../urtorrent) library
+A BitTorrent daemon for Linux on the [urtorrent](https://crates.io/crates/urtorrent) library
 (io_uring, IPv4 + IPv6), controlled through a typed HTTP API. The API offers
 the features of qBittorrent's WebAPI that urtorrent supports, with its own
 consistent design; its OpenAPI 3.1 schema is generated from the code, so

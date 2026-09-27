@@ -200,13 +200,21 @@ docs/reference/         the checklist: qBittorrent 5.2.3's actions, parameters, 
 docs/adr/               design decisions
 ```
 
-Depend on the facade only: `urtorrent = { path = "../urtorrent/crates/urtorrent", version =
-"0.14.0" }` during development (the version is the oldest library release the daemon is
-tested against; raise it when the daemon starts using something newer). CI checks both repos out side by side. Switch to a pinned git revision or a
-crates.io version once one is published. The library is `0.x`, so a minor bump is
-breaking: pin the minor. The facade re-exports what the daemon needs, including
-`urtorrent::Torrent::parse` and `urtorrent::MagnetLink::parse` for info-hashes before an
-add, and `Profile` for identity.
+Depend on the facade only, from crates.io: `urtorrent = "0.14.2"`. It brings the library's
+twelve `urtorrent-*` crates (`urtorrent-session`, `urtorrent-uring`, ...), which the daemon
+never names (rule 5). The version is the oldest release the daemon is tested against; raise
+it when the daemon starts using something newer. The library is `0.x`, so a minor bump is
+breaking, and the caret requirement pins the minor. CI needs no checkout of the library. To
+work against an unreleased library, patch it in locally and never commit the patch:
+
+```toml
+# Cargo.toml (workspace), local only
+[patch.crates-io]
+urtorrent = { path = "../urtorrent/crates/urtorrent" }
+```
+
+The facade re-exports what the daemon needs, including `urtorrent::Torrent::parse` and
+`urtorrent::MagnetLink::parse` for info-hashes before an add, and `Profile` for identity.
 
 ### 4.2 Runtime model
 

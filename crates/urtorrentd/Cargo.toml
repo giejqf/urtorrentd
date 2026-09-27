@@ -18,8 +18,10 @@ workspace = true
 web-ui = []
 
 [dependencies]
-# The library, through its facade only (AGENTS.md rule 5).
-urtorrent = { path = "../../../urtorrent/crates/urtorrent", version = "0.14.0" }
+# The library, through its facade only (AGENTS.md rule 5), from crates.io: the
+# oldest release the daemon is tested against. It is 0.x, so the caret
+# requirement pins the minor (AGENTS.md 4.1).
+urtorrent = "0.14.2"
 # HTTP API. tokio's runtime is fine here: it serves the API, never torrent I/O (AGENTS.md 4.2).
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net"] }
@@ -51,7 +53,9 @@ base64 = "0.22"
 rusqlite = { version = "0.40", default-features = false, features = ["bundled", "cache", "fallible_uint"] }
 maxminddb = { version = "0.32", default-features = false }
 # DB-IP Lite downloads are gzipped (ADR 0009); the pure-Rust backend is
-# miniz_oxide, already in the tree through urtorrent.
+# miniz_oxide, already in the tree through urtorrent. Cargo.lock keeps 1.1.9,
+# the last on miniz_oxide 0.8 as urtorrent is (1.1.10 brings a second copy,
+# 0.9): update it with urtorrent.
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 # statvfs for free disk space; uname, sysinfo and getrlimit for GET /app/system;
 # all without unsafe code.

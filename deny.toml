@@ -29,7 +29,6 @@ confidence-threshold = 0.9
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-allow-wildcard-paths = true
 deny = [
     { crate = "openssl", reason = "TLS is pure Rust: rustls (AGENTS.md 4.7)" },
     { crate = "openssl-sys", reason = "TLS is pure Rust: rustls (AGENTS.md 4.7)" },

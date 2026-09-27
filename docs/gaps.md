@@ -1,6 +1,6 @@
 # What the daemon needs from urtorrent
 
-Things the daemon wants from the library (the `urtorrent` facade, 0.14.0)
+Things the daemon wants from the library (the `urtorrent` facade, 0.14.2)
 that it does not offer or does not do right, with what the daemon does in
 the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
