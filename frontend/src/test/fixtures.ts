@@ -62,6 +62,7 @@ export function torrent(overrides: Partial<TorrentSummary> = {}): TorrentSummary
     has_metadata: true,
     piece_size: 2 * 1024 * 1024,
     pieces_have: 3072,
+    pieces_checked: 0,
     pieces_total: 3072,
     tracker: "https://torrent.ubuntu.com/announce",
     trackers_count: 1,

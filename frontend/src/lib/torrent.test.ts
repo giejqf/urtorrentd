@@ -6,10 +6,12 @@ import { describe, expect, it } from "vitest";
 import type { Schemas } from "~/api/client";
 
 import {
+  checkProgress,
   errorKindLabel,
   filterMatches,
   FILTERS,
   GROUPS,
+  shownProgress,
   stateLook,
   tagSummary,
   trackerHost,
@@ -62,6 +64,21 @@ describe("stateLook", () => {
       group: "checking",
       label: "Queued for check",
     });
+  });
+
+  it("says how far a check has got", () => {
+    const checking = { ...t("checking"), pieces_checked: 250, pieces_total: 1000 };
+    expect(checkProgress(checking)).toBe(0.25);
+    expect(stateLook(checking)).toMatchObject({ group: "checking", label: "Checking 25%" });
+    // Its ring follows the check, not the download (verified only at its end).
+    expect(shownProgress({ ...checking, has_metadata: true, progress: 0 })).toBe(0.25);
+    // Any other state: the download's progress, and no check.
+    const seeding = { ...t("seeding"), pieces_checked: 0, pieces_total: 1000 };
+    expect(checkProgress(seeding)).toBeNull();
+    expect(shownProgress({ ...seeding, has_metadata: true, progress: 1 })).toBe(1);
+    expect(stateLook({ ...t("checking"), pieces_checked: 0, pieces_total: 0 }).label).toBe(
+      "Checking",
+    );
   });
 
   it("names error kinds", () => {

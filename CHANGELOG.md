@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   torrent alone, even when another tracker of their tier works; `POST
   /torrents/trackers/reannounce` to the trackers on some hosts alone.
   List rows' `pieces_checked`: how far a check has got.
+- Web UI: a torrent being checked shows how far the check has got (its
+  ring, "checking 42%", the pieces in its detail); each tracker in the
+  Trackers tab has its own Reannounce; Stats › Trackers shows hosts that
+  answer slowly ("slow · 4.8 s") and the median interval trackers ask for,
+  and its Reannounce reaches the failing host alone.
 
 ## [0.15.0] - 2026-09-27
 

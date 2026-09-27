@@ -274,6 +274,23 @@ export function TrackersTab(props: { torrent: TorrentSummary }) {
                               variant="outline"
                               size="xs"
                               class="h-[22px]"
+                              onClick={() =>
+                                void call("Reannounce", (h) =>
+                                  unwrap(
+                                    api.POST("/api/v1/torrents/{hash}/trackers/reannounce", {
+                                      ...path(h),
+                                      body: { urls: [t.url] },
+                                    }),
+                                  ),
+                                )
+                              }
+                            >
+                              Reannounce
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              class="h-[22px]"
                               onClick={() => setEditing(t.url)}
                             >
                               Edit URL

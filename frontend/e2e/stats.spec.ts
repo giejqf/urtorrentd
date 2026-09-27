@@ -148,6 +148,8 @@ test("stats: the overview and the trackers report", async ({
     const hosts = page.getByRole("list", { name: "Trackers" });
     const good = hosts.getByRole("button", { name: /^127\.0\.0\.1:/ });
     await expect(good).toContainText("public · 2 torrents");
+    // The interval the trackers ask for, from their replies.
+    await expect(page.getByText("30m median interval")).toBeVisible();
     await expect(good).toContainText(/\d+ · 0 failed/);
     const bad = hosts.getByRole("button", { name: /^localhost:/ });
     await expect(bad).toContainText("failing now");

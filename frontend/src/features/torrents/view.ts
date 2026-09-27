@@ -239,7 +239,7 @@ export function phoneMeta(
   const parts = [t.has_metadata ? formatBytes(t.size) : dash];
   if (t.ratio !== null) parts.push(`ratio ${formatRatio(t.ratio)}`);
   if (t.state === "metadata") parts.push(`${formatCount(t.peers)} peers`);
-  else if (t.state === "error") parts.push(label.toLowerCase());
+  else if (t.state === "error" || t.state === "checking") parts.push(label.toLowerCase());
   else if (!t.complete && t.eta !== null) parts.push(formatEta(t.eta));
   return parts.join(" · ");
 }

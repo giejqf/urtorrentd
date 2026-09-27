@@ -46,7 +46,12 @@ export interface TrackerLine {
   private: number;
   /** Running torrents whose announces to it fail now. */
   failing: string[];
+  /** How long it takes to answer an announce, seconds (its median now). */
+  responseTime: number | null;
 }
+
+/** A host answering this slowly (seconds) or slower is called slow. */
+export const SLOW_ANSWER = 2;
 
 function metricOf(l: Pick<TrackerLine, TrackerMetric | "errors">, m: TrackerMetric): number {
   return m === "announces" ? l.announces + l.errors : l[m];
@@ -76,6 +81,7 @@ export function trackerLines(
       torrents: host === null ? noTracker.torrents : (h?.torrents ?? 0),
       private: host === null ? noTracker.private : (h?.private ?? 0),
       failing: h?.failing ?? [],
+      responseTime: h?.response_time ?? null,
     };
   };
   const ranged = rows
@@ -225,6 +231,12 @@ export function withoutTracker(rows: readonly TorrentSummary[]): {
     }
   }
   return out;
+}
+
+/** The announce interval trackers ask for: the middle host's; `null` before any reply. */
+export function medianInterval(hosts: readonly TrackerHost[]): number | null {
+  const all = hosts.flatMap((h) => (h.interval === null ? [] : [h.interval])).sort((a, b) => a - b);
+  return all.length === 0 ? null : (all[Math.floor(all.length / 2)] ?? null);
 }
 
 /** Hosts failing now, most torrents first. */

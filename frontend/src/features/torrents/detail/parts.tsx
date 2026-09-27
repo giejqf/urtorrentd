@@ -10,13 +10,15 @@ import type { Schemas } from "~/api/client";
 import { StatusDot } from "~/components/status-dot";
 import { Badge } from "~/components/ui/badge";
 import { formatCount, formatEta, formatPercent, formatRatio } from "~/lib/format";
-import { stateLook, toneBg } from "~/lib/torrent";
+import { checkProgress, stateLook, toneBg } from "~/lib/torrent";
 
 type TorrentSummary = Schemas["TorrentSummary"];
 
 /** The line beside the state: progress and time left, or the ratio once complete. */
 export function progressLine(t: TorrentSummary): string {
   if (!t.has_metadata) return `waiting for metadata · ${formatCount(t.peers)} peers`;
+  if (checkProgress(t) !== null)
+    return `${formatCount(t.pieces_checked)} of ${formatCount(t.pieces_total)} pieces checked`;
   if (t.complete) return `100% · ratio ${formatRatio(t.ratio)}`;
   const pct = formatPercent(t.progress, 1);
   return t.eta === null ? pct : `${pct} · ${formatEta(t.eta)} left`;

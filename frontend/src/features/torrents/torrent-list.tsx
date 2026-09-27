@@ -28,7 +28,15 @@ import {
   formatRate,
   formatRatio,
 } from "~/lib/format";
-import { categoryTone, stateLook, tagSummary, toneBg, type Tone } from "~/lib/torrent";
+import {
+  categoryTone,
+  checkProgress,
+  shownProgress,
+  stateLook,
+  tagSummary,
+  toneBg,
+  type Tone,
+} from "~/lib/torrent";
 import { cn } from "~/lib/utils";
 
 import { type ListItem, phoneMeta } from "./view";
@@ -56,6 +64,9 @@ export type SelectMode = "one" | "toggle" | "range";
 function Rate(props: { t: TorrentSummary }) {
   return (
     <Switch fallback={<span class="text-subtle">{dash}</span>}>
+      <Match when={checkProgress(props.t)}>
+        {(c) => <span class="text-warn">checking {formatPercent(c())}</span>}
+      </Match>
       <Match when={props.t.download_rate > 0}>
         <span class="text-brand">
           <span aria-hidden="true">↓ </span>
@@ -125,10 +136,7 @@ function Row(props: {
           </Show>
         </span>
       </Show>
-      <ProgressRing
-        progress={props.t.has_metadata ? props.t.progress : 0}
-        class={toneStroke[look().tone]}
-      />
+      <ProgressRing progress={shownProgress(props.t)} class={toneStroke[look().tone]} />
       <Show
         when={props.compact}
         fallback={
@@ -178,9 +186,7 @@ function PhoneCells(props: { t: TorrentSummary; label: string }) {
         <Show
           when={moving()}
           fallback={
-            <span class="text-[13px] text-subtle">
-              {props.t.has_metadata ? formatPercent(props.t.progress) : "0%"}
-            </span>
+            <span class="text-[13px] text-subtle">{formatPercent(shownProgress(props.t))}</span>
           }
         >
           <span class="text-[13px] whitespace-nowrap">

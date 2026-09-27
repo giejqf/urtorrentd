@@ -25,6 +25,7 @@ import {
   failingHosts,
   hideUrls,
   hostKind,
+  medianInterval,
   stackSeries,
   success,
   trackerKpis,
@@ -253,9 +254,25 @@ function hostNow(
     error: null,
     failing_since: null,
     last_failure: null,
+    interval: null,
+    response_time: null,
     ...extra,
   };
 }
+
+describe("medianInterval", () => {
+  it("takes the middle host's, among those that answered", () => {
+    expect(medianInterval([])).toBeNull();
+    expect(
+      medianInterval([
+        hostNow("a", 1, { interval: 1800 }),
+        hostNow("b", 1, { interval: 360 }),
+        hostNow("c", 1),
+        hostNow("d", 1, { interval: 900 }),
+      ]),
+    ).toBe(900);
+  });
+});
 
 describe("trackers", () => {
   const ROWS = [
@@ -289,6 +306,18 @@ describe("trackers", () => {
       "torrent.ubuntu.com",
       "idle.example.net",
       null,
+    ]);
+    // Response times as the hosts report them now.
+    const timed = trackerLines(
+      ROWS,
+      [hostNow("tracker.example.org", 4, { response_time: 4.8 })],
+      "uploaded",
+      { torrents: 0, private: 0 },
+    );
+    expect(timed.map((l) => [l.host, l.responseTime])).toEqual([
+      ["tracker.example.org", 4.8],
+      ["torrent.ubuntu.com", null],
+      [null, null],
     ]);
     // Nothing without a tracker now or in the range: no such line.
     expect(

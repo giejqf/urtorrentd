@@ -6,6 +6,8 @@
 
 import type { Schemas } from "~/api/client";
 
+import { formatPercent } from "./format";
+
 type TorrentSummary = Schemas["TorrentSummary"];
 type TorrentState = Schemas["TorrentState"];
 type TorrentFilter = Schemas["TorrentFilter"];
@@ -94,14 +96,45 @@ const STATES: Record<TorrentState, StateLook> = {
 const STALLED: StateLook = { group: "stalled", label: "Stalled", tone: "muted" };
 const IDLE: StateLook = { group: "idle", label: "Idle", tone: "idle" };
 
+type CheckFields = Pick<TorrentSummary, "state" | "pieces_checked" | "pieces_total">;
+
+/**
+ * How far a check has got, 0 to 1, while the torrent is checking: the
+ * pieces it has gone through (the verified ones are only known at its
+ * end). `null` in every other state.
+ */
+export function checkProgress(t: CheckFields): number | null {
+  if (t.state !== "checking" || t.pieces_total === 0) return null;
+  return Math.min(1, t.pieces_checked / t.pieces_total);
+}
+
+/** The progress a torrent shows: the check's while checking, else the download's. */
+export function shownProgress(
+  t: CheckFields & Pick<TorrentSummary, "has_metadata" | "progress">,
+): number {
+  return checkProgress(t) ?? (t.has_metadata ? t.progress : 0);
+}
+
 /**
  * A torrent's look. The daemon's `stalled` means "running but moving no
  * payload": for a download that is a problem (Stalled: no data arrives),
- * for a seed it is normal (Idle: nobody is downloading from it).
+ * for a seed it is normal (Idle: nobody is downloading from it). A check
+ * says how far it has got.
  */
-export function stateLook(t: Pick<TorrentSummary, "state" | "stalled">): StateLook {
+export function stateLook(
+  t: Pick<TorrentSummary, "state" | "stalled"> &
+    Partial<Pick<TorrentSummary, "pieces_checked" | "pieces_total">>,
+): StateLook {
   if (t.stalled && t.state === "downloading") return STALLED;
   if (t.stalled && t.state === "seeding") return IDLE;
+  if (t.state === "checking" && t.pieces_checked !== undefined && t.pieces_total !== undefined) {
+    const c = checkProgress({
+      state: t.state,
+      pieces_checked: t.pieces_checked,
+      pieces_total: t.pieces_total,
+    });
+    if (c !== null) return { ...STATES.checking, label: `Checking ${formatPercent(c)}` };
+  }
   return STATES[t.state];
 }
 

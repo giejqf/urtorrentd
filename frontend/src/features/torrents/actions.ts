@@ -46,6 +46,11 @@ export const actions = {
     run("Recheck", () => unwrap(api.POST("/api/v1/torrents/recheck", { body: body(h) }))),
   reannounce: (h: readonly string[]) =>
     run("Reannounce", () => unwrap(api.POST("/api/v1/torrents/reannounce", { body: body(h) }))),
+  /** To the trackers on these hosts alone. */
+  reannounceHosts: (h: readonly string[], hosts: string[]) =>
+    run("Reannounce", () =>
+      unwrap(api.POST("/api/v1/torrents/trackers/reannounce", { body: { ...body(h), hosts } })),
+    ),
   sequential: (h: readonly string[], value: boolean) =>
     run("Sequential download", () =>
       unwrap(api.POST("/api/v1/torrents/sequential", { body: { ...body(h), value } })),

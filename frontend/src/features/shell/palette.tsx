@@ -48,7 +48,7 @@ import {
   UNITS,
   unitsChoice,
 } from "~/lib/theme";
-import { stateLook, type Tone } from "~/lib/torrent";
+import { shownProgress, stateLook, type Tone } from "~/lib/torrent";
 import { cn } from "~/lib/utils";
 
 import { useLive } from "./live";
@@ -599,12 +599,7 @@ function Row(props: {
       case "torrent": {
         const look = stateLook(it.t);
         return {
-          icon: (
-            <ProgressRing
-              progress={it.t.has_metadata ? it.t.progress : 0}
-              class={toneStroke[look.tone]}
-            />
-          ),
+          icon: <ProgressRing progress={shownProgress(it.t)} class={toneStroke[look.tone]} />,
           main: (
             <>
               <Marked text={it.t.name} words={props.words} />{" "}

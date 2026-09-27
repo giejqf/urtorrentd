@@ -53,7 +53,15 @@ import {
   formatRate,
   formatRatio,
 } from "~/lib/format";
-import { categoryTone, errorKindLabel, stateLook, toneBg, trackerHost } from "~/lib/torrent";
+import {
+  categoryTone,
+  checkProgress,
+  errorKindLabel,
+  shownProgress,
+  stateLook,
+  toneBg,
+  trackerHost,
+} from "~/lib/torrent";
 import { cn } from "~/lib/utils";
 
 import { actions, copy, isRunning } from "./actions";
@@ -452,11 +460,14 @@ function Overview(props: { torrent: TorrentSummary; phone?: boolean }) {
         aria-label="Progress"
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={Math.floor(t().progress * 100)}
+        aria-valuenow={Math.floor(shownProgress(t()) * 100)}
       >
         <div
-          class={cn("h-full", t().complete ? "bg-ok" : "bg-brand")}
-          style={{ width: `${Math.floor(t().progress * 1000) / 10}%` }}
+          class={cn(
+            "h-full",
+            checkProgress(t()) !== null ? "bg-warn" : t().complete ? "bg-ok" : "bg-brand",
+          )}
+          style={{ width: `${Math.floor(shownProgress(t()) * 1000) / 10}%` }}
         />
       </div>
       <Show when={props.phone}>

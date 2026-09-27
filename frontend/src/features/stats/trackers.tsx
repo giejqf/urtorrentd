@@ -38,6 +38,7 @@ import {
   formatBytes,
   formatClock,
   formatCount,
+  formatDuration,
   formatPercent,
   formatShortDate,
 } from "~/lib/format";
@@ -54,7 +55,9 @@ import {
   failingHosts,
   hideUrls,
   hostKind,
+  medianInterval,
   METRICS,
+  SLOW_ANSWER,
   stackSeries,
   success,
   type TrackerLine,
@@ -163,9 +166,10 @@ export default function Trackers() {
 function Figures(props: {
   lines: TrackerLine[];
   metric: TrackerMetric;
-  hosts: { failing: string[] }[];
+  hosts: Parameters<typeof medianInterval>[0];
 }) {
   const k = () => trackerKpis(props.lines, props.metric);
+  const interval = () => medianInterval(props.hosts);
   const failingNow = () => props.hosts.filter((h) => h.failing.length > 0);
   const failingTorrents = () => new Set(failingNow().flatMap((h) => h.failing)).size;
   return (
@@ -181,7 +185,15 @@ function Figures(props: {
         }
         sub="trackers moving data"
       />
-      <Kpi value={formatCount(k().answered)} sub="announces answered" />
+      <Kpi
+        value={formatCount(k().answered)}
+        sub={
+          <span class="truncate">
+            announces answered
+            {interval() === null ? "" : ` · ${formatDuration(interval() ?? 0)} median interval`}
+          </span>
+        }
+      />
       <Kpi
         value={formatCount(k().failed)}
         tone={k().failed > 0 ? "danger" : undefined}
@@ -316,6 +328,12 @@ function Health(props: {
                               {hostKind(l)}
                               <Show when={l.failing.length > 0}>
                                 <span class="text-danger"> · failing now</span>
+                              </Show>
+                              <Show when={(l.responseTime ?? 0) >= SLOW_ANSWER}>
+                                <span class="text-warn">
+                                  {" "}
+                                  · slow · {(l.responseTime ?? 0).toFixed(1)} s
+                                </span>
                               </Show>
                             </Show>
                           </span>
@@ -611,7 +629,7 @@ function Problems(props: {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => void actions.reannounce(h.failing)}
+                    onClick={() => void actions.reannounceHosts(h.failing, [h.host])}
                   >
                     Reannounce
                   </Button>

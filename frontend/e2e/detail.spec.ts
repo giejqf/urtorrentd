@@ -19,7 +19,9 @@ test("the detail tabs: files, peers, trackers and history", async ({
   seeder,
 }) => {
   test.setTimeout(150_000);
+  let announces = 0;
   const tracker = createServer((_, res) => {
+    announces += 1;
     res.writeHead(200);
     res.end("d8:completei186e10:incompletei24e8:intervali1800e5:peers0:e");
   });
@@ -117,6 +119,10 @@ test("the detail tabs: files, peers, trackers and history", async ({
     await expect(trackerRow).toContainText("working · 186 seeds · 24 leechers");
     await expect(details).not.toContainText("s3cr3tpasskey");
     await expectAccessible(page);
+    // This tracker alone, now.
+    const before = announces;
+    await trackerRow.getByRole("button", { name: "Reannounce", exact: true }).click();
+    await expect.poll(() => announces).toBeGreaterThan(before);
     await trackerRow.getByRole("button", { name: "Edit URL" }).click();
     const url = details.getByLabel("URL of 127.0.0.1");
     await expect(url).toHaveValue(announce);
