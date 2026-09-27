@@ -232,3 +232,8 @@ export function parseCookie(text: string, now: number): Cookie | string {
 export function sameCookie(a: Cookie, b: Cookie): boolean {
   return a.name === b.name && a.domain === b.domain && (a.path ?? "/") === (b.path ?? "/");
 }
+
+/** A key as it may be shown beside it: its start and end. */
+export function keyAbbrev(key: string): string {
+  return key.length <= 16 ? key : `${key.slice(0, 9)}…${key.slice(-4)}`;
+}

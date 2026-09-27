@@ -23,20 +23,13 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "~/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "~/components/ui/dialog";
 import { useLive } from "~/features/shell/live";
 import { formatCount } from "~/lib/format";
 import { categoryTone } from "~/lib/torrent";
 import { cn } from "~/lib/utils";
 
-import { categoryDownloadPath, categorySavePath } from "./paths";
+import { categoryDownloadPath, categoryMoves, categorySavePath } from "./paths";
 
 type Category = Schemas["Category"];
 
@@ -147,6 +140,7 @@ export function CategoryPaths(props: { savePath: string; downloadPath: string | 
       <CategoryDialog
         editing={editing()}
         savePath={props.savePath}
+        downloadPath={props.downloadPath}
         count={(n) => counts().get(n) ?? 0}
         onClose={() => setEditing(null)}
       />
@@ -162,6 +156,8 @@ const box =
 function CategoryDialog(props: {
   editing: Editing | null;
   savePath: string;
+  /** The global download path; `null` = none. */
+  downloadPath: string | null;
   count: (name: string) => number;
   onClose: () => void;
 }) {
@@ -244,6 +240,25 @@ function CategoryDialog(props: {
     }
   };
 
+  const moves = createMemo(() => categoryMoves(live.torrents(), editName() ?? ""));
+  const movesLine = () => {
+    const m = moves();
+    const manual =
+      m.manual.length === 0
+        ? ""
+        : m.manual.length === 1
+          ? ` ${m.manual[0] ?? ""} is managed manually and stays where it is.`
+          : ` ${formatCount(m.manual.length)} managed manually stay where they are.`;
+    if (m.managed === 0) return `Its torrents are managed manually: they stay where they are.`;
+    return `Changing a path moves the ${m.managed === 1 ? "automatically managed torrent" : `${formatCount(m.managed)} automatically managed torrents`} in this category.${manual}`;
+  };
+  const resolved = () =>
+    categorySavePath(props.savePath, target() || "<name>", {
+      save_path: save().trim() === "" ? null : save().trim(),
+      download_path: null,
+    });
+  const label = "text-sm font-medium";
+
   return (
     <>
       <Dialog
@@ -252,117 +267,151 @@ function CategoryDialog(props: {
           if (!o && !confirmRemove()) props.onClose();
         }}
       >
-        <DialogContent class="max-w-md">
+        <DialogContent class="max-w-[540px] gap-0 p-0">
           <form
-            class="flex flex-col gap-4"
+            class="flex flex-col"
             onSubmit={(e) => {
               e.preventDefault();
               void submit();
             }}
           >
-            <DialogHeader>
+            <div class="flex flex-col gap-0.5 px-5 pt-[18px] pr-12">
               <DialogTitle>
-                {editName() === null ? "Add category" : `Category ${editName() ?? ""}`}
+                {editName() === null ? "Add category" : `Edit category — ${editName() ?? ""}`}
               </DialogTitle>
-              <DialogDescription>
-                Automatically managed torrents in it save here.
-                {editName() === null ? "" : " Changing a path moves them."}
+              <DialogDescription class="text-sm text-subtle">
+                {editName() === null
+                  ? "Automatically managed torrents in it save here."
+                  : `${formatCount(moves().total)} ${moves().total === 1 ? "torrent" : "torrents"}`}
               </DialogDescription>
-            </DialogHeader>
-            <Show when={editName() === null}>
+            </div>
+            <div class="flex flex-col gap-4 px-5 pt-4 pb-4">
               <div class="flex flex-col gap-1.5">
-                <label for="category-name" class="text-sm font-medium">
+                <label for="category-name" class={label}>
                   Name
                 </label>
-                <div class={box}>
+                <div class={cn(box, editName() !== null && "opacity-60")}>
                   <input
                     id="category-name"
-                    class={cn(input, "font-sans")}
-                    value={name()}
+                    class={input}
+                    value={editName() ?? name()}
+                    readOnly={editName() !== null}
                     spellcheck={false}
-                    autofocus
+                    autofocus={editName() === null}
                     onInput={(e) => setName(e.currentTarget.value)}
                   />
                 </div>
-                <p class="m-0 text-sm text-subtle">A slash makes a subcategory: tv/shows.</p>
+                <p class="m-0 text-sm text-subtle">
+                  {editName() === null
+                    ? "A slash makes a subcategory: tv/shows."
+                    : "A category cannot be renamed: make a new one and move its torrents to it."}
+                </p>
               </div>
-            </Show>
-            <div class="flex flex-col gap-1.5">
-              <label for="category-save" class="text-sm font-medium">
-                Save path
-              </label>
-              <div class={box}>
-                <input
-                  id="category-save"
-                  class={input}
-                  value={save()}
-                  placeholder={target() === "" ? "name" : target()}
-                  spellcheck={false}
-                  onInput={(e) => setSave(e.currentTarget.value)}
-                />
-                <FolderPicker
-                  inline
-                  value={save().startsWith("/") ? save() : props.savePath}
-                  what="category's save path"
-                  onPick={setSave}
-                />
-              </div>
-              <p class="m-0 text-sm text-subtle">
-                Empty: {props.savePath.replace(/\/+$/, "")}/{target() === "" ? "<name>" : target()}.
-                A relative path goes under the save path.
-              </p>
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <label for="category-download" class="text-sm font-medium">
-                Download path
-              </label>
-              <div class={box}>
-                <input
-                  id="category-download"
-                  class={input}
-                  value={dl()}
-                  placeholder="the global download path"
-                  spellcheck={false}
-                  onInput={(e) => setDl(e.currentTarget.value)}
-                />
-                <FolderPicker
-                  inline
-                  value={dl().startsWith("/") ? dl() : props.savePath}
-                  what="category's download path"
-                  onPick={setDl}
-                />
-              </div>
-              <p class="m-0 text-sm text-subtle">
-                Where they stay until complete. A relative path goes under the global download path.
-              </p>
-            </div>
-            <Show when={problem()}>
-              <p class="m-0 text-sm text-danger" role="alert">
-                {problem()}
-              </p>
-            </Show>
-            <DialogFooter class="sm:justify-between">
-              <div>
-                <Show when={editName() !== null}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    class="text-danger hover:text-danger"
-                    onClick={() => setConfirmRemove(true)}
+              <div class="flex flex-col gap-1.5">
+                <label for="category-save" class={label}>
+                  Save path
+                </label>
+                <div class="flex gap-1.5">
+                  <div class={cn(box, "flex-1")}>
+                    <input
+                      id="category-save"
+                      class={input}
+                      value={save()}
+                      placeholder={target() === "" ? "name" : target()}
+                      spellcheck={false}
+                      onInput={(e) => setSave(e.currentTarget.value)}
+                    />
+                  </div>
+                  <FolderPicker
+                    value={save().startsWith("/") ? save() : resolved()}
+                    what="category's save path"
+                    purpose={`Used as the save path of ${target() || "the category"}`}
+                    onPick={setSave}
+                  />
+                </div>
+                <p class="m-0 text-sm text-subtle">
+                  <Show
+                    when={save().trim().startsWith("/")}
+                    fallback={
+                      <>
+                        Relative to the default save path →{" "}
+                        <span class="mono text-muted-foreground">{resolved()}</span>. Absolute paths
+                        allowed.
+                      </>
+                    }
                   >
-                    Remove
-                  </Button>
-                </Show>
+                    An absolute path.
+                  </Show>
+                </p>
               </div>
-              <div class="flex flex-col-reverse gap-2 sm:flex-row">
-                <Button type="button" variant="outline" onClick={() => props.onClose()}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={target() === "" || busy()}>
-                  {editName() === null ? "Add category" : "Save"}
-                </Button>
+              <div class="flex flex-col gap-1.5">
+                <label for="category-download" class={label}>
+                  Download path
+                </label>
+                <div class="flex gap-1.5">
+                  <div class={cn(box, "flex-1")}>
+                    <input
+                      id="category-download"
+                      class={input}
+                      value={dl()}
+                      placeholder={
+                        props.downloadPath === null
+                          ? "none: straight to the save path"
+                          : `global (${props.downloadPath})`
+                      }
+                      spellcheck={false}
+                      onInput={(e) => setDl(e.currentTarget.value)}
+                    />
+                  </div>
+                  <FolderPicker
+                    value={dl().startsWith("/") ? dl() : (props.downloadPath ?? props.savePath)}
+                    what="category's download path"
+                    purpose={`Used as the download path of ${target() || "the category"}`}
+                    onPick={setDl}
+                  />
+                </div>
+                <p class="m-0 text-sm text-subtle">
+                  Where they stay until complete. A relative path goes under the global download
+                  path.
+                </p>
               </div>
-            </DialogFooter>
+              <Show when={editName() !== null && moves().total > 0}>
+                <p
+                  class="m-0 flex gap-2 rounded-lg border border-warn/40 bg-warn/8 px-3.5 py-2.5 text-sm text-foreground-2"
+                  role="note"
+                >
+                  <span class="text-warn" aria-hidden="true">
+                    !
+                  </span>
+                  <span>{movesLine()}</span>
+                </p>
+              </Show>
+              <Show when={problem()}>
+                <p class="m-0 text-sm text-danger" role="alert">
+                  {problem()}
+                </p>
+              </Show>
+            </div>
+            <div class="flex items-center gap-2 border-t border-divider px-5 py-3.5">
+              <Show when={editName() !== null}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="border-danger/40 text-danger hover:bg-danger/10 hover:text-danger"
+                  onClick={() => setConfirmRemove(true)}
+                >
+                  Remove category
+                </Button>
+              </Show>
+              <span class="flex-1" />
+              <Button type="button" variant="outline" size="sm" onClick={() => props.onClose()}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={target() === "" || busy()}>
+                {editName() === null ? "Add category" : "Save"}
+              </Button>
+            </div>
           </form>
         </DialogContent>
       </Dialog>

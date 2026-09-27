@@ -131,6 +131,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whether the daemon can write in it) behind every Browse, and a Share
   limits dialog. RSS rules are edited in the designed rule dialog beside a
   dry run of the rule as typed, with why each article is left out.
+- Web UI: the designed new API key, category and feed dialogs. The key is
+  shown once with the header to send it and waits for "I have copied it";
+  a category shows the path it resolves to and which of its torrents a
+  change moves; a feed is read before it is added (its title, articles and
+  whether cookies go with it), and can be added without running the rules
+  on what it already has.
 - `POST /rss/dry-run`: a rule as being edited, unsaved, over its feeds'
   articles: each one's verdict (`take`, `taken` by a rule already,
   `filtered`) and why the filters leave it.

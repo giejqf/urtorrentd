@@ -115,8 +115,9 @@ test("categories are added, edited and removed at once", async ({ signedIn: page
   await paths.getByRole("button", { name: "Add category" }).click();
   const dialog = page.getByRole("dialog", { name: "Add category" });
   await dialog.getByLabel("Name").fill("linux");
-  await expect(dialog).toContainText(`Empty: ${save}/linux.`);
+  await expect(dialog).toContainText(`Relative to the default save path → ${save}/linux`);
   await dialog.getByLabel("Save path", { exact: true }).fill("iso");
+  await expect(dialog).toContainText(`→ ${save}/iso`);
   await expectAccessible(page);
   await dialog.getByRole("button", { name: "Add category" }).click();
   await expect(dialog).toBeHidden();
@@ -139,8 +140,11 @@ test("categories are added, edited and removed at once", async ({ signedIn: page
     body: { name: "linux", save_path: "iso", download_path: null, share_limits: limits },
   });
   await paths.getByRole("button", { name: "Edit category linux" }).click();
-  const edit = page.getByRole("dialog", { name: "Category linux" });
+  const edit = page.getByRole("dialog", { name: "Edit category — linux" });
+  await expect(edit.getByLabel("Name")).toHaveAttribute("readonly");
+  await expect(edit).toContainText("cannot be renamed");
   await expect(edit.getByLabel("Save path", { exact: true })).toHaveValue("iso");
+  await expectAccessible(page);
   await edit.getByLabel("Download path", { exact: true }).fill("/srv/incoming");
   await edit.getByRole("button", { name: "Save", exact: true }).click();
   await expect(edit).toBeHidden();
@@ -152,7 +156,7 @@ test("categories are added, edited and removed at once", async ({ signedIn: page
   });
 
   await paths.getByRole("button", { name: "Edit category linux" }).click();
-  await edit.getByRole("button", { name: "Remove" }).click();
+  await edit.getByRole("button", { name: "Remove category" }).click();
   const ask = page.getByRole("alertdialog", { name: "Remove category linux?" });
   await expect(ask).toContainText("No torrent is in it.");
   await ask.getByRole("button", { name: "Remove" }).click();

@@ -16,6 +16,7 @@ import {
   parseCookie,
   sameCookie,
   securityDiff,
+  keyAbbrev,
   securityDraft,
   shortAgent,
 } from "./security-form";
@@ -399,5 +400,12 @@ describe("about", () => {
     ]) {
       expect(text).not.toContain(secret);
     }
+  });
+});
+
+describe("a new API key", () => {
+  it("shows its start and end beside it", () => {
+    expect(keyAbbrev(`urtd_${"9f3c".padEnd(44, "0")}6e7f`)).toBe("urtd_9f3c…6e7f");
+    expect(keyAbbrev("short")).toBe("short");
   });
 });

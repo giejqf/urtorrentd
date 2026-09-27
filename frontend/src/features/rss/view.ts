@@ -285,3 +285,9 @@ export function nextRefresh(
     ),
   );
 }
+
+/** Whether the jar sends a cookie for `domain` to `host` (that host and its subdomains). */
+export function cookieFor(domain: string, host: string): boolean {
+  const d = domain.toLowerCase().replace(/^\./, "");
+  return host === d || host.endsWith(`.${d}`);
+}

@@ -38,6 +38,7 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
+import { Checkbox, CheckboxLabel } from "~/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -64,6 +65,7 @@ import type { TimeUnit } from "./queue-form";
 import {
   blockProblem,
   hostProblem,
+  keyAbbrev,
   maskValue,
   originProblem,
   parseCookie,
@@ -395,11 +397,27 @@ function CredentialsDialog(props: { open: boolean; username: string; onClose: ()
   );
 }
 
-/** A new API key, shown once: it is dropped when the dialog closes. */
-function NewKeyDialog(props: { apiKey: string | null; onClose: () => void }) {
+/**
+ * A new API key, shown once: it is dropped when the dialog closes. Done
+ * waits for "I have copied it" (a copy ticks it).
+ */
+function NewKeyDialog(props: {
+  apiKey: string | null;
+  /** It replaced a key, which stopped working. */
+  replaced: boolean;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = createSignal(false);
+  createEffect(
+    on(
+      () => props.apiKey,
+      () => setCopied(false),
+    ),
+  );
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(props.apiKey ?? "");
+      setCopied(true);
       toast.success("Copied");
     } catch {
       toast.error("The browser did not allow copying: select the key and copy it.");
@@ -407,30 +425,49 @@ function NewKeyDialog(props: { apiKey: string | null; onClose: () => void }) {
   };
   return (
     <Dialog open={props.apiKey !== null} onOpenChange={(o) => !o && props.onClose()}>
-      <DialogContent class="max-w-lg">
-        <DialogHeader>
+      <DialogContent class="max-w-[540px] gap-0 p-0">
+        <div class="flex flex-col gap-0.5 px-5 pt-[18px] pr-12">
           <DialogTitle>Your new API key</DialogTitle>
-          <DialogDescription>
-            Shown once: the daemon keeps only its hash. Send it as{" "}
-            <span class="mono">Authorization: Bearer …</span>.
+          <DialogDescription class="text-sm text-subtle">
+            Shown once.{props.replaced ? " The old key stopped working just now." : ""}
           </DialogDescription>
-        </DialogHeader>
-        <div class="flex gap-2">
-          <input
-            aria-label="API key"
-            class={field}
-            readOnly
-            value={props.apiKey ?? ""}
-            onFocus={(e) => e.currentTarget.select()}
-          />
-          <Button variant="outline" size="sm" class="h-8" onClick={() => void copy()}>
-            <Copy />
-            Copy
+        </div>
+        <div class="flex flex-col gap-3 px-5 pt-4 pb-4">
+          <div class="flex gap-2">
+            <input
+              aria-label="API key"
+              class={cn(field, "h-10 mono")}
+              readOnly
+              value={props.apiKey ?? ""}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <Button class="h-10" onClick={() => void copy()}>
+              <Copy />
+              Copy
+            </Button>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <span class="text-sm text-subtle">Send it as</span>
+            <div class="rounded-md border border-border bg-background px-3 py-2.5 mono text-sm">
+              Authorization: Bearer {keyAbbrev(props.apiKey ?? "")}
+            </div>
+            <span class="text-sm text-subtle">
+              Requests with it skip the CSRF check and never make a session. Revoke it any time from
+              Settings › Security &amp; API.
+            </span>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 border-t border-divider px-5 py-3.5">
+          <Checkbox class="flex items-center gap-2" checked={copied()} onChange={setCopied}>
+            <CheckboxLabel class="text-sm text-foreground-2">
+              I have copied it somewhere safe
+            </CheckboxLabel>
+          </Checkbox>
+          <span class="flex-1" />
+          <Button disabled={!copied()} onClick={() => props.onClose()}>
+            Done
           </Button>
         </div>
-        <DialogFooter>
-          <Button onClick={() => props.onClose()}>Done</Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -752,6 +789,7 @@ function SecurityForm(props: { saved: Schemas["Settings"] }) {
   const now = useClock();
   const [changing, setChanging] = createSignal(false);
   const [newKey, setNewKey] = createSignal<string | null>(null);
+  const [replaced, setReplaced] = createSignal(false);
   /** The key action waiting for a yes: deleting it, or replacing it. */
   const [asking, setAsking] = createSignal<"delete" | "rotate" | null>(null);
 
@@ -788,7 +826,9 @@ function SecurityForm(props: { saved: Schemas["Settings"] }) {
 
   const rotate = async () => {
     try {
+      const had = apiKey() !== null;
       const k = await unwrap(api.POST("/api/v1/auth/api-key"));
+      setReplaced(had);
       setNewKey(k.api_key);
     } catch (e) {
       toast.error(failure(e, "No key was made."));
@@ -1037,7 +1077,7 @@ function SecurityForm(props: { saved: Schemas["Settings"] }) {
         username={account.data?.username ?? ""}
         onClose={() => setChanging(false)}
       />
-      <NewKeyDialog apiKey={newKey()} onClose={() => setNewKey(null)} />
+      <NewKeyDialog apiKey={newKey()} replaced={replaced()} onClose={() => setNewKey(null)} />
       <AlertDialog open={asking() !== null} onOpenChange={(o) => !o && setAsking(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

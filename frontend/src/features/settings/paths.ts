@@ -53,3 +53,19 @@ export function contentIn(
   }
   return { count, bytes };
 }
+
+/**
+ * What changing a category's paths does to its torrents: the automatically
+ * managed ones move, the others (named) stay where they are.
+ */
+export function categoryMoves(
+  torrents: readonly Pick<Schemas["TorrentSummary"], "name" | "category" | "auto_management">[],
+  name: string,
+): { total: number; managed: number; manual: string[] } {
+  const inIt = torrents.filter((t) => t.category === name);
+  return {
+    total: inIt.length,
+    managed: inIt.filter((t) => t.auto_management).length,
+    manual: inIt.filter((t) => !t.auto_management).map((t) => t.name),
+  };
+}

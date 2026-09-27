@@ -3,7 +3,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { categoryDownloadPath, categorySavePath, contentIn, joinPath } from "./paths";
+import {
+  categoryDownloadPath,
+  categoryMoves,
+  categorySavePath,
+  contentIn,
+  joinPath,
+} from "./paths";
 
 const cat = (save_path: string | null, download_path: string | null) => ({
   save_path,
@@ -37,5 +43,26 @@ describe("paths", () => {
       { content_path: null, completed: 0 },
     ];
     expect(contentIn(ts, "/data/incoming/")).toEqual({ count: 2, bytes: 101 });
+  });
+});
+
+describe("changing a category's paths", () => {
+  it("moves the automatically managed torrents, names the others", () => {
+    const t = (name: string, category: string | null, auto_management: boolean) => ({
+      name,
+      category,
+      auto_management,
+    });
+    expect(
+      categoryMoves(
+        [
+          t("Sintel", "movies", true),
+          t("Tears of Steel", "movies", false),
+          t("Big Buck Bunny", "movies", true),
+          t("debian", "linux", true),
+        ],
+        "movies",
+      ),
+    ).toEqual({ total: 3, managed: 2, manual: ["Tears of Steel"] });
   });
 });

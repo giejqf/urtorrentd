@@ -14,6 +14,7 @@ import {
   ruleSavePath,
 } from "./rule-form";
 import {
+  cookieFor,
   byAge,
   feedName,
   feedsIn,
@@ -249,5 +250,14 @@ describe("rules", () => {
     expect(
       ruleSavePath({ category: "tv" }, cats, { ...s, category_paths_in_manual_mode: true }),
     ).toBe("/data/shows");
+  });
+});
+
+describe("the cookie jar", () => {
+  it("sends a domain's cookies to it and its subdomains", () => {
+    expect(cookieFor("indexer.example", "indexer.example")).toBe(true);
+    expect(cookieFor(".indexer.example", "rss.indexer.example")).toBe(true);
+    expect(cookieFor("indexer.example", "notindexer.example")).toBe(false);
+    expect(cookieFor("rss.indexer.example", "indexer.example")).toBe(false);
   });
 });

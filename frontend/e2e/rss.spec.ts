@@ -51,7 +51,18 @@ test("rss: feeds, articles, a rule and its dry run", async ({ signedIn: page, da
     await page.getByRole("button", { name: "Add a feed or folder" }).click();
     await page.getByRole("menuitem", { name: "Add feed…" }).click();
     const add = page.getByRole("dialog", { name: "Add feed" });
-    await add.getByLabel("URL").fill(`http://127.0.0.1:${port}/linux.xml?passkey=do-not-show`);
+    await add.getByLabel("Feed URL").fill(`http://127.0.0.1:${port}/linux.xml?passkey=do-not-show`);
+    // Read before it is added: its title and articles.
+    await expect(add).toContainText("Fetched · “Linux ISOs” · 3 articles");
+    await expect(add.getByLabel("Label")).toHaveAttribute(
+      "placeholder",
+      "Linux ISOs (from the feed)",
+    );
+    // Rules would not run anyway: auto-download is off.
+    await expect(
+      add.getByRole("checkbox", { name: "Run download rules on its articles now" }),
+    ).toBeDisabled();
+    await expect(add).toContainText("Auto-download is off");
     await add.getByLabel("Folder").fill("linux");
     await expectAccessible(page);
     await add.getByRole("button", { name: "Add feed" }).click();
@@ -150,8 +161,8 @@ test("rss: feeds, articles, a rule and its dry run", async ({ signedIn: page, da
     await feeds.getByRole("button", { name: "Linux ISOs: actions" }).click();
     await page.getByRole("menuitem", { name: "Edit…" }).click();
     const edit = page.getByRole("dialog", { name: "Edit feed" });
-    await expect(edit.getByLabel("URL")).toHaveValue(/passkey=do-not-show/);
-    await edit.getByLabel("Name").fill("Ubuntu and friends");
+    await expect(edit.getByLabel("Feed URL")).toHaveValue(/passkey=do-not-show/);
+    await edit.getByLabel("Label").fill("Ubuntu and friends");
     await edit.getByRole("button", { name: "Save feed" }).click();
     await expect(feeds.getByRole("button", { name: /^Ubuntu and friends/ }).first()).toBeVisible();
     await feeds.getByRole("button", { name: "Ubuntu and friends: actions" }).click();

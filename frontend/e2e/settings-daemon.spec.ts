@@ -61,8 +61,15 @@ test("security: the request, sessions and bans, the key, the HTTP layer, cookies
   const shown = page.getByRole("dialog", { name: "Your new API key" });
   const key = await shown.getByLabel("API key").inputValue();
   expect(key).toMatch(/^urtd_[0-9a-f]{48}$/);
+  await expect(shown).toContainText("The old key stopped working just now.");
+  await expect(shown).toContainText(`Authorization: Bearer ${key.slice(0, 9)}…${key.slice(-4)}`);
   await expectAccessible(page);
-  await shown.getByRole("button", { name: "Done" }).click();
+  // Done waits for the key to be kept somewhere.
+  const done = shown.getByRole("button", { name: "Done" });
+  await expect(done).toBeDisabled();
+  await shown.getByRole("checkbox", { name: "I have copied it somewhere safe" }).focus();
+  await page.keyboard.press("Space");
+  await done.click();
   await expect(shown).toBeHidden();
   await expect(page.getByText(key)).toHaveCount(0);
   daemon.api = createClient<paths>({

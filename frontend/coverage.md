@@ -31,12 +31,6 @@ row whose operation the UI calls.
 | `POST /api/v1/tags`                         | W3: managing tags (the detail panel creates them through `POST /torrents/tags`).                            |
 | `POST /api/v1/tags/remove`                  | W3: managing tags.                                                                                          |
 
-## Not built yet
-
-| Operation                      | Why the UI does not call it                                          |
-| ------------------------------ | -------------------------------------------------------------------- |
-| `POST /api/v1/rss/feeds/probe` | The Add feed dialog (next commit): the feed looked at before adding. |
-
 ## W4: settings, security, logs
 
 | Operation                   | Why the UI does not call it                                          |
