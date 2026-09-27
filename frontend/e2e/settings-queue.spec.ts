@@ -110,9 +110,10 @@ test("share limits in the API's units, against the seeding torrents", async ({
   ).toBeVisible();
   await field(page, "Ratio").fill("2");
   await field(page, "Seeding time").fill("1.5");
-  // Measured against the draft before it is saved.
+  // Measured against the draft before it is saved: 1.5 days less the seeding
+  // time as the row last had it (clocks go out once a minute, so 0 to 60 s).
   await expect(row).toContainText("0.00 / 2.0");
-  await expect(row).toContainText(/seeding time in ~1d 11h → stop/);
+  await expect(row).toContainText(/seeding time in ~1d 1[12]h → stop/);
   // Idle, it reaches a shorter inactive limit first.
   await field(page, "Inactive seeding time").fill("12");
   await page.getByRole("button", { name: "Inactive seeding time unit" }).click();

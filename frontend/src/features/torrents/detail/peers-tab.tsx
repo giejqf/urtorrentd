@@ -71,12 +71,13 @@ export function PeersTab(props: { torrent: TorrentSummary }) {
       unwrap(api.GET("/api/v1/torrents/{hash}/peers", { params: { path: { hash: hash() } } })),
     refetchInterval: 2_000,
   }));
-  // Peers known beyond those connected (waiting to be dialled).
+  // Peers known beyond those connected (waiting to be dialled), and the
+  // next announce.
   const detail = createQuery(() => ({
     queryKey: keys.torrentPart(hash(), "detail"),
     queryFn: () =>
       unwrap(api.GET("/api/v1/torrents/{hash}", { params: { path: { hash: hash() } } })),
-    refetchInterval: 5_000,
+    refetchInterval: 2_000,
   }));
   const [adding, setAdding] = createSignal(false);
   const client = useQueryClient();
@@ -100,6 +101,10 @@ export function PeersTab(props: { torrent: TorrentSummary }) {
     parts.push(n > MOST ? `the ${MOST} fastest shown` : "fastest first");
     return parts.join(" · ");
   };
+  // The list row's clocks go out once a minute (docs/api.md, live updates),
+  // so the countdown comes from the detail.
+  const nextAnnounce = () =>
+    detail.data ? detail.data.next_announce_in : props.torrent.next_announce_in;
   const swarm = () => {
     const t = props.torrent;
     if (t.swarm_seeds === null && t.swarm_leechers === null) return "swarm not reported";
@@ -259,10 +264,7 @@ export function PeersTab(props: { torrent: TorrentSummary }) {
       <div class="flex flex-none items-center justify-between gap-3 border-t border-divider pt-2 mono text-xs text-subtle">
         <span class="truncate">{swarm()}</span>
         <span class="flex-none">
-          next announce{" "}
-          {props.torrent.next_announce_in === null
-            ? dash
-            : formatDuration(props.torrent.next_announce_in)}
+          next announce {nextAnnounce() === null ? dash : formatDuration(nextAnnounce() ?? 0)}
         </span>
       </div>
       <ConfirmDialog
