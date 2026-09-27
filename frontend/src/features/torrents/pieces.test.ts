@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { binPieces, roundMax } from "./pieces";
+import { binPieces, findPiece, roundMax } from "./pieces";
 
 describe("pieces chart", () => {
   it("rounds the axis up to a round number of copies", () => {
@@ -42,5 +42,21 @@ describe("pieces chart", () => {
     const chart = binPieces({ states: ["have"], availability: [5], priorities: [4] });
     expect(chart.bins).toEqual([{ copies: 6, have: 1, rare: false }]);
     expect(binPieces({ states: [], availability: [], priorities: [] }).bins).toEqual([]);
+  });
+});
+
+describe("findPiece", () => {
+  const hashes = ["aa11", "bb22", "bb33"];
+  it("finds a piece by its number or the start of its hash", () => {
+    expect(findPiece(hashes, "2")).toBe(2);
+    expect(findPiece(hashes, "#1")).toBe(1);
+    expect(findPiece(hashes, "BB")).toBe(1);
+    expect(findPiece(hashes, "bb3")).toBe(2);
+  });
+  it("finds nothing past the end, for other text, or for nothing", () => {
+    expect(findPiece(hashes, "3")).toBeNull();
+    expect(findPiece(hashes, "cc")).toBeNull();
+    expect(findPiece(hashes, "zz")).toBeNull();
+    expect(findPiece(hashes, " ")).toBeNull();
   });
 });

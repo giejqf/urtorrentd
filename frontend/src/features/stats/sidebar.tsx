@@ -8,7 +8,7 @@ import { A, useLocation } from "@solidjs/router";
 import { For, Show } from "solid-js";
 
 import { useStatsInfo } from "~/features/settings/app-info";
-import { Section } from "~/features/shell/sidebar";
+import { Section } from "~/features/shell/sidebar-items";
 import { formatBytes, formatCount, formatShortDate } from "~/lib/format";
 import { cn } from "~/lib/utils";
 

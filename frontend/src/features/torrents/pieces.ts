@@ -83,3 +83,16 @@ export function binPieces(p: Schemas["PiecesResponse"], width = 194): PieceChart
     max: roundMax(peak),
   };
 }
+
+/** The index a search points at: a piece number, or the first hash that starts with it. */
+export function findPiece(hashes: readonly string[], text: string): number | null {
+  const q = text.trim().toLowerCase().replace(/^#/, "");
+  if (q === "") return null;
+  if (/^\d+$/.test(q) && q.length < 8) {
+    const i = Number(q);
+    return i < hashes.length ? i : null;
+  }
+  if (!/^[0-9a-f]+$/.test(q)) return null;
+  const i = hashes.findIndex((h) => h.startsWith(q));
+  return i >= 0 ? i : null;
+}

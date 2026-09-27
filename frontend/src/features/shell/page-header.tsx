@@ -8,11 +8,12 @@ import { Button } from "~/components/ui/button";
 
 import { useShell } from "./protected";
 
-/** A page's 48px top bar: the title, a count, and the page's actions. */
+/** A page's 48px top bar: the title, a count, and the page's actions (on a
+ * phone, actions that do not fit go to a second line). */
 export function PageHeader(props: { title: string; count?: JSX.Element; children?: JSX.Element }) {
   const shell = useShell();
   return (
-    <div class="flex h-12 flex-none items-center gap-2 border-b border-divider px-4">
+    <div class="flex h-12 flex-none items-center gap-2 border-b border-divider px-4 max-sm:h-auto max-sm:min-h-12 max-sm:flex-wrap max-sm:py-2">
       <Button
         variant="ghost"
         size="icon"
@@ -22,7 +23,9 @@ export function PageHeader(props: { title: string; count?: JSX.Element; children
       >
         <Menu />
       </Button>
-      <h1 class="m-0 truncate text-base font-semibold">{props.title}</h1>
+      <h1 class="m-0 min-w-0 truncate text-base font-semibold max-sm:max-w-[60vw]">
+        {props.title}
+      </h1>
       {props.count}
       <div class="flex-1" />
       {props.children}

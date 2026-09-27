@@ -329,7 +329,7 @@ export default function Rss() {
             </Button>
           </Show>
         </PageHeader>
-        <div class="flex h-10 flex-none items-center gap-1.5 overflow-x-auto border-b border-divider px-4">
+        <div class="flex h-10 flex-none items-center gap-1.5 overflow-x-auto border-b border-divider px-4 max-sm:h-auto max-sm:flex-wrap max-sm:py-2">
           <div role="group" aria-label="Show" class="flex gap-1.5">
             <For each={SHOWS}>
               {(s) => (
@@ -350,7 +350,7 @@ export default function Rss() {
             </For>
           </div>
           <div class="flex-1" />
-          <label class="flex h-7 w-[200px] flex-none items-center gap-1.5 rounded-md border border-border px-2 focus-within:border-ring focus-within:shadow-focus">
+          <label class="flex h-7 w-[200px] flex-none items-center gap-1.5 rounded-md border border-border px-2 focus-within:border-ring focus-within:shadow-focus max-sm:w-full">
             <Search size={13} class="flex-none text-subtle" />
             <input
               class="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-subtle"

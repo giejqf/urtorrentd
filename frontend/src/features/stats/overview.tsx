@@ -313,7 +313,16 @@ function TopCard(props: { span: Span; words: string }) {
         </DropdownMenu>
       }
     >
-      <Show when={rows().length > 0} fallback={<Empty>No torrent moved data in this range.</Empty>}>
+      <Show
+        when={rows().length > 0}
+        fallback={
+          <Empty>
+            {by() === "uploaded"
+              ? "No torrent uploaded in this range."
+              : "No torrent downloaded in this range."}
+          </Empty>
+        }
+      >
         <ul class="m-0 flex list-none flex-col gap-2.5 p-0">
           <For each={rows()}>
             {(t) => (

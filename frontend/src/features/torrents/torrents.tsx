@@ -38,7 +38,7 @@ import { type FilterParams, STATUS_LABELS } from "~/features/shell/sidebar";
 import { formatCount } from "~/lib/format";
 import { FILTERS } from "~/lib/torrent";
 import { usePref } from "~/lib/prefs";
-import { useWide } from "~/lib/use-wide";
+import { useNarrow, useWide } from "~/lib/use-wide";
 import { cn } from "~/lib/utils";
 
 import { actions, copy, isRunning } from "./actions";
@@ -130,6 +130,7 @@ function Screen() {
   const navigate = useNavigate();
   const location = useLocation();
   const wide = useWide();
+  const narrow = useNarrow();
   const [display, setDisplay] = usePref("torrents.display", DEFAULT_DISPLAY, isDisplay);
   const [adding, setAdding] = createSignal(false);
   const [prompt, setPrompt] = createSignal<"category" | "tag" | null>(null);
@@ -327,7 +328,7 @@ function Screen() {
           <DropdownMenu>
             <DropdownMenuTrigger as={Button} variant="outline" size="sm">
               <ListFilterIcon />
-              Filter
+              <span class="max-sm:sr-only">Filter</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent class="min-w-52">
               <DropdownMenuGroup>
@@ -361,7 +362,7 @@ function Screen() {
           <DropdownMenu>
             <DropdownMenuTrigger as={Button} variant="outline" size="sm">
               <LayoutGrid />
-              Display
+              <span class="max-sm:sr-only">Display</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent class="min-w-52">
               <DropdownMenuCheckboxItem
@@ -415,6 +416,7 @@ function Screen() {
                   torrents={live.state.torrents}
                   selected={selection()}
                   checkboxes={selection().size > 1}
+                  compact={narrow()}
                   focus={focus()}
                   onSelect={select}
                   onKey={onKey}

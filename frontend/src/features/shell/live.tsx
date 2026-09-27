@@ -26,6 +26,10 @@ interface Live {
   torrents: Accessor<Schemas["TorrentSummary"][]>;
   /** Whether the first update arrived. */
   ready: Accessor<boolean>;
+  /** When the last update arrived (ms), `null` before the first. */
+  updatedAt: Accessor<number | null>;
+  /** Open the stream again now instead of at the next retry. */
+  reconnect: () => void;
 }
 
 const LiveContext = createContext<Live>();
@@ -34,8 +38,12 @@ export const LiveProvider: ParentComponent = (props) => {
   const auth = useAuth();
   const [state, setState] = createStore<LiveState>(emptyLive());
   const [connection, setConnection] = createSignal<Connection>("connecting");
+  const [updatedAt, setUpdatedAt] = createSignal<number | null>(null);
   const stream = connectLive({
-    onUpdate: (u) => applySync(setState, u),
+    onUpdate: (u) => {
+      applySync(setState, u);
+      setUpdatedAt(Date.now());
+    },
     onConnection: (c) => {
       setConnection(c);
       if (c === "signed_out") void auth.sessionEnded();
@@ -45,7 +53,9 @@ export const LiveProvider: ParentComponent = (props) => {
   const torrents = createMemo(() => Object.values(state.torrents));
   const ready = () => state.rev !== null;
   return (
-    <LiveContext.Provider value={{ state, connection, torrents, ready }}>
+    <LiveContext.Provider
+      value={{ state, connection, torrents, ready, updatedAt, reconnect: () => stream.reconnect() }}
+    >
       {props.children}
     </LiveContext.Provider>
   );

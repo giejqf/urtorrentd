@@ -9,7 +9,7 @@ import { A, useSearchParams } from "@solidjs/router";
 import { createMemo, For, Show } from "solid-js";
 
 import { StatusDot } from "~/components/status-dot";
-import { FilterItem, Section } from "~/features/shell/sidebar";
+import { FilterItem, Section } from "~/features/shell/sidebar-items";
 import { formatCount, formatDateTime } from "~/lib/format";
 import { cn } from "~/lib/utils";
 

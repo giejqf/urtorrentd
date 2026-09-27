@@ -23,14 +23,6 @@ row whose operation the UI calls.
 | `GET /api/v1/previews`                     | The add dialog follows its own previews one by one; the list is for other clients.     |
 | `GET /api/v1/previews/{hash}/torrent-file` | The add dialog adds a previewed source by its hash, which uses the fetched `.torrent`. |
 
-## W3: one torrent in depth
-
-| Operation                                   | Why the UI does not call it                                                                                 |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/torrents/{hash}/pieces/hashes` | W3: piece hashes have no design yet (the Files tab and the Overview draw the pieces from `GET .../pieces`). |
-| `POST /api/v1/tags`                         | W3: managing tags (the detail panel creates them through `POST /torrents/tags`).                            |
-| `POST /api/v1/tags/remove`                  | W3: managing tags.                                                                                          |
-
 ## W4: settings, security, logs
 
 | Operation                   | Why the UI does not call it                                          |

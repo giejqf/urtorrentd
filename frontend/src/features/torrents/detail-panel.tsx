@@ -59,6 +59,7 @@ import { createOptionsForm, OptionsLeaveGuard, OptionsTab } from "./detail/optio
 import { progressLine, trackerTone } from "./detail/parts";
 import { PeersTab } from "./detail/peers-tab";
 import { TrackersTab } from "./detail/trackers-tab";
+import { PieceHashesDialog } from "./piece-hashes-dialog";
 import { PiecesChart } from "./pieces-chart";
 import { useTorrentDialogs } from "./torrent-dialogs";
 
@@ -305,73 +306,81 @@ function exportTorrent(t: TorrentSummary) {
 function MoreMenu(props: { torrent: TorrentSummary; onDelete: () => void }) {
   const dialogs = useTorrentDialogs();
   const h = () => [props.torrent.hash];
+  const [hashes, setHashes] = createSignal(false);
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger as={Button} variant="ghost" size="icon" aria-label="More actions">
-        <Ellipsis />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent class="min-w-56">
-        <DropdownMenuCheckboxItem
-          checked={props.torrent.forced}
-          onChange={(on) => void actions.forceStart(h(), on)}
-        >
-          Force start
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={props.torrent.sequential}
-          onChange={(on) => void actions.sequential(h(), on)}
-        >
-          Sequential download
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={props.torrent.first_last_piece_priority}
-          onChange={(on) => void actions.firstLast(h(), on)}
-        >
-          First and last pieces first
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>Queue</DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem onSelect={() => void actions.queue(h(), "top")}>
-              Move to top
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void actions.queue(h(), "up")}>
-              Move up
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void actions.queue(h(), "down")}>
-              Move down
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void actions.queue(h(), "bottom")}>
-              Move to bottom
-            </DropdownMenuItem>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void copy(props.torrent.magnet_uri, "Magnet link")}>
-          Copy magnet link
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void copy(props.torrent.hash, "Info-hash")}>
-          Copy info-hash
-        </DropdownMenuItem>
-        <Show when={props.torrent.has_metadata}>
-          <DropdownMenuItem onSelect={() => exportTorrent(props.torrent)}>
-            Export .torrent file
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger as={Button} variant="ghost" size="icon" aria-label="More actions">
+          <Ellipsis />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent class="min-w-56">
+          <DropdownMenuCheckboxItem
+            checked={props.torrent.forced}
+            onChange={(on) => void actions.forceStart(h(), on)}
+          >
+            Force start
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={props.torrent.sequential}
+            onChange={(on) => void actions.sequential(h(), on)}
+          >
+            Sequential download
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={props.torrent.first_last_piece_priority}
+            onChange={(on) => void actions.firstLast(h(), on)}
+          >
+            First and last pieces first
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Queue</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={() => void actions.queue(h(), "top")}>
+                Move to top
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void actions.queue(h(), "up")}>
+                Move up
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void actions.queue(h(), "down")}>
+                Move down
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void actions.queue(h(), "bottom")}>
+                Move to bottom
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => void copy(props.torrent.magnet_uri, "Magnet link")}>
+            Copy magnet link
           </DropdownMenuItem>
-        </Show>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => dialogs.move([props.torrent.hash])}>
-          Move content…
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => dialogs.shareLimits([props.torrent.hash])}>
-          Share limits…
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem class="text-danger" onSelect={() => props.onDelete()}>
-          Remove…
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuItem onSelect={() => void copy(props.torrent.hash, "Info-hash")}>
+            Copy info-hash
+          </DropdownMenuItem>
+          <Show when={props.torrent.has_metadata}>
+            <DropdownMenuItem onSelect={() => exportTorrent(props.torrent)}>
+              Export .torrent file
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setHashes(true)}>Piece hashes…</DropdownMenuItem>
+          </Show>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => dialogs.move([props.torrent.hash])}>
+            Move content…
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => dialogs.shareLimits([props.torrent.hash])}>
+            Share limits…
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem class="text-danger" onSelect={() => props.onDelete()}>
+            Remove…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <PieceHashesDialog
+        torrent={hashes() ? props.torrent : null}
+        onClose={() => setHashes(false)}
+      />
+    </>
   );
 }
 

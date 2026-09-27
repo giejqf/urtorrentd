@@ -11,15 +11,6 @@ import { createEffect, createSignal, For, Match, on, Show, Switch } from "solid-
 import { api, ApiError, type Schemas, unwrap } from "~/api/client";
 import { keys } from "~/api/keys";
 import { StatusDot } from "~/components/status-dot";
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
 import { Checkbox, CheckboxLabel } from "~/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "~/components/ui/dialog";
@@ -328,39 +319,5 @@ export function FeedDialog(props: {
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-export function ConfirmDialog(props: {
-  open: boolean;
-  title: string;
-  description: string;
-  action: string;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <AlertDialog open={props.open} onOpenChange={(o) => !o && props.onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{props.title}</AlertDialogTitle>
-          <AlertDialogDescription>{props.description}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogClose as={Button} variant="outline" aria-label="Cancel">
-            Cancel
-          </AlertDialogClose>
-          <Button
-            variant="destructive"
-            onClick={() => {
-              props.onConfirm();
-              props.onClose();
-            }}
-          >
-            {props.action}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }

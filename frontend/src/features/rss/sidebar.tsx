@@ -9,13 +9,13 @@
 
 import { useSearchParams } from "@solidjs/router";
 import { createQuery } from "@tanstack/solid-query";
-import Ellipsis from "lucide-solid/icons/ellipsis";
 import Plus from "lucide-solid/icons/plus";
-import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { toast } from "solid-sonner";
 
 import { api, type Schemas, unwrap } from "~/api/client";
 import { keys } from "~/api/keys";
+import { ConfirmDialog } from "~/components/confirm-dialog";
 import { PromptDialog } from "~/components/prompt-dialog";
 import { StatusDot } from "~/components/status-dot";
 import {
@@ -25,7 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import { FilterItem, Section } from "~/features/shell/sidebar";
+import { FilterItem, MenuRow, Section, SectionAdd } from "~/features/shell/sidebar-items";
 import { formatCount, formatTime } from "~/lib/format";
 
 import {
@@ -37,7 +37,7 @@ import {
   useRssChange,
   useRules,
 } from "./data";
-import { ConfirmDialog, FeedDialog } from "./dialogs";
+import { FeedDialog } from "./dialogs";
 import { newRule } from "./rule-form";
 import { feedName, feedTree, inFolder, nextRefresh, scopeOf } from "./view";
 
@@ -52,41 +52,6 @@ export interface RssParams {
   show?: string;
   q?: string;
   [key: string]: string | undefined;
-}
-
-/** A row of the tree: the item, and its menu beside it. */
-function TreeRow(props: {
-  indent: number;
-  active: boolean;
-  label: JSX.Element;
-  count?: number;
-  menuLabel: string;
-  onSelect: () => void;
-  menu: JSX.Element;
-}) {
-  return (
-    <div class="group relative">
-      <FilterItem
-        label={props.label}
-        count={props.count ? props.count : undefined}
-        strong={(props.count ?? 0) > 0}
-        indent={props.indent}
-        active={props.active}
-        onClick={() => props.onSelect()}
-        class="pr-8"
-      />
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          as="button"
-          aria-label={props.menuLabel}
-          class="absolute top-1/2 right-1 flex size-6 -translate-y-1/2 items-center justify-center rounded-md bg-sidebar text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 data-[expanded]:opacity-100"
-        >
-          <Ellipsis size={14} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent class="w-48">{props.menu}</DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
 }
 
 export default function RssSidebar(props: { onNavigate?: () => void }) {
@@ -240,7 +205,7 @@ export default function RssSidebar(props: { onNavigate?: () => void }) {
           <For each={tree()}>
             {(node) =>
               node.kind === "folder" ? (
-                <TreeRow
+                <MenuRow
                   indent={node.depth}
                   active={scope().kind === "folder" && params.folder === node.path}
                   label={
@@ -251,7 +216,8 @@ export default function RssSidebar(props: { onNavigate?: () => void }) {
                       </span>
                     </>
                   }
-                  count={node.unread}
+                  count={node.unread || undefined}
+                  strong={node.unread > 0}
                   menuLabel={`Folder ${node.path}: actions`}
                   onSelect={() => go({ folder: node.path })}
                   menu={
@@ -291,7 +257,7 @@ export default function RssSidebar(props: { onNavigate?: () => void }) {
                   }
                 />
               ) : (
-                <TreeRow
+                <MenuRow
                   indent={node.depth}
                   active={scope().kind === "feed" && params.feed === String(node.feed.id)}
                   label={
@@ -305,7 +271,8 @@ export default function RssSidebar(props: { onNavigate?: () => void }) {
                       </Show>
                     </>
                   }
-                  count={node.feed.unread}
+                  count={node.feed.unread || undefined}
+                  strong={node.feed.unread > 0}
                   menuLabel={`${feedName(node.feed)}: actions`}
                   onSelect={() => go({ feed: String(node.feed.id) })}
                   menu={
@@ -344,16 +311,7 @@ export default function RssSidebar(props: { onNavigate?: () => void }) {
         </Section>
         <Section
           title="Rules"
-          action={
-            <button
-              type="button"
-              aria-label="New rule"
-              class="flex size-5 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={() => setPrompt({ kind: "rule" })}
-            >
-              <Plus size={12} stroke-width={2.5} />
-            </button>
-          }
+          action={<SectionAdd label="New rule" onClick={() => setPrompt({ kind: "rule" })} />}
         >
           <For each={rules.data ?? []}>
             {(r) => (

@@ -33,8 +33,10 @@ import { categoryDownloadPath, categoryMoves, categorySavePath } from "./paths";
 
 type Category = Schemas["Category"];
 
-/** Which dialog is open: a new category, or the one being edited. */
-type Editing = { kind: "new" } | { kind: "edit"; name: string };
+/** Which dialog is open: a new category, the one being edited, or the question
+ * before removing one (asked alone when `remove`). */
+export type CategoryEditing = { kind: "new" } | { kind: "edit"; name: string; remove?: boolean };
+type Editing = CategoryEditing;
 
 export function CategoryPaths(props: { savePath: string; downloadPath: string | null }) {
   const live = useLive();
@@ -153,13 +155,15 @@ const input =
 const box =
   "flex h-9 items-center overflow-hidden rounded-lg border border-input bg-background focus-within:border-ring focus-within:shadow-focus";
 
-function CategoryDialog(props: {
+export function CategoryDialog(props: {
   editing: Editing | null;
   savePath: string;
   /** The global download path; `null` = none. */
   downloadPath: string | null;
   count: (name: string) => number;
   onClose: () => void;
+  /** After it is removed. */
+  onRemoved?: (name: string) => void;
 }) {
   const live = useLive();
   const [name, setName] = createSignal("");
@@ -172,6 +176,15 @@ function CategoryDialog(props: {
   const editName = () => {
     const e = props.editing;
     return e?.kind === "edit" ? e.name : null;
+  };
+  /** Only the question was asked for: keeping the category closes it all. */
+  const removeOnly = () => {
+    const e = props.editing;
+    return e?.kind === "edit" && e.remove === true;
+  };
+  const keep = () => {
+    if (removeOnly()) props.onClose();
+    setConfirmRemove(false);
   };
   const existing = (): Category | undefined => {
     const n = editName();
@@ -188,7 +201,7 @@ function CategoryDialog(props: {
         setSave(c?.save_path ?? "");
         setDl(c?.download_path ?? "");
         setProblem(null);
-        setConfirmRemove(false);
+        setConfirmRemove(e.kind === "edit" && e.remove === true);
       },
     ),
   );
@@ -230,11 +243,18 @@ function CategoryDialog(props: {
     try {
       await unwrap(api.POST("/api/v1/categories/remove", { body: { names: [n] } }));
       toast.success(`Category ${n} removed`);
-      setConfirmRemove(false);
+      props.onRemoved?.(n);
       props.onClose();
-    } catch (e) {
       setConfirmRemove(false);
-      setProblem(e instanceof ApiError ? e.message : "The category could not be removed.");
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : "The category could not be removed.";
+      if (removeOnly()) {
+        toast.error(message);
+        props.onClose();
+      } else {
+        setProblem(message);
+      }
+      setConfirmRemove(false);
     } finally {
       setBusy(false);
     }
@@ -415,7 +435,7 @@ function CategoryDialog(props: {
           </form>
         </DialogContent>
       </Dialog>
-      <AlertDialog open={confirmRemove()} onOpenChange={(o) => !o && setConfirmRemove(false)}>
+      <AlertDialog open={confirmRemove()} onOpenChange={(o) => !o && keep()}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove category {editName()}?</AlertDialogTitle>
@@ -429,7 +449,7 @@ function CategoryDialog(props: {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button variant="outline" onClick={() => setConfirmRemove(false)}>
+            <Button variant="outline" onClick={keep}>
               Keep it
             </Button>
             <Button variant="destructive" disabled={busy()} onClick={() => void remove()}>

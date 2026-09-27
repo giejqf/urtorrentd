@@ -3,8 +3,9 @@
 
 import { Router } from "@solidjs/router";
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
-import type { ParentComponent } from "solid-js";
+import { ErrorBoundary, type ParentComponent } from "solid-js";
 
+import { PageError } from "~/components/page-error";
 import { Toaster } from "~/components/ui/sonner";
 import { AuthProvider } from "~/features/auth/auth";
 import { routes } from "~/routes";
@@ -22,7 +23,9 @@ const queryClient = new QueryClient({
 
 const Root: ParentComponent = (props) => (
   <AuthProvider>
-    {props.children}
+    <ErrorBoundary fallback={(error, reset) => <PageError error={error} reset={reset} />}>
+      {props.children}
+    </ErrorBoundary>
     <Toaster position="bottom-right" />
   </AuthProvider>
 );

@@ -4,8 +4,10 @@
 // The detail panel's tabs against real daemons (AGENTS.md 7.4): a
 // multi-file torrent downloaded slowly from a second daemon, with a tracker
 // on loopback whose URL carries a passkey; its files, peers, trackers and
-// web seeds, its history, and its options saved as one draft.
+// web seeds, its history, and its options saved as one draft; a torrent's
+// piece hashes.
 
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 
 import { expect, expectAccessible, test } from "./fixtures";
@@ -275,4 +277,45 @@ test("the Options tab saves one draft, and asks before leaving it", async ({
   await bar.getByRole("button", { name: "Save" }).click();
   await expect.poll(async () => (await row())?.save_path).toBe(target);
   expect((await row())?.auto_management).toBe(false);
+});
+
+test("a torrent's piece hashes, as the daemon has them", async ({ signedIn: page, daemon }) => {
+  const t = makeTorrent({ name: "Hashes_e2e", size: 200 * 1024, pieceLength: 16_384 });
+  t.writeContent(daemon.savePath);
+  await daemon.api.POST("/api/v1/torrents", { body: { torrents: [t.base64] } });
+  await daemon.waitFor(t.hash, (x) => x.state === "seeding", "a seed");
+  const hashes =
+    (
+      await daemon.api.GET("/api/v1/torrents/{hash}/pieces/hashes", {
+        params: { path: { hash: t.hash } },
+      })
+    ).data ?? [];
+  expect(hashes).toHaveLength(13);
+
+  await page.goto(`${daemon.url}/torrents/${t.hash}`);
+  const details = page.getByRole("region", { name: "Details of Hashes_e2e" });
+  await details.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Piece hashes…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Piece hashes" });
+  await expect(dialog).toContainText("13 pieces of 16 KiB · SHA-1");
+  await expect(dialog).toContainText("13 of 13 verified");
+  const table = dialog.getByRole("table", { name: "Piece hashes" });
+  await expect(table.getByRole("row").first()).toContainText(hashes[0] ?? "-");
+  await expect(table.getByRole("row").first()).toContainText("Have");
+  await expectAccessible(page);
+
+  // Found by the start of its hash, or its number.
+  const find = dialog.getByLabel("Find a piece by number or hash");
+  await find.fill((hashes[12] ?? "").slice(0, 8));
+  await expect(dialog).toContainText("Piece 12");
+  await find.fill("13");
+  await expect(dialog).toContainText("No such piece");
+
+  // Saved as text: one hash per line, in piece order.
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    dialog.getByRole("button", { name: "Save as text" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("Hashes_e2e.sha1.txt");
+  expect(readFileSync(await download.path(), "utf8")).toBe(`${hashes.join("\n")}\n`);
 });

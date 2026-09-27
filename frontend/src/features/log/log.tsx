@@ -523,7 +523,7 @@ export default function Log() {
             </span>
           }
         >
-          <label class="hidden h-7 w-60 items-center gap-1.5 rounded-md border border-border px-2 focus-within:border-ring focus-within:shadow-focus md:flex">
+          <label class="flex h-7 w-60 items-center gap-1.5 rounded-md border border-border px-2 focus-within:border-ring focus-within:shadow-focus max-sm:order-last max-sm:w-full">
             <Search size={13} class="flex-none text-subtle" />
             <input
               class="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-subtle"

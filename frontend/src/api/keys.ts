@@ -5,7 +5,8 @@
 // invalidates the keys it changes; keys nest so `torrent(hash)` covers every
 // part of one torrent.
 
-export type TorrentPart = "detail" | "files" | "peers" | "trackers" | "webseeds" | "pieces";
+export type TorrentPart =
+  "detail" | "files" | "peers" | "trackers" | "webseeds" | "pieces" | "piece-hashes";
 
 export const keys = {
   authStatus: () => ["auth", "status"] as const,

@@ -137,6 +137,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change moves; a feed is read before it is added (its title, articles and
   whether cookies go with it), and can be added without running the rules
   on what it already has.
+- Web UI: categories and tags managed from the torrents screen's sidebar
+  (made from the "+", edited, removed or deleted from a row's menu, with
+  how many torrents it concerns); a torrent's piece hashes, found by number
+  or hash and saved as text; two-line rows and wrapping headers on phones;
+  a bar saying since when the figures are while the daemon is away; and a
+  card instead of a blank page when a page fails, offering a reload when
+  the daemon serves a newer UI.
 - `POST /rss/dry-run`: a rule as being edited, unsaved, over its feeds'
   articles: each one's verdict (`take`, `taken` by a rule already,
   `filtered`) and why the filters leave it.

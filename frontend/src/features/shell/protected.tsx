@@ -3,12 +3,14 @@
 
 // The signed-in app: sign-in or setup when there is no session, an
 // explanation when the daemon cannot be reached, otherwise the shell
-// (sidebar and page) over the live store.
+// (sidebar and page) over the live store, with a bar while its stream is
+// down.
 
 import { Navigate, type RouteSectionProps, useLocation } from "@solidjs/router";
 import {
   createContext,
   createSignal,
+  ErrorBoundary,
   Match,
   type ParentComponent,
   Show,
@@ -17,11 +19,13 @@ import {
 } from "solid-js";
 
 import { LogoMark } from "~/components/logo";
+import { PageError } from "~/components/page-error";
 import { Button } from "~/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "~/components/ui/sheet";
 import { useAuth } from "~/features/auth/auth";
 import { SettingsNav } from "~/features/settings/nav";
 
+import { ConnectionBanner } from "./connection-banner";
 import { LiveProvider } from "./live";
 import { Sidebar } from "./sidebar";
 
@@ -84,7 +88,14 @@ const ShellLayout: ParentComponent = (props) => {
             </Show>
           </SheetContent>
         </Sheet>
-        <div class="flex min-w-0 flex-1">{props.children}</div>
+        <div class="flex min-w-0 flex-1 flex-col">
+          <ConnectionBanner />
+          <div class="flex min-h-0 min-w-0 flex-1">
+            <ErrorBoundary fallback={(error, reset) => <PageError error={error} reset={reset} />}>
+              {props.children}
+            </ErrorBoundary>
+          </div>
+        </div>
       </div>
     </ShellContext.Provider>
   );

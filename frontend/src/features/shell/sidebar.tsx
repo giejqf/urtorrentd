@@ -2,13 +2,13 @@
 // Copyright (c) 2026 urtorrentd contributors
 
 // The design's left panel (AGENTS.md 6.3): instance menu and connection,
-// search, navigation, the torrent filters with their counts, and the
-// session's transfer state.
+// search, navigation, the torrent filters with their counts (categories and
+// tags are managed there too, organize.tsx), and the session's transfer
+// state.
 
 import { A, useLocation, useNavigate, useSearchParams } from "@solidjs/router";
 import ChartLine from "lucide-solid/icons/chart-line";
 import ChevronDown from "lucide-solid/icons/chevron-down";
-import Folder from "lucide-solid/icons/folder";
 import LogOut from "lucide-solid/icons/log-out";
 import PanelsTopLeft from "lucide-solid/icons/panels-top-left";
 import Power from "lucide-solid/icons/power";
@@ -21,7 +21,6 @@ import {
   createMemo,
   createSignal,
   For,
-  type JSX,
   lazy,
   Match,
   onCleanup,
@@ -68,6 +67,8 @@ import { formatCount, formatBytes, formatRate } from "~/lib/format";
 import { cn } from "~/lib/utils";
 
 import { useLive } from "./live";
+import { CategorySection, TagSection } from "./organize";
+import { FilterItem, Section } from "./sidebar-items";
 
 export const STATUS_LABELS: Record<StatusFilter, string> = {
   all: "All",
@@ -145,65 +146,6 @@ function NavItem(props: {
       <props.icon size={15} />
       {props.label}
     </A>
-  );
-}
-
-export function FilterItem(props: {
-  label: JSX.Element;
-  /** A number, or a word ("off"); nothing when absent. */
-  count?: number | string;
-  active: boolean;
-  onClick: () => void;
-  title?: string;
-  /** The count as a pill: something unread. */
-  strong?: boolean;
-  /** Levels of nesting (folders). */
-  indent?: number;
-  class?: string;
-}) {
-  return (
-    <button
-      type="button"
-      class={cn(
-        "flex h-7 w-full min-w-0 items-center justify-between gap-2 rounded-md px-2 text-left text-base transition-colors",
-        props.active
-          ? "bg-selected text-foreground"
-          : "text-muted-foreground hover:bg-accent hover:text-foreground",
-        props.class,
-      )}
-      aria-pressed={props.active}
-      title={props.title}
-      style={props.indent ? { "padding-left": `${8 + props.indent * 14}px` } : undefined}
-      onClick={() => props.onClick()}
-    >
-      <span class="flex min-w-0 items-center gap-2">{props.label}</span>
-      <Show when={props.count !== undefined}>
-        <span
-          class={cn(
-            "flex-none mono text-xs",
-            props.strong
-              ? "min-w-[18px] rounded-full bg-border px-1.5 text-center text-foreground"
-              : props.active
-                ? "text-muted-foreground"
-                : "text-subtle",
-          )}
-        >
-          {typeof props.count === "number" ? formatCount(props.count) : props.count}
-        </span>
-      </Show>
-    </button>
-  );
-}
-
-export function Section(props: { title: string; action?: JSX.Element; children: JSX.Element }) {
-  return (
-    <section aria-label={props.title}>
-      <div class="flex items-center justify-between px-2 pt-2.5 pb-1">
-        <h2 class="m-0 text-xs font-medium text-subtle">{props.title}</h2>
-        {props.action}
-      </div>
-      {props.children}
-    </section>
   );
 }
 
@@ -412,48 +354,20 @@ function Filters() {
           )}
         </For>
       </Section>
-      <Show when={categories().length > 0}>
-        <Section title="Categories">
-          <For each={categories()}>
-            {(name) => (
-              <FilterItem
-                label={
-                  <>
-                    <Folder size={13} class="flex-none text-subtle" />
-                    <span class={cn("truncate", name === "" && "italic")}>
-                      {name === "" ? "No category" : name}
-                    </span>
-                  </>
-                }
-                count={counts().categories.get(name) ?? 0}
-                active={params.category === name}
-                onClick={() => toggle("category", name)}
-              />
-            )}
-          </For>
-        </Section>
-      </Show>
-      <Show when={tags().length > 0}>
-        <Section title="Tags">
-          <For each={tags()}>
-            {(tag) => (
-              <FilterItem
-                label={
-                  <>
-                    <span class="text-subtle" aria-hidden="true">
-                      #
-                    </span>
-                    <span class="truncate">{tag}</span>
-                  </>
-                }
-                count={counts().tags.get(tag) ?? 0}
-                active={params.tag === tag}
-                onClick={() => toggle("tag", tag)}
-              />
-            )}
-          </For>
-        </Section>
-      </Show>
+      <CategorySection
+        names={categories()}
+        count={(name) => counts().categories.get(name) ?? 0}
+        active={params.category}
+        onToggle={(name) => toggle("category", name)}
+        onGone={(name) => params.category === name && setParams({ category: undefined })}
+      />
+      <TagSection
+        names={tags()}
+        count={(tag) => counts().tags.get(tag) ?? 0}
+        active={params.tag}
+        onToggle={(tag) => toggle("tag", tag)}
+        onGone={(tag) => params.tag === tag && setParams({ tag: undefined })}
+      />
       <Show when={trackers().length > 0}>
         <Section title="Trackers">
           <For each={trackers()}>

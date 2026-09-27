@@ -4,15 +4,16 @@ Guide for coding agents working on `frontend/`, the web UI of urtorrentd. Read t
 [`AGENTS.md`](../AGENTS.md) first. It is the project charter, and its rules bind this directory
 too (section 1 restates them for the UI). This file adds what is specific to the UI.
 
-Status (2026-09-26): W0, W1, W2 and W5 are done: sign-in, first-run setup, the shell, the
-torrents screen and the add dialog, and the RSS screen, as the mockups have them. W4 has every
-settings section (Downloads, Speed, Queue & share limits, Connection, BitTorrent, Banned
-addresses, Watch folders, RSS, Webhooks, Statistics & GeoIP, Security & API, Engine, About) and
-the Log screen. W6 has every Stats report: Overview, Trackers, Peers & geo, Idle seeds and
-Timeline. W3 has the detail panel's tabs (Files, Peers, Trackers, History, Options), several
-torrents at once (the panel, the selection bar, the context menu and its keys), and the move,
-remove, share limits and folder dialogs. RSS rules are edited in the designed rule dialog.
-Section 10 has the milestones.
+Status (2026-09-27): W0, W1, W2, W3 and W5 are done: sign-in, first-run setup, the shell, the
+torrents screen and the add dialog, one torrent in depth, and the RSS screen, as the mockups
+have them. W4 has every settings section (Downloads, Speed, Queue & share limits, Connection,
+BitTorrent, Banned addresses, Watch folders, RSS, Webhooks, Statistics & GeoIP, Security & API,
+Engine, About) and the Log screen. W6 has every Stats report: Overview, Trackers, Peers & geo,
+Idle seeds and Timeline. W3 has the detail panel's tabs (Files, Peers, Trackers, History,
+Options), several torrents at once (the panel, the selection bar, the context menu and its
+keys), the move, remove, share limits, folder and piece hashes dialogs, and categories and tags
+managed from the sidebar. RSS rules are edited in the designed rule dialog. What has no design
+yet is in 6.5. Section 10 has the milestones.
 
 ## 1. What this is
 
@@ -552,7 +553,9 @@ on sign-in.
   design in the same language:
   - 1024–1279px: the detail panel becomes a sheet over the list.
   - Below 1024px: the sidebar becomes a sheet too.
-  - Below 640px: rows show two lines (name; progress and rate) and the detail is full screen.
+  - Below 640px: rows show two lines (name and tag; progress or state, rate, time left and
+    size) with every row's box shown (there is no hover or modifier key to choose several),
+    the detail is full screen, and a page header's actions that do not fit go to a second line.
 - **Keyboard.**
 
   | Key | Action |
@@ -732,6 +735,28 @@ These are the known differences. Resolve each as noted, never by faking.
 | Options: "Browse", "Move content…" | `POST /torrents/location` moves the content and turns automatic management off | Browse is the folder icon in the field (the folder dialog). While automatic management is on the path is the category's. "Move content…" opens the Move content dialog; a save path typed with automatic management off moves the content when saved. |
 | Options: no download path | `download_path` on the row; `POST /torrents/download-path` | A Download path row while the torrent is incomplete (or has one). |
 | Options: "1 unsaved change · Discard · Save" | One call per kind of change | As shown, Ctrl/⌘ S too; the calls go one by one and the first failure stops them, shown in the footer. No toast (it would cover the footer). |
+| Sidebar: categories and tags as filters only; tags made only from a torrent | `/categories`; `POST /tags` and `POST /tags/remove` | Not designed: a "+" beside Categories and Tags, and a row's menu (Edit category…, Remove category…, Delete tag…), as the RSS sidebar has them. The category is the Downloads page's dialog; removing asks alone. Deleting a tag says how many torrents lose it. A filter on one that goes goes with it. |
+| No design for piece hashes | `GET /torrents/{hash}/pieces/hashes` | Not designed: "Piece hashes…" in the detail's more menu, once the metadata is known: each piece's number, state now and SHA-1, drawn as they scroll; found by number or the start of a hash; "Copy all" and "Save as text" (one hash per line). |
+| No design for a lost event stream | Updates stop; the store keeps the last ones | Not designed: after 2 s without the stream, a bar over the page: reconnecting or unreachable, "What is shown is as of 10:41:02", and Try now. |
+| No design for a page that fails | A render error, or a chunk gone because the daemon serves a newer build | Not designed: a card in the sign-in style in place of the page (the sidebar stays): the error and Reload / Try again, or "The web UI was updated" and Reload. Moving to another page tries again. |
+
+### 6.5 Designs wanted
+
+What the UI has no mockup for. The first two need a design before they are built; the rest
+were built in the same language (6.4 says how) and are worth a designer's look.
+
+- **The ⌘K palette** (W7). The sidebar's search box carries the ⌘K hint and filters the list
+  as one types. Wanted: whether ⌘K opens a palette over the page or keeps focusing that box;
+  what a palette finds (torrents by name, files across torrents with `GET /torrents/files`,
+  pages and settings, actions on the chosen torrents) and how results are grouped; and the
+  keyboard help (6.3's keys) inside it or on its own.
+- **A light theme.** The tokens make it possible (6.2), but only the dark theme is designed:
+  its values, and whether it follows the system or is a choice.
+- **Phones and tablets.** The artboards are 1440×900; 6.3 has what was built below that. The
+  settings rows, Stats cards and dialogs only reflow.
+- **Built without a design:** the share limits dialog (the Options rows), managing categories
+  and tags from the sidebar, piece hashes, the connection bar, the page error card, the
+  first-run setup card, the instance menu, and the one-line prompt and confirm dialogs.
 
 ## 7. Testing
 
@@ -888,15 +913,15 @@ Each milestone ends with its end-to-end tests green.
   category, tag, tracker). Search. Selection and bulk actions. The detail panel as designed.
   The add dialog as designed: links, `.torrent` files or a watch folder, the daemon's preview
   of each source with per-file choices, and every option. Delete. Keyboard shortcuts.
-- **W3 One torrent in depth.** Files (tree, priorities, rename). Peers (with GeoIP). Trackers
-  and web seeds (edit). Pieces. Limits and share limits. Location and download path. Managing
-  categories and tags. Done so far: the detail panel's tabs as designed: Files (the tree with
+- **W3 One torrent in depth** (done). Files (tree, priorities, rename). Peers (with GeoIP).
+  Trackers and web seeds (edit). Pieces. Limits and share limits. Location and download path.
+  Managing categories and tags. Built: the detail panel's tabs as designed: Files (the tree with
   priorities, renames, the pieces each file spans), Peers, Trackers and web seeds (editing,
   the trackers new public torrents get), History and Options (name, comment, limits, share
   limits, behaviour, category, tags, save and download paths, as one draft); several torrents
   at once (the panel, the selection bar, the context menu and keys); the move, remove, share
-  limits and folder dialogs. Left: piece hashes, and managing tags on their own (creating and
-  deleting them).
+  limits and folder dialogs; piece hashes; categories and tags made, edited and removed from
+  the sidebar.
 - **W4 Settings.** Every settings group, security (credentials, API key), webhooks, watch
   folders and the alternative-limits schedule. Transfer limits and the alternative-limits
   switch. The main and peer logs. Done so far: the settings navigation and frame, the restart
@@ -932,7 +957,8 @@ Each milestone ends with its end-to-end tests green.
   CSV) as designed. A torrent's own history (its seeding days and last day's traffic) is the
   detail panel's History tab (W3).
 - **W7 Finish.** The ⌘K palette, small screens, the full browser matrix, and the 10 000-torrent
-  budgets.
+  budgets. Done so far: phones' two-line rows and wrapping headers (6.3); the connection bar
+  and the page error card. The palette waits for a design (6.5).
 
 ## 11. Decisions and open questions
 

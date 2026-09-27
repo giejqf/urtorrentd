@@ -16,6 +16,7 @@ import { toast } from "solid-sonner";
 
 import { api, ApiError, type Schemas, unwrap } from "~/api/client";
 import { keys } from "~/api/keys";
+import { ConfirmDialog } from "~/components/confirm-dialog";
 import { FolderPicker } from "~/components/folder-picker";
 import { StatusDot } from "~/components/status-dot";
 import { TagInput } from "~/components/tag-input";
@@ -38,7 +39,6 @@ import { categoryTone } from "~/lib/torrent";
 import { cn } from "~/lib/utils";
 
 import { Heading } from "./article-panel";
-import { ConfirmDialog } from "./dialogs";
 import {
   type RuleDraft,
   ruleChanged,
