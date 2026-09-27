@@ -21,6 +21,13 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
   `force_reannounce` takes a tracker index). Wanted: a tracker (its URL or
   index) to announce to, alone. In the meantime the tab offers "Reannounce
   all" only.
+- **How far a check has got**, for list rows and the web UI while a torrent
+  is `checking` (qBittorrent shows the check's percentage). `TorrentStatus`
+  has no check progress, and `pieces_have` / `total_wanted_done` stay at 0
+  until the check ends: on the seedbox (2026-09-27) a 75 GB torrent showed
+  0 % for its whole check (9½ minutes), then 100 %. Wanted: the bytes (or
+  pieces) checked so far while checking. In the meantime the state says
+  `checking`, with no percentage.
 
 ## Resolved upstream
 
