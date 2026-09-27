@@ -117,6 +117,9 @@ struct Acc {
     seen: HashMap<InfoHash, Seen>,
     session_seen: (u64, u64),
     meta: HashMap<InfoHash, TorrentMeta>,
+    /// Names given with an event for torrents the tick has not seen (one
+    /// removed right after it was added), written with that event.
+    names: HashMap<InfoHash, String>,
     /// Tracker announces by host and bucket: (replies, errors).
     announces: HashMap<(String, StatsStep, u64), (u32, u32)>,
     /// Scrape results not folded into a day yet: (seeds, leechers,
@@ -199,8 +202,15 @@ impl Acc {
                     groups: Some((m.category.clone(), m.tags.clone())),
                     tracker: m.tracker.clone(),
                 });
+            } else if let Some(name) = self.names.remove(&h) {
+                // Only the name: nothing else is known without the tick.
+                b.meta.entry(hex(&h)).or_insert_with(|| Meta {
+                    name: Some(name),
+                    ..Meta::default()
+                });
             }
         }
+        self.names.clear();
         // Removed torrents are needed only for what this batch writes.
         let seen = &self.seen;
         self.meta.retain(|h, _| seen.contains_key(h));
@@ -407,6 +417,16 @@ impl Stats {
         let mut a = self.acc();
         if a.period.is_some() {
             a.events.push((t, hash, kind, None, detail));
+        }
+    }
+
+    /// The name of a torrent an event is about, for one the tick may not
+    /// have seen yet (removed right after it was added); the tick's own
+    /// record wins.
+    pub(crate) fn name(&self, hash: InfoHash, name: &str) {
+        let mut a = self.acc();
+        if a.period.is_some() && !a.meta.contains_key(&hash) {
+            a.names.insert(hash, name.to_string());
         }
     }
 

@@ -146,6 +146,9 @@ impl Daemon {
     ) -> ApiResult<()> {
         let _ops = self.ops.lock().await;
         let summary = self.hook_summary(hash, TimelineKind::Removed).await;
+        // Its name for the history, which may not have it yet (removed right
+        // after it was added).
+        let listed = self.session.status(id).await.ok().map(|s| s.name);
         let r = if with_files {
             self.session.remove_torrent_with_files(id).await
         } else {
@@ -158,9 +161,17 @@ impl Daemon {
         let name = self.name_of(&hash);
         {
             let mut st = self.state();
+            let known = st
+                .torrents
+                .get(&hash)
+                .and_then(|e| e.record.name.clone())
+                .or(listed);
             st.by_id.remove(&id);
             st.torrents.remove(&hash);
             if let Ok(stats) = &self.stats {
+                if let Some(n) = known {
+                    stats.name(hash, &n);
+                }
                 stats.forget(&hash);
             }
             self.lifecycle_with(hash, TimelineKind::Removed, None, summary);

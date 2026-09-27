@@ -310,7 +310,16 @@ GET /api/v1/stats/torrents/<hash>/days?from=1787000000
 # What seeded most this week, and what happened to it
 GET /api/v1/stats/top?from=1789593600&by=uploaded&limit=10
 GET /api/v1/stats/timeline?hash=<hash>
+
+# A torrent removed from the session, found by name (words, `*` and `?`)
+GET /api/v1/stats/torrents?search=debian+12&removed=true
+[{"hash": "...", "name": "debian-12.11.0-amd64-netinst.iso", "size": 663748608, "removed": 1789488000}]
 ```
+
+A torrent's name and size are the ones last recorded: `null` until the
+recorder has seen them (a torrent in the session gets them with its next
+traffic, event or idle day; one removed right after it was added keeps its
+name but no size).
 
 ### By place
 
@@ -518,6 +527,7 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | GET, DELETE | `/stats` | What the statistics database holds: size, torrents (and how many were removed), oldest bucket per step; delete everything recorded (the file shrinks; recording goes on) |
 | DELETE | `/stats/removed` | Delete the history of every torrent removed from the session |
 | GET | `/stats/transfer` | Session traffic over time, with the recording periods |
+| GET | `/stats/torrents` | The torrents with history, removed ones included, found by name: the most recently removed first |
 | GET | `/stats/torrents/{hash}/traffic` | A torrent's traffic over time (minute, hour or day buckets) |
 | GET | `/stats/torrents/{hash}/days` | A torrent's days: bytes, running and seeding time, all-time counters, ratio, swarm size |
 | DELETE | `/stats/torrents/{hash}` | Delete a torrent's history |

@@ -311,6 +311,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(stats::get_stats_info, stats::delete_stats))
         .routes(routes!(stats::delete_removed_stats))
         .routes(routes!(stats::get_transfer_stats))
+        .routes(routes!(stats::list_stats_torrents))
         .routes(routes!(stats::get_torrent_traffic))
         .routes(routes!(stats::get_torrent_days))
         .routes(routes!(stats::delete_torrent_stats))

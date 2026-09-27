@@ -279,6 +279,19 @@ pub struct TorrentRow {
     pub removed: Option<u64>,
 }
 
+/// A torrent with history, as `GET /stats/torrents` lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryRow {
+    /// Info-hash (hex).
+    pub hash: String,
+    /// Name as last recorded.
+    pub name: Option<String>,
+    /// Size as last recorded.
+    pub size: Option<u64>,
+    /// When it was removed.
+    pub removed: Option<u64>,
+}
+
 /// A recording period.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Period {
@@ -1012,6 +1025,31 @@ impl StatsDb {
             )
             .optional()
             .map_err(db_err)
+    }
+
+    /// Every torrent with history (or only the removed ones, or only the
+    /// others): hash, name, size and when it was removed; the most
+    /// recently removed first, then the others by name.
+    pub fn torrents(&self, removed: Option<bool>) -> io::Result<Vec<HistoryRow>> {
+        let conn = self.reader();
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT hash, name, size, removed FROM torrents
+                 WHERE ?1 IS NULL OR (removed IS NOT NULL) = ?1
+                 ORDER BY removed IS NULL, removed DESC, name COLLATE NOCASE, hash",
+            )
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map(params![removed], |r| {
+                Ok(HistoryRow {
+                    hash: r.get(0)?,
+                    name: r.get(1)?,
+                    size: r.get(2)?,
+                    removed: r.get(3)?,
+                })
+            })
+            .map_err(db_err)?;
+        rows.collect::<Result<_, _>>().map_err(db_err)
     }
 
     /// A torrent's traffic, oldest first.

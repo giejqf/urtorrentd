@@ -346,6 +346,36 @@ async fn removed_history_and_everything_can_be_deleted() {
         (&json!(2), &json!(1))
     );
 
+    // Found by name, the removed one first, even when it went before the
+    // recorder saw it (its size is then unknown, never made up); a torrent
+    // still in the session may have no name recorded yet. Or only one kind.
+    let found = t.get("/api/v1/stats/torrents?search=BIN").await;
+    assert_eq!(found[0]["hash"], json!(gone), "{found}");
+    assert_eq!(found[0]["name"], json!("gone.bin"));
+    assert!(
+        matches!(found[0]["size"].as_u64(), None | Some(50_000)),
+        "{found}"
+    );
+    assert!(found[0]["removed"].as_u64().is_some(), "{found}");
+    let all = t.get("/api/v1/stats/torrents").await;
+    assert_eq!(all.as_array().unwrap().len(), 2, "{all}");
+    assert_eq!(all[1]["hash"], json!(kept));
+    assert_eq!(all[1]["removed"], Value::Null);
+    let removed = t
+        .get("/api/v1/stats/torrents?search=g*e&removed=true")
+        .await;
+    assert_eq!(removed.as_array().unwrap().len(), 1, "{removed}");
+    assert_eq!(removed[0]["hash"], json!(gone));
+    let present = t.get("/api/v1/stats/torrents?removed=false&limit=5").await;
+    assert_eq!(present.as_array().unwrap().len(), 1, "{present}");
+    assert_eq!(present[0]["hash"], json!(kept));
+    let none = t.get("/api/v1/stats/torrents?search=gone+kept").await;
+    assert_eq!(none, json!([]));
+    let (s, _) = t
+        .call(Method::GET, "/api/v1/stats/torrents?limit=0", None)
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+
     // The removed torrent's history goes; the other's stays.
     let (s, _) = t.call(Method::DELETE, "/api/v1/stats/removed", None).await;
     assert_eq!(s, StatusCode::NO_CONTENT);

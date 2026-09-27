@@ -14,13 +14,13 @@ use crate::error::{ApiError, ApiResult};
 use crate::log::LogTopic;
 use crate::model::{
     ByteTotals, GeoDimension, GeoPoint, GeoQuery, GeoRow, GeoStats, GroupKind, GroupPoint,
-    GroupQuery, GroupRow, GroupStats, IdleQuery, IdleSeed, IdleSeeds, PeerBreakdown, PeerDimension,
-    PeerPoint, PeerQuery, PeerRow, StatsInfo, StatsPeriod, StatsRangeQuery, StatsStep,
-    TimelineEvent, TimelineQuery, TopMetric, TopQuery, TopTorrent, TopTorrents, TorrentDay,
-    TorrentDays, TorrentTraffic, TrackerPoint, TrackerQuery, TrackerRow, TrackerStats,
-    TrafficPoint, TransferPoint, TransferStats,
+    GroupQuery, GroupRow, GroupStats, HistoryQuery, HistoryTorrent, IdleQuery, IdleSeed, IdleSeeds,
+    PeerBreakdown, PeerDimension, PeerPoint, PeerQuery, PeerRow, StatsInfo, StatsPeriod,
+    StatsRangeQuery, StatsStep, TimelineEvent, TimelineQuery, TopMetric, TopQuery, TopTorrent,
+    TopTorrents, TorrentDay, TorrentDays, TorrentTraffic, TrackerPoint, TrackerQuery, TrackerRow,
+    TrackerStats, TrafficPoint, TransferPoint, TransferStats,
 };
-use crate::util::{blocking, hex, now, parse_hash};
+use crate::util::{blocking, hex, now, parse_hash, search_words};
 
 /// Most buckets one series returns.
 pub(crate) const MAX_POINTS: u64 = 10_000;
@@ -171,6 +171,35 @@ impl Daemon {
             .await
             .map_err(ApiError::io)?
             .ok_or_else(|| no_history(&h))
+    }
+
+    /// The torrents with history whose name has every word of the search
+    /// (`GET /stats/torrents`): removed ones too, to find what is no longer
+    /// in the session.
+    pub(crate) async fn history_torrents(&self, q: HistoryQuery) -> ApiResult<Vec<HistoryTorrent>> {
+        let limit = check_limit(q.limit, 20, 1000)?;
+        let words =
+            search_words(q.search.as_deref().unwrap_or("")).map_err(ApiError::bad_request)?;
+        let (db, _) = self.stats_db().await?;
+        let removed = q.removed;
+        let rows = blocking(move || db.torrents(removed))
+            .await
+            .map_err(ApiError::io)?;
+        Ok(rows
+            .into_iter()
+            .filter(|r| {
+                words
+                    .iter()
+                    .all(|w| r.name.as_deref().is_some_and(|n| w.is_match(n)))
+            })
+            .take(usize::try_from(limit).unwrap_or(usize::MAX))
+            .map(|r| HistoryTorrent {
+                hash: r.hash,
+                name: r.name,
+                size: r.size,
+                removed: r.removed,
+            })
+            .collect())
     }
 
     /// What the database holds.

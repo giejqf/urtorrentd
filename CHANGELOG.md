@@ -151,6 +151,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   anything (its title and article count), to look before adding it. A feed
   added with `skip_existing` keeps its first articles without running the
   download rules on them, so auto-download takes only what comes later.
+- `GET /stats/torrents`: the torrents with recorded history, removed ones
+  included, found by name, to reach what is no longer in the session.
 - `GET /fs/file-system`: the file system holding a path (mount point,
   type, size, free space). `GET /fs/directory` entries say whether the
   daemon can write in them and how many entries they hold.
@@ -256,6 +258,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An event stream opened with a login session keeps the session alive while
   open, and ends when the session ends (sign-out, new credentials, expiry).
   Before, a signed-out page kept receiving updates on a stream it had open.
+
+### Fixed
+
+- A torrent removed before the statistics recorder had seen it (right
+  after it was added) kept no name in its history; the removal records it
+  now.
 
 ### Security
 

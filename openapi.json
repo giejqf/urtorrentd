@@ -7223,6 +7223,131 @@
         }
       }
     },
+    "/api/v1/stats/torrents": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "The torrents with history, removed ones included, found by name: the\nmost recently removed first, then the others by name.",
+        "operationId": "list_stats_torrents",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words that must all appear in the name (case ignored; `*` any text,\n`?` any character); default: every torrent.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "removed",
+            "in": "query",
+            "description": "Only the torrents removed from the session (`true`), or only those\nstill in it (`false`); default: both.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many (1 to 1000); default 20.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HistoryTorrent"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stats/torrents/{hash}": {
       "delete": {
         "tags": [
@@ -16096,6 +16221,47 @@
           "hashes": {
             "$ref": "#/components/schemas/Hashes",
             "description": "Target torrents."
+          }
+        }
+      },
+      "HistoryTorrent": {
+        "type": "object",
+        "description": "A torrent the statistics have history of.",
+        "required": [
+          "hash",
+          "name",
+          "size",
+          "removed"
+        ],
+        "properties": {
+          "hash": {
+            "type": "string",
+            "description": "Info-hash."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name as last recorded; `null` until recorded (a torrent in the\nsession gets it with its next traffic, event or idle day). A search\nnever matches a torrent without one."
+          },
+          "size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Size as last recorded, bytes.",
+            "minimum": 0
+          },
+          "removed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the torrent was removed, unix seconds; `null` = still in the\nsession (or removed while recording was off).",
+            "minimum": 0
           }
         }
       },

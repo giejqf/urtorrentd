@@ -1901,6 +1901,39 @@ pub struct TopTorrent {
     pub uploaded: u64,
 }
 
+/// Query of the torrents with history.
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct HistoryQuery {
+    /// Words that must all appear in the name (case ignored; `*` any text,
+    /// `?` any character); default: every torrent.
+    pub search: Option<String>,
+    /// Only the torrents removed from the session (`true`), or only those
+    /// still in it (`false`); default: both.
+    pub removed: Option<bool>,
+    /// At most this many (1 to 1000); default 20.
+    pub limit: Option<u32>,
+}
+
+/// A torrent the statistics have history of.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct HistoryTorrent {
+    /// Info-hash.
+    pub hash: String,
+    /// Name as last recorded; `null` until recorded (a torrent in the
+    /// session gets it with its next traffic, event or idle day). A search
+    /// never matches a torrent without one.
+    #[schema(required = true)]
+    pub name: Option<String>,
+    /// Size as last recorded, bytes.
+    #[schema(required = true)]
+    pub size: Option<u64>,
+    /// When the torrent was removed, unix seconds; `null` = still in the
+    /// session (or removed while recording was off).
+    #[schema(required = true)]
+    pub removed: Option<u64>,
+}
+
 /// Torrents ranked by their traffic over a range (removed ones included).
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct TopTorrents {

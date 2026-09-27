@@ -40,3 +40,4 @@ row whose operation the UI calls.
 | Operation                    | Why the UI does not call it                            |
 | ---------------------------- | ------------------------------------------------------ |
 | `GET /api/v1/torrents/files` | W7: finding files across torrents from the ⌘K palette. |
+| `GET /api/v1/stats/torrents` | W7: finding removed torrents from the ⌘K palette.      |

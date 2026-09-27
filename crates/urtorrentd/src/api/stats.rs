@@ -14,9 +14,9 @@ use super::{HashPath, Json, Path, Query, no_content};
 use crate::daemon::Daemon;
 use crate::error::ApiResult;
 use crate::model::{
-    GeoQuery, GeoStats, GroupQuery, GroupStats, IdleQuery, IdleSeeds, PeerBreakdown, PeerQuery,
-    StatsInfo, StatsRangeQuery, TimelineEvent, TimelineQuery, TopQuery, TopTorrents, TorrentDays,
-    TorrentTraffic, TrackerQuery, TrackerStats, TransferStats,
+    GeoQuery, GeoStats, GroupQuery, GroupStats, HistoryQuery, HistoryTorrent, IdleQuery, IdleSeeds,
+    PeerBreakdown, PeerQuery, StatsInfo, StatsRangeQuery, TimelineEvent, TimelineQuery, TopQuery,
+    TopTorrents, TorrentDays, TorrentTraffic, TrackerQuery, TrackerStats, TransferStats,
 };
 
 /// What the statistics database holds.
@@ -49,6 +49,16 @@ pub(crate) async fn get_transfer_stats(
     Query(q): Query<StatsRangeQuery>,
 ) -> ApiResult<Json<TransferStats>> {
     Ok(Json(d.transfer_stats(q).await?))
+}
+
+/// The torrents with history, removed ones included, found by name: the
+/// most recently removed first, then the others by name.
+#[utoipa::path(get, path = "/stats/torrents", tag = "stats", params(HistoryQuery), responses((status = 200, body = Vec<HistoryTorrent>)))]
+pub(crate) async fn list_stats_torrents(
+    State(d): State<Arc<Daemon>>,
+    Query(q): Query<HistoryQuery>,
+) -> ApiResult<Json<Vec<HistoryTorrent>>> {
+    Ok(Json(d.history_torrents(q).await?))
 }
 
 /// One torrent's traffic over time (removed torrents too).
