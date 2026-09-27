@@ -50,6 +50,9 @@ base64 = "0.22"
 # The daemon's state: one SQLite database (ADR 0004); SQLite is compiled in.
 rusqlite = { version = "0.40", default-features = false, features = ["bundled", "cache", "fallible_uint"] }
 maxminddb = { version = "0.32", default-features = false }
+# DB-IP Lite downloads are gzipped (ADR 0009); the pure-Rust backend is
+# miniz_oxide, already in the tree through urtorrent.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 # statvfs for free disk space; uname, sysinfo and getrlimit for GET /app/system;
 # all without unsafe code.
 rustix = { version = "1", features = ["fs", "process", "system"] }

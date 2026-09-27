@@ -62,7 +62,9 @@ totals only), so there is no checklist entry to follow: the design is ours.
   the daemon has no time-zone database and no UI (non-goal).
 - **Geolocation (0.6.0)**: `.mmdb` files the user provides (GeoLite2 or
   DB-IP Lite country and ASN databases, or IPinfo Lite with both), read into
-  memory and re-read when the file changes; the daemon never downloads one.
+  memory and re-read when the file changes; the daemon never downloads one
+  (amended by [ADR 0009](0009-geoip-download.md): DB-IP Lite when a client
+  asks).
   Fields are read by path as whatever type the file stores (the layouts
   differ); countries and ASNs only, never cities. Peers in the API carry
   their place.

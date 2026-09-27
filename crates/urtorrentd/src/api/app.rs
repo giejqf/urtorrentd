@@ -11,11 +11,12 @@ use axum::http::StatusCode;
 
 use super::{Json, Query};
 use crate::daemon::Daemon;
-use crate::error::{ApiError, ApiResult};
+use crate::error::{ApiError, ApiResult, ErrorBody};
 use crate::log::LogTopic;
 use crate::model::{
     AppInfo, Cookie, DirectoryEntry, DirectoryMode, DirectoryQuery, FileSystemInfo,
-    FileSystemQuery, NetworkInterface, RestartQuery, RestartWhen, SystemInfo, WatchStatus,
+    FileSystemQuery, GeoIpDownloadRequest, GeoIpInfo, NetworkInterface, RestartQuery, RestartWhen,
+    SystemInfo, WatchStatus,
 };
 use crate::settings::{Settings, SettingsPatch};
 use crate::util::blocking;
@@ -116,6 +117,30 @@ pub(crate) async fn refresh_fetched_trackers(
 ) -> ApiResult<StatusCode> {
     d.refresh_tracker_list()?;
     Ok(StatusCode::ACCEPTED)
+}
+
+/// Download GeoIP databases now and use them (ADR 0009): DB-IP Lite's
+/// country and ASN files, this month's (or last month's before this month's
+/// is out), into `<data dir>/geoip/`; `geoip_database` and
+/// `geoip_asn_database` then point at them. Asking again updates them. A
+/// download that is not a database of the right kind changes nothing (502).
+/// 409 while another download runs. The daemon never downloads one on its
+/// own.
+#[utoipa::path(
+    post,
+    path = "/app/geoip/download",
+    tag = "app",
+    responses(
+        (status = 200, body = GeoIpInfo),
+        (status = 409, description = "Another download is running.", body = ErrorBody),
+        (status = 502, description = "The download failed, or was not a database of the right kind; the one loaded before stays.", body = ErrorBody)
+    )
+)]
+pub(crate) async fn download_geoip(
+    State(d): State<Arc<Daemon>>,
+    Json(req): Json<GeoIpDownloadRequest>,
+) -> ApiResult<Json<GeoIpInfo>> {
+    Ok(Json(d.download_geoip(req.source).await?))
 }
 
 /// The watch folders (`watch_folders`): when each was last read, why one

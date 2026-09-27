@@ -140,9 +140,17 @@ announces and web seeds fail until the address is back. A specific
 
 ## Geolocation
 
-Peers are placed by MaxMind DB (`.mmdb`) files you provide; the daemon never
-downloads one. Point `geoip_database` at a country database and, if it has
-no autonomous systems, `geoip_asn_database` at an ASN one:
+Peers are placed by MaxMind DB (`.mmdb`) files. The simplest is DB-IP Lite
+in one request, `POST /api/v1/app/geoip/download {"source": "dbip_lite"}`
+(the web UI's Settings › Statistics & GeoIP): the daemon fetches this
+month's country and ASN files into `<data dir>/geoip/`, checks them, and
+points both settings at them; asking again next month updates them. It
+never downloads one on its own ([ADR 0009](adr/0009-geoip-download.md)).
+`--geoip-mirror <URL>` (`URTORRENTD_GEOIP_MIRROR`) fetches from a mirror of
+`https://download.db-ip.com/free` instead.
+
+Or provide the files yourself: point `geoip_database` at a country database
+and, if it has no autonomous systems, `geoip_asn_database` at an ASN one:
 
 | Source | `geoip_database` | `geoip_asn_database` | Licence |
 |---|---|---|---|

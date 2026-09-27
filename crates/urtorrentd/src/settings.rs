@@ -230,7 +230,9 @@ settings! {
     /// A MaxMind DB file (`.mmdb`, absolute path) with countries:
     /// GeoLite2-Country, DB-IP IP-to-Country Lite or IPinfo Lite; `null` =
     /// none. Peers show their country and `/stats/geo` has traffic by
-    /// country. Re-read when the file changes; never downloaded.
+    /// country. Re-read when the file changes. `POST
+    /// /app/geoip/download` sets it (and `geoip_asn_database`) to DB-IP
+    /// Lite's files.
     geoip_database: Option<String> = None, nullable = true;
     /// A MaxMind DB file with autonomous systems (GeoLite2-ASN, DB-IP
     /// IP-to-ASN Lite); `null` = none (IPinfo Lite has them in

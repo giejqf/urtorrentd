@@ -2084,6 +2084,22 @@ pub struct GeoIpInfo {
     pub asn: Option<GeoDatabaseInfo>,
 }
 
+/// Where GeoIP databases can be downloaded from (ADR 0009).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoIpSource {
+    /// DB-IP Lite: country and ASN, monthly, no account, CC BY 4.0 (credit
+    /// DB-IP where the data is shown).
+    DbipLite,
+}
+
+/// Download GeoIP databases now.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct GeoIpDownloadRequest {
+    /// From where.
+    pub source: GeoIpSource,
+}
+
 /// What peer traffic is grouped by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]

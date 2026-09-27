@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GeoIP in one click ([ADR 0009](docs/adr/0009-geoip-download.md)):
+  `POST /app/geoip/download {"source": "dbip_lite"}` fetches DB-IP Lite's
+  country and ASN databases (this month's, or last month's before it is
+  out) into `<data dir>/geoip/`, checks them, and points `geoip_database`
+  and `geoip_asn_database` at them; asking again updates them. The daemon
+  never downloads one on its own. `--geoip-mirror <URL>` fetches from a
+  mirror. New dependency: `flate2` (gzip; its backend, `miniz_oxide`, was
+  in the tree already).
 - urtorrent 0.14.0. `GET /torrents/trackers`: each host's `interval` (what
   it asks for) and `response_time` (how long it takes to answer), the
   median of its trackers' latest replies. `POST

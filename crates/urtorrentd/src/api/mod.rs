@@ -242,6 +242,7 @@ fn routes() -> (OpenApiRouter<AppState>, OpenApiRouter<AppState>) {
         .routes(routes!(app::shutdown))
         .routes(routes!(app::restart, app::cancel_restart))
         .routes(routes!(app::refresh_fetched_trackers))
+        .routes(routes!(app::download_geoip))
         .routes(routes!(app::get_watch_folders))
         .routes(routes!(app::get_settings, app::patch_settings))
         .routes(routes!(app::list_directory))

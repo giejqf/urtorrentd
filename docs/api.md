@@ -347,7 +347,22 @@ name but no size).
 
 With a GeoIP database configured (`geoip_database`, `geoip_asn_database`;
 [settings.md](settings.md#geolocation)), peers carry `country`, `asn` and
-`as_org`, and `/stats/geo` has the traffic by country or autonomous system:
+`as_org`, and `/stats/geo` has the traffic by country or autonomous system.
+One request sets both up with DB-IP Lite ([ADR 0009](adr/0009-geoip-download.md)),
+and the same request updates them each month:
+
+```sh
+POST /api/v1/app/geoip/download {"source": "dbip_lite"}
+{"country": {"path": "/var/lib/urtorrentd/geoip/dbip-country-lite.mmdb",
+             "database_type": "DBIP-Country-Lite", "built": 1788226365, "loaded": 1790513987, "error": null},
+ "asn": {"path": "/var/lib/urtorrentd/geoip/dbip-asn-lite.mmdb",
+         "database_type": "DBIP-ASN-Lite (compat=GeoLite2-ASN)", "built": 1788226697, "loaded": 1790513987, "error": null}}
+```
+
+DB-IP's data is CC BY 4.0: a client that shows it credits DB-IP with a link
+(`<a href="https://db-ip.com">IP Geolocation by DB-IP</a>`), as the web UI
+does while the loaded database's `database_type` starts with `DBIP`.
+
 
 ```sh
 # Where this torrent's upload went this week, with a daily series of the top 5
@@ -483,6 +498,7 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | GET | `/app/system` | The machine: CPUs, kernel, memory, the open-file limit and how many are open, the default save path's file system (type, size, free) |
 | POST | `/app/shutdown` | Graceful shutdown |
 | POST, DELETE | `/app/restart` | Graceful shutdown, then the same binary starts again in the same process (settings in `restart_required` take effect); `?when=idle` waits until no torrent is checking, moving or receiving data; `DELETE` calls a waiting restart off |
+| POST | `/app/geoip/download` | Download DB-IP Lite's country and ASN databases now and use them ([ADR 0009](adr/0009-geoip-download.md)); 502 when the download is not a database of the right kind (the loaded one stays), 409 while another runs |
 | POST | `/app/fetched-trackers/refresh` | Fetch the `add_trackers_url` list now rather than at its daily turn (202; 409 when it is not set); `GET /app` → `fetched_trackers.fetching` while it runs |
 | GET, PATCH | `/settings` | All settings; change some ([settings.md](settings.md)) |
 | GET | `/fs/directory` | List a directory (for choosing paths): each entry with whether the daemon can write in it and how many entries it holds (up to 1 000) |

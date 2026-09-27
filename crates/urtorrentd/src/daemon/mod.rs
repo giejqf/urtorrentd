@@ -8,6 +8,7 @@
 mod add;
 mod events;
 mod filesearch;
+mod geoip;
 mod net;
 mod ops;
 mod organize;
@@ -56,6 +57,8 @@ pub struct DaemonConfig {
     /// Settings for the very first start (no settings stored yet); `None`
     /// uses the defaults with a random listen port.
     pub initial_settings: Option<Settings>,
+    /// Where DB-IP Lite downloads come from (ADR 0009); `None` = DB-IP.
+    pub geoip_mirror: Option<String>,
 }
 
 /// Why the daemon could not start.
@@ -227,6 +230,10 @@ pub struct Daemon {
     pub(crate) stats: Result<Stats, String>,
     /// The GeoIP databases.
     pub(crate) geo: GeoIp,
+    /// Where DB-IP Lite downloads come from.
+    pub(crate) geoip_mirror: String,
+    /// Held while GeoIP databases are downloaded (one at a time).
+    pub(crate) geoip_download: tokio::sync::Mutex<()>,
     /// The webhooks.
     pub(crate) webhooks: Arc<Webhooks>,
     /// What the watch-folder scans remember.
@@ -370,6 +377,11 @@ impl Daemon {
             sync_build: tokio::sync::Mutex::new(()),
             stats,
             geo: GeoIp::default(),
+            geoip_mirror: cfg
+                .geoip_mirror
+                .clone()
+                .unwrap_or_else(|| geoip::DBIP_MIRROR.to_string()),
+            geoip_download: tokio::sync::Mutex::new(()),
             webhooks: Arc::new(webhooks),
             watch: Mutex::new(watched::WatchState::default()),
             rss: Mutex::new(crate::rss::RssState::default()),

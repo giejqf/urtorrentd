@@ -39,6 +39,10 @@ struct Cli {
     /// Serve no web UI: the API only.
     #[arg(long, conflicts_with = "web_ui")]
     no_web_ui: bool,
+    /// Where GeoIP downloads (DB-IP Lite, `POST /api/v1/app/geoip/download`)
+    /// come from: a mirror of https://download.db-ip.com/free.
+    #[arg(long, env = "URTORRENTD_GEOIP_MIRROR", value_name = "URL")]
+    geoip_mirror: Option<String>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -115,10 +119,12 @@ async fn run(
     api_listen: SocketAddr,
     initial_settings: Option<Settings>,
     ui: Option<WebUi>,
+    geoip_mirror: Option<String>,
 ) -> Result<bool, String> {
     let daemon = Daemon::start(DaemonConfig {
         data_dir,
         initial_settings,
+        geoip_mirror,
     })
     .await
     .map_err(|e| format!("cannot start: {e}"))?;
@@ -211,7 +217,13 @@ fn main() -> ExitCode {
                 .enable_all()
                 .build()
                 .map_err(|e| format!("cannot start the async runtime: {e}"))?;
-            let restart = rt.block_on(run(data_dir, cli.api_listen, initial, ui))?;
+            let restart = rt.block_on(run(
+                data_dir,
+                cli.api_listen,
+                initial,
+                ui,
+                cli.geoip_mirror.clone(),
+            ))?;
             drop(rt);
             if restart { Err(re_exec()) } else { Ok(()) }
         }),

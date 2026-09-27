@@ -35,7 +35,7 @@ pub enum ErrorCode {
     Busy,
     /// Not a valid `.torrent`, magnet link or info-hash.
     InvalidTorrent,
-    /// Fetching a `.torrent` from a URL failed.
+    /// Fetching a `.torrent` from a URL, or a GeoIP database, failed.
     DownloadFailed,
     /// The daemon is shutting down.
     ShuttingDown,

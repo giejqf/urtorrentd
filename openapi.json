@@ -377,6 +377,117 @@
         }
       }
     },
+    "/api/v1/app/geoip/download": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "Download GeoIP databases now and use them (ADR 0009): DB-IP Lite's\ncountry and ASN files, this month's (or last month's before this month's\nis out), into `<data dir>/geoip/`; `geoip_database` and\n`geoip_asn_database` then point at them. Asking again updates them. A\ndownload that is not a database of the right kind changes nothing (502).\n409 while another download runs. The daemon never downloads one on its\nown.",
+        "operationId": "download_geoip",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeoIpDownloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoIpInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or invalid value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: banned address, foreign origin or host not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such torrent or resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another download is running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Disk or internal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The download failed, or was not a database of the right kind; the one loaded before stays.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down, or statistics unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/app/interfaces": {
       "get": {
         "tags": [
@@ -16064,6 +16175,19 @@
           "asn"
         ]
       },
+      "GeoIpDownloadRequest": {
+        "type": "object",
+        "description": "Download GeoIP databases now.",
+        "required": [
+          "source"
+        ],
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/GeoIpSource",
+            "description": "From where."
+          }
+        }
+      },
       "GeoIpInfo": {
         "type": "object",
         "description": "The GeoIP databases (settings `geoip_database`, `geoip_asn_database`).",
@@ -16095,6 +16219,13 @@
             ]
           }
         }
+      },
+      "GeoIpSource": {
+        "type": "string",
+        "description": "Where GeoIP databases can be downloaded from (ADR 0009).",
+        "enum": [
+          "dbip_lite"
+        ]
       },
       "GeoPoint": {
         "type": "object",
@@ -19071,7 +19202,7 @@
               "string",
               "null"
             ],
-            "description": "A MaxMind DB file (`.mmdb`, absolute path) with countries:\nGeoLite2-Country, DB-IP IP-to-Country Lite or IPinfo Lite; `null` =\nnone. Peers show their country and `/stats/geo` has traffic by\ncountry. Re-read when the file changes; never downloaded.",
+            "description": "A MaxMind DB file (`.mmdb`, absolute path) with countries:\nGeoLite2-Country, DB-IP IP-to-Country Lite or IPinfo Lite; `null` =\nnone. Peers show their country and `/stats/geo` has traffic by\ncountry. Re-read when the file changes. `POST\n/app/geoip/download` sets it (and `geoip_asn_database`) to DB-IP\nLite's files.",
             "default": null
           },
           "geoip_asn_database": {
@@ -19591,7 +19722,7 @@
               "string",
               "null"
             ],
-            "description": "A MaxMind DB file (`.mmdb`, absolute path) with countries:\nGeoLite2-Country, DB-IP IP-to-Country Lite or IPinfo Lite; `null` =\nnone. Peers show their country and `/stats/geo` has traffic by\ncountry. Re-read when the file changes; never downloaded."
+            "description": "A MaxMind DB file (`.mmdb`, absolute path) with countries:\nGeoLite2-Country, DB-IP IP-to-Country Lite or IPinfo Lite; `null` =\nnone. Peers show their country and `/stats/geo` has traffic by\ncountry. Re-read when the file changes. `POST\n/app/geoip/download` sets it (and `geoip_asn_database`) to DB-IP\nLite's files."
           },
           "geoip_asn_database": {
             "type": [

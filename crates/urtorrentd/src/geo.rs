@@ -4,8 +4,8 @@
 //! Peer geolocation (ADR 0005): MaxMind DB (`.mmdb`) files the user provides
 //! (GeoLite2 or DB-IP Lite country and ASN databases, or IPinfo Lite, which
 //! has both), read into memory and reloaded when the file changes. The
-//! daemon never downloads a database, and looks up countries and autonomous
-//! systems only, never cities.
+//! daemon downloads DB-IP Lite only when asked (`daemon/geoip.rs`, ADR
+//! 0009), and looks up countries and autonomous systems only, never cities.
 
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};

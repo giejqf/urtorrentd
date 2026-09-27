@@ -319,11 +319,35 @@ impl TestDaemon {
         Self::start_in(dir, n, Some(s)).await
     }
 
+    /// Start with a GeoIP mirror (ADR 0009) at `mirror`.
+    pub async fn start_with_mirror(
+        n: u8,
+        f: impl FnOnce(&mut Settings),
+        mirror: &str,
+    ) -> TestDaemon {
+        init_log();
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = settings(n, &dir.path().join("downloads"));
+        f(&mut s);
+        Self::start_config(dir, n, Some(s), mirror).await
+    }
+
     /// Start (or restart) on an existing data directory.
     pub async fn start_in(dir: tempfile::TempDir, n: u8, initial: Option<Settings>) -> TestDaemon {
+        // A closed port: no test downloads GeoIP data from DB-IP.
+        Self::start_config(dir, n, initial, "http://127.0.0.1:9/free").await
+    }
+
+    async fn start_config(
+        dir: tempfile::TempDir,
+        n: u8,
+        initial: Option<Settings>,
+        mirror: &str,
+    ) -> TestDaemon {
         let daemon = Daemon::start(DaemonConfig {
             data_dir: dir.path().join("data"),
             initial_settings: initial,
+            geoip_mirror: Some(mirror.to_string()),
         })
         .await
         .unwrap();

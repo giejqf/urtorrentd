@@ -167,6 +167,7 @@ crates/urtorrentd/src/
     organize.rs         categories, tags, automatic management
     view.rs             list rows, detail, transfer info, caches
     preview.rs          metadata previews (fetchMetadata / saveMetadata)
+    geoip.rs            DB-IP Lite downloaded on request (ADR 0009)
     watched.rs          watch folders (scan_dirs)
     net.rs              cookie jar, tracker list from a URL, following listen_interface
     filesearch.rs       the file-path index behind the file search
@@ -456,11 +457,12 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
   minutes. Retention (settings) is applied hourly. Removed torrents keep their history.
 - A `stats.db` that cannot be opened turns statistics off for the run (logged, `/stats`
   answers 503); it never stops the daemon.
-- **By place** (0.6.0): user-supplied `.mmdb` files (`geo.rs`; country and ASN, never
-  city; never downloaded; re-read when replaced). Every 10 s, before the snapshot, the
-  tick samples the peers of torrents that moved data; `PeerDisconnected` brings final
-  counters; connections are known by address and start time so nothing counts twice
-  (`stats/peers.rs`). Per torrent, hour and day, by country and ASN; peer addresses stay
+- **By place** (0.6.0): `.mmdb` files (`geo.rs`; country and ASN, never city; re-read
+  when replaced), supplied by the user or DB-IP Lite downloaded when a client asks
+  (`daemon/geoip.rs`, ADR 0009: fixed sources, never on the daemon's own initiative).
+  Every 10 s, before the snapshot, the tick samples the peers of torrents that moved
+  data; `PeerDisconnected` brings final counters; connections are known by address and
+  start time so nothing counts twice (`stats/peers.rs`). Per torrent, hour and day, by country and ASN; peer addresses stay
   in memory. `unattributed` (web seeds, missed closes, the seconds since the last
   sample) makes the rows add up to the torrents' traffic.
 - **Breakdowns** (0.7.0): peer traffic also by client family, discovery source,
@@ -691,6 +693,9 @@ batches of 1000 (4.6), measured by the web UI's scale benchmark.
   minutes 48 h, hours 90 days, days forever; removed torrents keep their history;
   geolocation from a user-supplied `.mmdb` file, country and ASN only, peer addresses
   never stored.
+- **GeoIP in one click** (2026-09-27, ADR 0009): the daemon downloads DB-IP Lite's country
+  and ASN databases when a client asks (`POST /app/geoip/download`), never on its own; the
+  web UI credits DB-IP (CC BY 4.0) wherever their data is shown.
 - **Run-on-completion is a webhook** (2026-09-24, ADR 0006): the daemon calls URLs on
   torrent events and never runs a program.
 - **No e-mail, no HTTPS in the daemon** (2026-09-24): webhooks notify; a reverse proxy
