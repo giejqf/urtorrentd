@@ -1,0 +1,12 @@
+{
+  "name": "@urtorrentd/badges",
+  "private": true,
+  "type": "module",
+  "description": "Generates the README's badges from the repository (cargo xtask badges).",
+  "scripts": {
+    "generate": "node generate.mjs"
+  },
+  "devDependencies": {
+    "badge-maker": "6.0.0"
+  }
+}

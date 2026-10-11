@@ -8,6 +8,7 @@
 //! - `sdk`: generate TypeScript types from `openapi.json` and type-check a client
 //! - `web`: the web UI's checks and end-to-end tests (`frontend/AGENTS.md` 9)
 //! - `dist`: a release binary with the web UI built in (ADR 0008)
+//! - `badges`: regenerate the README's badges (`docs/badges`)
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -188,6 +189,21 @@ fn dist() -> Result<()> {
     Ok(())
 }
 
+/// The README's badges: badge-maker turns what the repository says (version,
+/// toolchain, library, schema, coverage tables) into `docs/badges/*.svg`.
+fn badges() -> Result<()> {
+    if !have("npm", "--version") {
+        bail!("npm is required for `xtask badges` (Node.js 20+)");
+    }
+    let dir = root().join("docs/badges");
+    npm_ready(&dir)?;
+    run_in(
+        &dir,
+        Command::new("npm").args(["run", "-s", "generate"]),
+        "npm run generate (docs/badges)",
+    )
+}
+
 fn main() -> ExitCode {
     let cmd = std::env::args().nth(1).unwrap_or_default();
     let r = match cmd.as_str() {
@@ -196,8 +212,9 @@ fn main() -> ExitCode {
         "sdk" => sdk(),
         "web" => web(),
         "dist" => dist(),
+        "badges" => badges(),
         _ => {
-            eprintln!("usage: cargo xtask <check|openapi|sdk|web|dist>");
+            eprintln!("usage: cargo xtask <check|openapi|sdk|web|dist|badges>");
             return ExitCode::FAILURE;
         }
     };

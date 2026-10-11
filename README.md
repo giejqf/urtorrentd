@@ -1,98 +1,78 @@
-# urtorrentd
+<h1>
+  <img src="frontend/public/favicon.svg" alt="" width="36" align="top">
+  urtorrentd
+</h1>
 
-A BitTorrent daemon for Linux on the [urtorrent](https://crates.io/crates/urtorrent) library
-(io_uring, IPv4 + IPv6), controlled through a typed HTTP API. The API offers
-the features of qBittorrent's WebAPI that urtorrent supports, with its own
-consistent design; its OpenAPI 3.1 schema is generated from the code, so
-frontends get a type-safe SDK from any generator.
+[![CI](https://github.com/giejqf/urtorrentd/actions/workflows/ci.yml/badge.svg)](https://github.com/giejqf/urtorrentd/actions/workflows/ci.yml)
+[![version](docs/badges/version.svg)](CHANGELOG.md)
+[![licence](docs/badges/licence.svg)](LICENSE)
+[![rust](docs/badges/rust.svg)](rust-toolchain.toml)
+[![urtorrent](docs/badges/library.svg)](https://crates.io/crates/urtorrent)
+[![platform](docs/badges/platform.svg)](docs/install.md#requirements)
 
-Read [AGENTS.md](AGENTS.md) first: it is the project charter.
+[![OpenAPI](docs/badges/openapi.svg)](openapi.json)
+[![qBittorrent WebAPI](docs/badges/webapi.svg)](docs/api.md#coverage-of-qbittorrent-523s-webapi)
+[![preferences](docs/badges/settings.svg)](docs/settings.md#coverage-of-qbittorrent-523s-preferences)
+[![web UI](docs/badges/webui.svg)](frontend/AGENTS.md)
 
-## Run
+A BitTorrent daemon for Linux, built on the [urtorrent](https://crates.io/crates/urtorrent)
+engine (io_uring, IPv4 + IPv6). You control it through a typed HTTP API or the web UI it
+serves. The API offers every feature of qBittorrent's WebAPI that urtorrent supports, with
+a design of its own: one unit per kind of value, `null` instead of magic numbers, and an
+OpenAPI 3.1 schema generated from the code.
+
+## Features
+
+- **Torrents**: add from files, magnets, info-hashes or URLs; preview a magnet's files
+  before adding; queue, force start, limits, share limits, file and piece priorities,
+  sequential download, trackers, web seeds, renames, moves.
+- **Organise**: categories with their own save and download paths, tags, automatic
+  management, an incomplete-file suffix, search by name, tag, tracker or file name.
+- **Automation**: RSS feeds with download rules, watch folders, an alternative-limits
+  schedule, and webhooks instead of run-on-completion programs.
+- **Live updates**: incremental sync, pushed as server-sent events.
+- **History**: traffic per torrent and for the session over time, seeding days, and
+  breakdowns by country and network (GeoIP), peer client, tracker, category and tag.
+- **Safe by default**: sign-in required, API keys, login bans, CSRF and `Host` checks,
+  listening on loopback only. Counters are never faked, and the daemon never adds
+  trackers or peers to private torrents on its own.
+- **Durable**: torrents, settings and resume data live in one SQLite database, and come
+  back after a crash or `kill -9`.
+
+## Quick start
+
+Linux 6.1+ with io_uring and Rust 1.98+ ([requirements](docs/install.md#requirements)).
+Building the web UI needs Node.js 22.
 
 ```sh
-cargo run --release -p urtorrentd -- --data-dir ~/.local/share/urtorrentd --api-listen 127.0.0.1:8080
+cargo xtask dist                 # the web UI, then a release binary with it built in
+target/release/urtorrentd        # API and web UI on http://127.0.0.1:8080
 ```
 
-The web UI is at `http://127.0.0.1:8080/` when the binary has it built in
-(`cargo xtask dist` builds the UI and then a release binary with it); a
-plain `cargo build` serves the API only, or a build of the UI with
-`--web-ui frontend/dist`. For HTTPS, put a reverse proxy such as Caddy in
-front (`reverse_proxy 127.0.0.1:8080`) and set `api_trusted_proxies` and
-`api_allowed_hosts` ([docs/settings.md](docs/settings.md#the-web-ui-and-reverse-proxies)).
-
-All state is in one SQLite database, `<data dir>/urtorrentd.db`; back it up
-with `sqlite3 urtorrentd.db ".backup copy.db"`, even while the daemon runs.
-Recorded history (statistics) is in `<data dir>/stats.db`: disposable,
-deleting it loses the history only.
-
-Until a password is set, the first client to call
-`POST /api/v1/auth/setup` with a user name and password chooses them and is
-logged in (`GET /api/v1/auth/status` tells a client UI whether setup is
-open); meanwhile the daemon prints a temporary password for the user `admin`
-at every start. Change the login later with `PUT /api/v1/auth/credentials`,
-or while stopped with `urtorrentd passwd --username admin` (password on
-stdin). With `--api-listen` on a reachable address, set the credentials
-before anyone else can. Requirements are
-the library's: Linux 6.1+ with io_uring enabled (containers need a seccomp
-profile that allows it).
-
-## The API
-
-- Schema: [`openapi.json`](openapi.json), also served at
-  `GET /api/v1/openapi.json`; `urtorrentd openapi` prints it.
-- Overview, and the map from qBittorrent's WebAPI: [docs/api.md](docs/api.md).
-- Settings: [docs/settings.md](docs/settings.md).
-- Live updates: `GET /api/v1/events` pushes what changed as server-sent
-  events (`EventSource` in a browser); `GET /api/v1/sync` is the polled form.
-- Automation: an alternative-limits schedule and watch folders are
-  settings ([docs/settings.md](docs/settings.md)); RSS feeds with download
-  rules are under `/api/v1/rss`; client UIs keep their preferences in
-  `/api/v1/client-data`.
-- Search: `GET /api/v1/torrents?search=` filters the list by name,
-  category, tag, tracker or info-hash; `GET /api/v1/torrents/files?search=`
-  finds files by name across every torrent.
-- Metadata preview: `POST /api/v1/previews` fetches a magnet's file list
-  without adding it; webhooks (`/api/v1/webhooks`) call your URLs when
-  torrents are added, finish, move or go away (no program is ever run).
-- History: `/api/v1/stats/...` has traffic per torrent and for the session
-  over time, each torrent's seeding days, rankings, a timeline, traffic by
-  country and network with a GeoIP database you provide
-  ([settings](docs/settings.md#geolocation)), breakdowns by peer client,
-  source and transport, by category, tag and tracker, and an idle-seed
-  report.
+Open `http://127.0.0.1:8080/` and choose your user name and password: the first client to
+do so sets them. From a script:
 
 ```sh
-curl -s -c jar -H 'content-type: application/json' \
+curl -c jar -H 'content-type: application/json' \
   -d '{"username":"admin","password":"..."}' http://127.0.0.1:8080/api/v1/auth/login
-curl -s -b jar -H 'content-type: application/json' \
-  -d '{"urls":["magnet:?xt=urn:btih:..."],"options":{"category":"linux"}}' \
-  http://127.0.0.1:8080/api/v1/torrents
-curl -s -b jar 'http://127.0.0.1:8080/api/v1/torrents?filter=downloading'
+curl -b jar -H 'content-type: application/json' \
+  -d '{"urls":["magnet:?xt=urn:btih:..."]}' http://127.0.0.1:8080/api/v1/torrents
 ```
 
-A TypeScript client in two commands (see [sdk/typescript](sdk/typescript)):
+## Documentation
 
-```sh
-npx openapi-typescript openapi.json -o schema.d.ts
-npm install openapi-fetch   # createClient<paths>({ baseUrl })
-```
+| | |
+|---|---|
+| [Install and run](docs/install.md) | Requirements, options, first sign-in, data and backups, systemd, HTTPS |
+| [HTTP API](docs/api.md) | Conventions, live updates, every endpoint, the map from qBittorrent's WebAPI |
+| [Settings](docs/settings.md) | Every setting, and the map from qBittorrent's preferences |
+| [`openapi.json`](openapi.json) | The schema, also at `GET /api/v1/openapi.json`; generate a client with any tool |
+| [Development](docs/development.md) | Building, testing, the repository layout |
+| [Decisions](docs/adr/) | Architecture decision records |
+| [Changelog](CHANGELOG.md) | What changed in each release |
 
-## Develop
-
-```
-cargo xtask check     # fmt, clippy -D warnings, tests, docs, cargo-deny
-cargo xtask openapi   # regenerate openapi.json after an API change
-cargo xtask sdk       # generate TypeScript types and type-check a client (needs Node.js)
-cargo xtask web       # the web UI's checks and end-to-end tests (Node.js, Playwright's Chromium)
-cargo xtask dist      # a release binary with the web UI built in
-```
-
-The tests start real engines on loopback addresses (`127.0.0.x`) and never
-touch the public internet. The web UI lives in [`frontend/`](frontend/AGENTS.md)
-(SolidJS, Vite): `npm run dev` there serves it on `localhost:5173` against a
-daemon on `127.0.0.1:8080`.
+Contributors and coding agents start with [AGENTS.md](AGENTS.md), the project charter.
 
 ## Licence
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

@@ -5,15 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.16.0] - 2026-09-27
+## [Unreleased]
 
 ### Changed
 
-- The library comes from crates.io: `urtorrent = "0.14.2"`, with its
-  `urtorrent-*` crates, instead of a sibling checkout (`../urtorrent`); CI
-  checks out this repository alone. 0.14.2 counts the blocks a peer sends
-  unrequested in that peer's `downloaded`, so traffic by peer, place and
-  client adds up to the torrents' own.
+- Documentation: a short README with badges (made by badge-maker from the
+  repository, `cargo xtask badges`), and new pages for installing and running
+  ([docs/install.md](docs/install.md)) and for development
+  ([docs/development.md](docs/development.md)); the docs were checked against
+  the code and corrected where they had drifted.
+
+## [0.16.0] - 2026-09-27
 
 ### Added
 
@@ -30,7 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   peers), and DB-IP is credited with their licence (CC BY 4.0) wherever
   their data is shown: the GeoIP settings, a torrent's Peers tab, Stats ›
   Peers & geo and About.
-
 - urtorrent 0.14.0. `GET /torrents/trackers`: each host's `interval` (what
   it asks for) and `response_time` (how long it takes to answer), the
   median of its trackers' latest replies. `POST
@@ -43,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Trackers tab has its own Reannounce; Stats › Trackers shows hosts that
   answer slowly ("slow · 4.8 s") and the median interval trackers ask for,
   and its Reannounce reaches the failing host alone.
+
+### Changed
+
+- The library comes from crates.io: `urtorrent = "0.14.2"`, with its
+  `urtorrent-*` crates, instead of a sibling checkout (`../urtorrent`); CI
+  checks out this repository alone. 0.14.2 counts the blocks a peer sends
+  unrequested in that peer's `downloaded`, so traffic by peer, place and
+  client adds up to the torrents' own.
 
 ## [0.15.0] - 2026-09-27
 
@@ -704,3 +713,22 @@ they need from the library.
 - `start`, `force-start` and `recheck` refuse a torrent in the `error` state
   (`409 conflict`) instead of reporting a success that did nothing: the
   library cannot clear an error yet (docs/gaps.md).
+
+[Unreleased]: https://github.com/giejqf/urtorrentd/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.16.0
+[0.15.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.15.0
+[0.14.1]: https://github.com/giejqf/urtorrentd/commit/3db4097
+[0.14.0]: https://github.com/giejqf/urtorrentd/commit/c7f91d9
+[0.13.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.13.0
+[0.12.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.12.0
+[0.11.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.11.0
+[0.10.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.10.0
+[0.9.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.9.0
+[0.8.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.8.0
+[0.7.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.7.0
+[0.6.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.6.0
+[0.5.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.5.0
+[0.4.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.4.0
+[0.3.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.3.0
+[0.2.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.2.0
+[0.1.0]: https://github.com/giejqf/urtorrentd/releases/tag/v0.1.0
