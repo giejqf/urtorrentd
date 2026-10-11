@@ -31,7 +31,9 @@ export interface SpeedDraft {
 
 export type DraftField = keyof SpeedDraft;
 
-const GROUP = new Intl.NumberFormat("en-US", { useGrouping: true, maximumFractionDigits: 2 });
+// Three decimals: a kB is 1000 bytes, so every byte count reads back as
+// itself (4 MiB/s is `4 194.304`, never a rounded value that looks edited).
+const GROUP = new Intl.NumberFormat("en-US", { useGrouping: true, maximumFractionDigits: 3 });
 
 /** Bytes per second as kB/s for an input: `12 000`; unlimited is empty. */
 export function kbText(bytes: number | null | undefined): string {

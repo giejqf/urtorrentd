@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the live text beside it changes (the rates, the alternative limits
   switching): those rows were rebuilt, inputs included. The cause of an
   intermittent end-to-end failure.
+- Web UI: a rate limit that is not a whole number of 10 bytes (4 MiB/s set
+  through the API, say) no longer shows as an unsaved change on Settings ›
+  Speed, and saving no longer rounds it: kB/s fields keep three decimals,
+  so every byte count reads back as itself.
 
 ### Changed
 

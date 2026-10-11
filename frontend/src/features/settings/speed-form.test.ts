@@ -27,6 +27,11 @@ describe("units", () => {
     expect(kbText(null)).toBe("");
     expect(parseKb("12 000")).toBe(12_000_000);
     expect(parseKb("10 485.76")).toBe(10_485_760);
+    // Any byte count reads back as itself (4 MiB/s, 1 MiB/s, an odd one).
+    for (const bytes of [4_194_304, 1_048_576, 1_234_567]) {
+      expect(parseKb(kbText(bytes))).toBe(bytes);
+    }
+    expect(kbText(4_194_304)).toBe("4 194.304");
     expect(parseKb("")).toBeNull();
     expect(parseKb("0")).toBeNull();
     expect(parseKb("fast")).toBeUndefined();
@@ -41,6 +46,13 @@ describe("changes", () => {
     const d = diff(saved, draftOf(saved));
     expect(d.patch).toEqual({});
     expect(d.names).toEqual([]);
+    const mib = {
+      ...saved,
+      upload_limit: 4_194_304,
+      alt_download_limit: 1_048_576,
+      alt_upload_limit: 262_144,
+    } as Schemas["Settings"];
+    expect(diff(mib, draftOf(mib)).names).toEqual([]);
   });
 
   it("sends only what changed, in the API's units", () => {
