@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the API, say) no longer shows as an unsaved change on Settings ›
   Speed, and saving no longer rounds it: kB/s fields keep three decimals,
   so every byte count reads back as itself.
+- A stopped torrent no longer shows the rate it had when it stopped, an ETA
+  from it, or counts as active: urtorrent 0.14.3 zeroes a stopped torrent's
+  rates (`urtorrent = "0.14.3"`).
 
 ### Changed
 

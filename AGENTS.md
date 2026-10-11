@@ -208,7 +208,7 @@ docs/reference/         the checklist: qBittorrent 5.2.3's actions, parameters, 
 docs/adr/               design decisions
 ```
 
-Depend on the facade only, from crates.io: `urtorrent = "0.14.2"`. It brings the library's
+Depend on the facade only, from crates.io: `urtorrent = "0.14.3"`. It brings the library's
 twelve `urtorrent-*` crates (`urtorrent-session`, `urtorrent-uring`, ...), which the daemon
 never names (rule 5). The version is the oldest release the daemon is tested against; raise
 it when the daemon starts using something newer. The library is `0.x`, so a minor bump is

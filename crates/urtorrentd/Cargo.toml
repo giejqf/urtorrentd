@@ -21,7 +21,7 @@ web-ui = []
 # The library, through its facade only (AGENTS.md rule 5), from crates.io: the
 # oldest release the daemon is tested against. It is 0.x, so the caret
 # requirement pins the minor (AGENTS.md 4.1).
-urtorrent = "0.14.2"
+urtorrent = "0.14.3"
 # HTTP API. tokio's runtime is fine here: it serves the API, never torrent I/O (AGENTS.md 4.2).
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net"] }

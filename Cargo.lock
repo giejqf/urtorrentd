@@ -2420,9 +2420,9 @@ dependencies = [
 
 [[package]]
 name = "urtorrent"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "590157b4858780e8a89268619b29f175b581a9590002200e4be2bb32e62a790e"
+checksum = "11c1f1156719481ea4516e06da39f7948369b724558410b9e924a70b1f33f7f4"
 dependencies = [
  "tokio-stream",
  "urtorrent-metainfo",
@@ -2432,18 +2432,18 @@ dependencies = [
 
 [[package]]
 name = "urtorrent-bencode"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c15c5503dd8984994062224cef709fe7fc6667861da3294e6ec6868cc672571"
+checksum = "57849bc6300ebd935995a52e2b85789d9fe79bf26784e9b93c2d148d4147fc5c"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "urtorrent-dht"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0facd4ee9afca373677e818e49e50a9c603c66a0e6d1847007d48087d53ad679"
+checksum = "a0ff4a9e8efc5fd137a468a6772fd7fefe3a0734f7e3c965c12ea594c34f83b1"
 dependencies = [
  "sha1",
  "thiserror",
@@ -2455,9 +2455,9 @@ dependencies = [
 
 [[package]]
 name = "urtorrent-metainfo"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d6b111d390b36ecca7de68494fc6609cbbb6507dfdd2ce820ea17ed70774354"
+checksum = "ab918901742f3b2761efadcd6f27d69694c37d621b7a73bf23960d5533207562"
 dependencies = [
  "sha1",
  "thiserror",
@@ -2466,9 +2466,9 @@ dependencies = [
 
 [[package]]
 name = "urtorrent-mse"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ac38690a446a81643423f3bdbeefa1ef450c8c497e6cf21cc31b545a88d1e7f"
+checksum = "7aedb8169d81adbcbf4cabc166f1402c2b51d0bd48c7a289c44c2c6443703670"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -2481,9 +2481,9 @@ dependencies = [
 
 [[package]]
 name = "urtorrent-picker"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e294739d97ac03294c460520b2d91ae4ac3eb57ce5f3974277ae939bd563dc1"
+checksum = "baa9265cec03ea5ece9b3bc36352dbc2c32a34d95ebc9a822176886c8aaf02a7"
 dependencies = [
  "urtorrent-metainfo",
  "urtorrent-profile",
@@ -2491,15 +2491,15 @@ dependencies = [
 
 [[package]]
 name = "urtorrent-profile"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5026adba59bf075fef86d07d3f935ace1e47c6554e4873c6c75942fad6ff6be6"
+checksum = "07d8e8d1ca7cec5f5d9a0ddcbfd42d96abd9ecdf3cf540f7d8b75e8ebeb08855"
 
 [[package]]
 name = "urtorrent-session"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52c24dc1440726bfc685bb0f13e1f40ffecc603b91826775a119d66350d13f07"
+checksum = "2b87f605b0d3a92a227fff1a87cee21d6dafb3dcc81ba32afbc798006fcd22e2"
 dependencies = [
  "futures-core",
  "getrandom 0.3.4",
@@ -2524,9 +2524,9 @@ dependencies = [
 
 [[package]]
 name = "urtorrent-storage"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ac38f5094516faa4bba732f43d25280413f786902bac2c3157b64777546aaab"
+checksum = "68a3ac4ea70d1c1940eb06cf447e0d3d2e5f95ea9ac3e3e57ebc0b17bcb9e375"
 dependencies = [
  "sha1",
  "thiserror",
@@ -2538,9 +2538,9 @@ dependencies = [
 
 [[package]]
 name = "urtorrent-tracker"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c74abbe4b8d7f5ec5a962c4fb2943d25f0488d9b94e67bd8ca9f55804387325c"
+checksum = "29f22901e64d8a8f5a731e37283b72727103827f3a37cc58c52406c6bac40a44"
 dependencies = [
  "miniz_oxide",
  "thiserror",
@@ -2552,9 +2552,9 @@ dependencies = [
 
 [[package]]
 name = "urtorrent-uring"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8065777f7ff8089f285bcb80ff350f50ffb318e69aa503ef3ff89a3a8fac912"
+checksum = "83fd7100b7a7092e96890f07eee93c410baa1d6e295f4ff3fb7a4dfbba23347c"
 dependencies = [
  "io-uring",
  "libc",
@@ -2564,9 +2564,9 @@ dependencies = [
 
 [[package]]
 name = "urtorrent-utp"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eff71467039aafb1814f241e712b7751f30930d02b7a9f18d31c5e192831159b"
+checksum = "a470b99967964afa87d9eaf6d68ec272e0c42eb23a81640439bdc5d100d51e6b"
 dependencies = [
  "thiserror",
  "tracing",
@@ -2575,9 +2575,9 @@ dependencies = [
 
 [[package]]
 name = "urtorrent-wire"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e3538c931e0fa047dd6786eb187f9b87eba9f6d61447938ff95a72a1935bb34"
+checksum = "196f016f8fe4d33a0611bfad48ad3c37c5289636273cd5c178ef5ccb31ce5ec7"
 dependencies = [
  "sha1",
  "thiserror",
