@@ -8,6 +8,14 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 Nothing blocks a planned feature now.
 
+- **A stopped torrent keeps its last rates** (0.14.2). `TorrentStatus`'s
+  `download_rate` / `upload_rate` are a moving average updated by the
+  torrent's once-a-second tick, which ends when the torrent is paused, and
+  `pause` does not zero them. A torrent stopped mid-download keeps showing
+  its last rate, an ETA computed from it, and counts as active. The daemon
+  reports the library's numbers as they are (rule 1); the fix belongs in
+  the library (zero the rates on pause, or decay them).
+
 - **Wire-level transfer counters**, for data-usage caps (AGENTS.md section 6,
   "Next"): the payload counters leave out protocol overhead, so a cap on
   them would undercount. Raise upstream when the caps are started.
