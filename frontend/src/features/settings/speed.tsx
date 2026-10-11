@@ -8,7 +8,7 @@
 // What the page says about now (rates, peers, the next switch) is the
 // daemon's.
 
-import { createMemo, createSignal, type JSX, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, Show } from "solid-js";
 import { toast } from "solid-sonner";
 
 import { api, ApiError, type Schemas, unwrap } from "~/api/client";
@@ -113,12 +113,14 @@ function SpeedForm(props: { saved: Schemas["Settings"] }) {
   const limitRow = (
     field: "download_limit" | "upload_limit" | "alt_download_limit" | "alt_upload_limit",
     label: string,
-    description?: JSX.Element,
+    // A function: the live text re-renders alone, never the input (a row
+    // rebuilt while someone types loses what they typed).
+    description?: () => string,
   ) => (
     <SettingRow
       label={label}
       for={`speed-${field}`}
-      description={description}
+      description={description?.()}
       changed={changed(field)}
       error={error(field)}
     >
@@ -138,13 +140,13 @@ function SpeedForm(props: { saved: Schemas["Settings"] }) {
       "max_connections" | "max_connections_per_torrent" | "max_uploads" | "max_uploads_per_torrent",
     label: string,
     unit: string,
-    description: JSX.Element,
+    description: () => string,
     placeholder?: string,
   ) => (
     <SettingRow
       label={label}
       for={`speed-${field}`}
-      description={description}
+      description={description()}
       changed={changed(field)}
       error={error(field)}
     >
@@ -168,16 +170,12 @@ function SpeedForm(props: { saved: Schemas["Settings"] }) {
       form={form}
     >
       <SettingsGroup title="Global limits">
-        {limitRow(
-          "download_limit",
-          "Download limit",
+        {limitRow("download_limit", "Download limit", () =>
           altOn()
             ? "Not in force now: the alternative limits are."
             : `Applies to every torrent together; per-torrent limits sit inside it. Downloading at ${formatRate(transfer()?.download_rate ?? 0)} now.`,
         )}
-        {limitRow(
-          "upload_limit",
-          "Upload limit",
+        {limitRow("upload_limit", "Upload limit", () =>
           altOn()
             ? "Not in force now: the alternative limits are."
             : `Uploading at ${formatRate(transfer()?.upload_rate ?? 0)} now against this cap.`,
@@ -301,20 +299,20 @@ function SpeedForm(props: { saved: Schemas["Settings"] }) {
           "max_connections",
           "Peer connections",
           "peers",
-          `Across all torrents · ${formatCount(transfer()?.peers ?? 0)} connected now.`,
+          () => `Across all torrents · ${formatCount(transfer()?.peers ?? 0)} connected now.`,
         )}
         {countRow(
           "max_connections_per_torrent",
           "Peer connections per torrent",
           "peers",
-          "The default for torrents without their own cap.",
+          () => "The default for torrents without their own cap.",
         )}
-        {countRow("max_uploads", "Upload slots", "slots", "Across all torrents.")}
+        {countRow("max_uploads", "Upload slots", "slots", () => "Across all torrents.")}
         {countRow(
           "max_uploads_per_torrent",
           "Upload slots per torrent",
           "slots",
-          "For new torrents. Empty = only the global budget.",
+          () => "For new torrents. Empty = only the global budget.",
           "global",
         )}
       </SettingsGroup>

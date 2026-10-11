@@ -107,6 +107,22 @@ test("leaving with unsaved changes asks first", async ({ signedIn: page, daemon 
   expect(data?.download_limit).toBeNull();
 });
 
+test("live text never rebuilds a field being edited", async ({ signedIn: page, daemon }) => {
+  await page.goto(`${daemon.url}/settings/speed`);
+  const input = field(page, "Download limit");
+  await input.fill("500");
+  const node = await input.elementHandle();
+  // The row's description follows the daemon: switching the alternative
+  // limits changes it, and must not replace the input under the typing.
+  await daemon.api.PUT("/api/v1/transfer/alt-speed", { body: { enabled: true } });
+  await expect(
+    page.getByText("Not in force now: the alternative limits are.").first(),
+  ).toBeVisible();
+  expect(await node?.evaluate((n) => n.isConnected)).toBe(true);
+  await expect(input).toHaveValue("500");
+  await expect(page.getByRole("region", { name: "Unsaved changes" })).toBeVisible();
+});
+
 test("every section has its page; an unknown one goes to Speed", async ({
   signedIn: page,
   daemon,

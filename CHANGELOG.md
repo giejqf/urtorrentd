@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Web UI: on Settings › Speed, a limit being typed is no longer lost when
+  the live text beside it changes (the rates, the alternative limits
+  switching): those rows were rebuilt, inputs included. The cause of an
+  intermittent end-to-end failure.
+
 ### Changed
 
 - Documentation: a short README with badges (made by badge-maker from the
