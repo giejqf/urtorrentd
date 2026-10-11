@@ -259,8 +259,8 @@ settings! {
     /// Address blocks (`10.0.0.0/8`, `fd00::/8`) whose clients need no authentication.
     api_auth_whitelist: Vec<String> = Vec::new(), nullable = false;
     /// Reverse proxies (addresses or blocks, `10.0.0.0/8`) trusted to tell
-    /// the client's address (`X-Forwarded-For`) and host
-    /// (`X-Forwarded-Host`); empty = none.
+    /// the client's address (`X-Forwarded-For`), host (`X-Forwarded-Host`)
+    /// and scheme (`X-Forwarded-Proto`); empty = none.
     api_trusted_proxies: Vec<String> = Vec::new(), nullable = false;
     /// Host names accepted in the `Host` header (`*` = any, `*.example.com` =
     /// subdomains). IP addresses are always accepted.
@@ -435,8 +435,8 @@ pub enum AfterAdd {
 pub struct WatchFolder {
     /// The folder (absolute).
     pub path: String,
-    /// Look in subfolders too (up to 8 levels; symbolic links to folders
-    /// are not followed).
+    /// Look in subfolders too (7 levels below the folder; symbolic links to
+    /// folders are not followed).
     #[serde(default)]
     pub recursive: bool,
     /// How its torrents are added (as in `POST /torrents`).

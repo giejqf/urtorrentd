@@ -23,7 +23,7 @@ row whose operation the UI calls.
 | `GET /api/v1/previews`                     | The add dialog follows its own previews one by one; the list is for other clients.     |
 | `GET /api/v1/previews/{hash}/torrent-file` | The add dialog adds a previewed source by its hash, which uses the fetched `.torrent`. |
 
-## W4: settings, security, logs
+## Settings, security and logs
 
 | Operation                   | Why the UI does not call it                                          |
 | --------------------------- | -------------------------------------------------------------------- |

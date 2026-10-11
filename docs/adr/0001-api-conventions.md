@@ -15,8 +15,9 @@ get a typed SDK from the schema (ADR 0003).
 
 - **Base path** `/api/v1`, grouped by feature like the reference's scopes
   (`auth`, `app`, `settings`, `torrents`, `torrents/{hash}`, `categories`,
-  `tags`, `transfer`, `sync`, `log`) so the checklist maps cleanly
-  (`docs/api.md`).
+  `tags`, `transfer`, `sync`, `log`; later also `rss`, `stats`, `webhooks`,
+  `previews`, `client-data`, `events`, `fs`, `watch-folders`) so the
+  checklist maps cleanly (`docs/api.md`).
 - **JSON both ways.** A `.torrent` travels base64 inside JSON; the export
   endpoint returns `application/x-bittorrent`.
 - **One unit per kind of value:** bytes, bytes per second, seconds, unix
@@ -29,8 +30,8 @@ get a typed SDK from the schema (ADR 0003).
   error per torrent). Invalid hex is a 400; unknown hashes are reported, not
   dropped. Per-torrent resources live under `/torrents/{hash}` and answer 404
   for an unknown hash.
-- **Partial updates** (`PATCH /settings`, `PATCH /torrents/{hash}`,
-  `/torrents/limits`) change only the fields present; `null` means "remove
+- **Partial updates** (`PATCH /settings`, `PATCH /torrents/{hash}`, the
+  bulk `POST /torrents/limits`) change only the fields present; `null` means "remove
   the limit / restore the default" where the field allows it. Unknown fields
   are a 400.
 - **Errors**: the HTTP status plus `{"error": {"code", "message"}}`, with

@@ -49,5 +49,5 @@ The maintainer's decision: run-on-completion is a webhook, not a program.
 - Events that happen while no receiver answers are lost after the retries;
   events while the daemon is down never happen (the timeline in `/stats`
   keeps the history).
-- E-mail notifications stay planned; a webhook-to-mail bridge covers them
-  meanwhile.
+- E-mail notifications are not planned (maintainer decision, 2026-09-24); a
+  webhook-to-mail bridge covers them.

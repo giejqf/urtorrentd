@@ -1,6 +1,9 @@
 # ADR 0002: Persistence
 
-Status: superseded by [ADR 0004](0004-sqlite.md) (2026-09-23) for the storage layout and resume data; the ordering and crash-safety rules below still hold.
+Status: superseded by [ADR 0004](0004-sqlite.md) (2026-09-23). What carries over
+is the order rule: a torrent's state is written before the engine add and
+removed after the engine removal. The files below are 0.1.0's, which later
+releases import once.
 
 ## Context
 

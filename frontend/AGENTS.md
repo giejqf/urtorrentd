@@ -4,17 +4,7 @@ Guide for coding agents working on `frontend/`, the web UI of urtorrentd. Read t
 [`AGENTS.md`](../AGENTS.md) first. It is the project charter, and its rules bind this directory
 too (section 1 restates them for the UI). This file adds what is specific to the UI.
 
-Status (2026-09-27): W0, W1, W2, W3 and W5 are done: sign-in, first-run setup, the shell, the
-torrents screen and the add dialog, one torrent in depth, and the RSS screen, as the mockups
-have them. W4 has every settings section (Downloads, Speed, Queue & share limits, Connection,
-BitTorrent, Banned addresses, Watch folders, RSS, Webhooks, Statistics & GeoIP, Security & API,
-Engine, About) and the Log screen. W6 has every Stats report: Overview, Trackers, Peers & geo,
-Idle seeds and Timeline. W3 has the detail panel's tabs (Files, Peers, Trackers, History,
-Options), several torrents at once (the panel, the selection bar, the context menu and its
-keys), the move, remove, share limits, folder and piece hashes dialogs, and categories and tags
-managed from the sidebar. RSS rules are edited in the designed rule dialog. W7 has the ⌘K
-palette, the light theme and the phone screens as designed. What has no design yet is in 6.5.
-Section 10 has the milestones.
+Status (2026-10-11): W0 to W6 done; W7 partly (section 10).
 
 ## 1. What this is
 
@@ -72,9 +62,9 @@ These restate the charter's rules for the UI and add the UI's own. They are non-
 
 ## 2. Stack
 
-These versions were current when this plan was written (2026-09-24). Pin exact versions in
-`package.json`, commit `package-lock.json` and install with `npm ci` everywhere. The package
-manager is npm, as in `sdk/typescript`, and the runtime is Node 22, as in CI.
+The table names major versions. Pin exact versions in `package.json`, commit
+`package-lock.json` and install with `npm ci` everywhere. The package manager is npm, as in
+`sdk/typescript`, and the runtime is Node 22, as in CI.
 
 | Package | Role |
 |---|---|
@@ -82,7 +72,7 @@ manager is npm, as in `sdk/typescript`, and the runtime is Node 22, as in CI.
 | `vite` 8, `vite-plugin-solid` | Dev server and build. |
 | `typescript` 5.9 | The same version as `sdk/typescript`. `openapi-typescript` and `typescript-eslint` need 5.x. |
 | `tailwindcss` 4, `@tailwindcss/vite`, `tw-animate-css` | Styling. The tokens are in CSS (6.2). |
-| shadcn components from [solid-ui](https://www.solid-ui.com), with `@kobalte/core`, `corvu`, `class-variance-authority`, `clsx`, `tailwind-merge` | The primitives. solid-ui ports shadcn/ui to Solid on top of Kobalte and corvu, and publishes it as a shadcn registry. The `shadcn` CLI copies each component into `src/components/ui/` (`npx shadcn@latest add https://www.solid-ui.com/r/<name>.json`). From then on the code is ours. |
+| shadcn components from [solid-ui](https://www.solid-ui.com), with `@kobalte/core`, `class-variance-authority`, `clsx`, `tailwind-merge` | The primitives. solid-ui ports shadcn/ui to Solid on top of Kobalte, and publishes it as a shadcn registry. The `shadcn` CLI copies each component into `src/components/ui/` (`npx shadcn@latest add https://www.solid-ui.com/r/<name>.json`). From then on the code is ours. |
 | `lucide-solid` | Icons. Import each icon from its own module (`lucide-solid/icons/play`) so dev builds stay fast. |
 | `@solidjs/router` | Routes. |
 | `@tanstack/solid-query` | Request/response data: everything except the live stream. |
@@ -90,7 +80,7 @@ manager is npm, as in `sdk/typescript`, and the runtime is Node 22, as in CI.
 | `openapi-typescript`, `openapi-fetch` | Types from `openapi.json` and the typed client, at the same versions as `sdk/typescript`. |
 | `solid-sonner` | Toasts (the library shadcn uses). |
 | `@fontsource-variable/geist`, `@fontsource-variable/geist-mono` | The design's fonts, bundled. |
-| `uplot` | Time-series charts for statistics, added in the statistics milestone. |
+| `uplot` | Time-series charts for statistics. |
 | dev: `vitest` | Unit tests. |
 | dev: `@playwright/test`, `@axe-core/playwright` | End-to-end and accessibility tests. |
 | dev: `eslint`, `typescript-eslint`, `eslint-plugin-solid`, `prettier`, `prettier-plugin-tailwindcss` | Linting, including Solid's reactivity rules, and formatting. |
@@ -114,7 +104,8 @@ frontend/
   coverage.md           API operations the UI does not call, each with its reason (7.3)
   public/               favicon (the logo mark)
   src/
-    main.tsx            mount, router, query client
+    main.tsx            mount: fonts, styles, the app
+    app.tsx             router, query client, the page error boundary
     app.css             Tailwind, the tokens (6.2), base styles: the only file with colour values
     routes.tsx          the route table, one lazy chunk per feature
     api/
@@ -122,66 +113,35 @@ frontend/
       client.ts         the openapi-fetch client; errors → ApiError; 401 → sign-in
       live.ts           /api/v1/events → the live store (4.3)
       keys.ts           query keys
+      coverage.ts       the coverage check (7.3)
     lib/
       utils.ts          cn()
       format.ts         bytes, rates, durations, times, ratios: the only place units turn into text and back
       torrent.ts        state → label, colour and group; filters; tracker hosts
       prefs.ts          UI preferences in /client-data (4.2)
-      theme.ts          the theme: dark, light or the system's (6.2)
+      theme.ts          the theme, accent and units: dark, light or the system's (6.2)
     components/
       ui/               shadcn primitives from solid-ui, restyled to the tokens; our code now
-      *.tsx             shared pieces: progress ring, status dot, kbd, empty state, the folder
-                        dialog behind every Browse (folder-picker.tsx; folder-paths.ts)
-    features/           one folder per area, following the API's groups
-      auth/             the session (auth.tsx), first-run setup, sign-in
-      shell/            the signed-in gate and the page frame (protected.tsx), the live store
-                        (live.tsx), sidebar (sidebar.tsx; its rows in sidebar-items.tsx,
-                        categories and tags in organize.tsx), navigation, transfer footer,
-                        instance menu, the ⌘K palette (palette.tsx; palette-view.ts), a
-                        phone's tab bar (tab-bar.tsx), the connection bar
-      torrents/         the screen (torrents.tsx), the list, filters and sort (view.ts), the
-                        detail panel (detail-panel.tsx: the header, the tabs, the Overview),
-                        pieces (pieces.ts), detail/ (the tabs: Files with files.ts, Peers,
-                        Trackers and web seeds with trackers.ts, History with history.ts,
-                        Options with options.ts, the draft's model, share-fields.tsx), several
-                        at once (bulk.ts, bulk-panel.tsx: the panel and the selection bar;
-                        row-menu.tsx: the context menu), the dialogs (torrent-dialogs.tsx
-                        opens them: remove in delete-dialog.tsx with removal.ts, move in
-                        move-dialog.tsx with move.ts, share-limits-dialog.tsx), add/ (the
-                        dialog, its sources and previews, form.ts), actions
-      settings/         the settings screens: navigation (nav.tsx), the page frame with the
-                        restart banner (frame.tsx, restart.tsx), rows, fields and the save bar
-                        (controls.tsx), the draft, save and leave logic every page shares
-                        (form.tsx); Downloads (downloads.tsx; downloads-form.ts, categories,
-                        the path flow, paths.ts), Speed (speed.tsx; speed-form.ts, the
-                        schedule in schedule.ts, the week chart) and Queue (queue.tsx;
-                        queue-form.ts, the queue's slots in queue-now.ts, the draggable list
-                        in queue-list.tsx, share limits in share.ts), Connection and BitTorrent
-                        (connection.tsx, bittorrent.tsx; network-form.ts) and Banned addresses
-                        (banned.tsx; bans.ts), Watch folders (watch-folders.tsx;
-                        watch-form.ts), RSS (rss-settings.tsx; rss-view.ts) and Webhooks
-                        (webhooks.tsx; webhooks-view.ts), Statistics & GeoIP (statistics.tsx;
-                        statistics-form.ts; geoip.tsx and geoip-view.ts: DB-IP Lite's
-                        download and credit), Security & API (security.tsx; security-form.ts),
-                        Engine (engine.tsx; engine-form.ts) and About (about.tsx;
-                        about-view.ts)
-      rss/              the RSS screen (rss.tsx): its sidebar sections (sidebar.tsx: feeds in
-                        folders, rules), the article panel, the rule dialog and the rule's
-                        summary (rule-dialog.tsx; rule-form.ts), feed dialogs, the shared
-                        queries (data.ts), view.ts
-      log/              the Log screen (log.tsx): its sidebar sections (sidebar.tsx: levels,
-                        topics), the shared log query (use-log.ts), view.ts
-      stats/            the Stats screen: Overview (overview.tsx; view.ts), Trackers
-                        (trackers.tsx; trackers-view.ts), Peers & geo (peers.tsx;
-                        peers-view.ts, the map in map.tsx on world.ts), Idle seeds (idle.tsx;
-                        idle-view.ts) and Timeline (timeline.tsx; timeline-view.ts); the
-                        reports in the sidebar (sidebar.tsx), the range from the URL
-                        (range.ts), the queries (data.ts), uPlot time series (chart.tsx),
-                        cards, figures and the torrent picker (parts.tsx)
+      *.tsx             shared pieces: logo, progress ring, status dot, kbd, tag input, the
+                        prompt and confirm dialogs, the page error card, the folder dialog
+                        behind every Browse
+    features/           one folder per area, following the API's groups; each file's header
+                        says what it holds
+      auth/             first-run setup and sign-in
+      shell/            the signed-in frame: sidebar, live store, palette, tab bar, connection bar
+      torrents/         the list, the detail panel and its tabs (detail/), the add dialog (add/),
+                        several at once, the torrent dialogs
+      settings/         every settings page, with the shared frame, controls and draft logic
+      rss/              the RSS screen and its dialogs
+      log/              the Log screen
+      stats/            the Stats reports
+    test/
+      fixtures.ts       unit-test data typed against the schema (7.2)
   e2e/
     daemon.ts           starts and stops real daemons, one per test that asks (7.4)
     torrent.ts          makes .torrent files for tests (bencode, SHA-1)
-    servers.ts          a page on another origin (CORS), a Caddy-like forwarding proxy
+    servers.ts          a text file the daemon fetches (a tracker list), a page on another
+                        origin (CORS), a Caddy-like forwarding proxy
     fixtures.ts         Playwright fixtures: daemons, a signed-in page, the offline and CSP guard,
                         a local stand-in for DB-IP's downloads (--geoip-mirror)
     mmdb.ts             writes GeoIP files for tests (MaxMind DB, country and ASN records)
@@ -298,17 +258,17 @@ go in the query string. The daemon answers unknown paths outside the API with `i
 The maintainer decided this on 2026-09-24: the daemon serves the UI with axum, a reverse proxy
 (Caddy) terminates TLS, and the daemon handles CORS. The UI is at `/` and the API at `/api/v1`,
 on the same host and port. Release builds embed the UI, and `--web-ui <dir>` can serve a
-directory instead (5.1). The serving code is daemon code
-(`crates/urtorrentd/src/web.rs`, `api/cors.rs`, `build.rs`) and falls under the charter:
-ADR 0008, Rust integration tests (`tests/web.rs`), and `docs/api.md` / `docs/settings.md` rows.
+directory instead (5.1). The serving code is daemon code (`crates/urtorrentd/src/web.rs`,
+`src/api/cors.rs`, `build.rs`) and falls under the charter: ADR 0008, Rust integration tests
+(`tests/web.rs`), and `docs/api.md` / `docs/settings.md` rows.
 
 ### 5.1 Routes and files
 
-- `/api/v1/...` is the API, as today, and unknown `/api/...` paths stay JSON 404s.
-- `/` is the UI, and every other path outside `/api/` belongs to it. The daemon serves the built file if one matches, and
-  otherwise `index.html` for `GET` and `HEAD` (the single-page-app fallback). Hashed files under
-  `/assets/` get `Cache-Control: public, max-age=31536000, immutable`. `index.html` gets
-  `no-cache`.
+- `/api/v1/...` is the API, and unknown `/api/...` paths stay JSON 404s.
+- `/` is the UI, and every other path outside `/api/` belongs to it. The daemon serves the
+  built file if one matches, and otherwise `index.html` for `GET` and `HEAD` (the single-page-app
+  fallback). Hashed files under `/assets/` get `Cache-Control: public, max-age=31536000,
+  immutable`. `index.html` gets `no-cache`.
 - **Where the files come from.**
   - Release builds embed `frontend/dist` in the binary (cargo feature `web-ui`, turned on by
     `cargo xtask dist`). There is one file to deploy, as with qBittorrent's built-in WebUI.
@@ -316,56 +276,44 @@ ADR 0008, Rust integration tests (`tests/web.rs`), and `docs/api.md` / `docs/set
     and the E2E suite runs a debug build of the daemon this way (7.4). It is a command-line
     flag and never an API setting. The static files are served without authentication, so an
     API setting would let any API user publish any directory to anyone.
-  - With neither, the daemon is API-only. That is what `cargo xtask check` builds, and it needs
-    no Node.
+  - `--no-web-ui` serves the API only. A build without the `web-ui` feature (what
+    `cargo xtask check` builds, with no Node) is API-only unless `--web-ui` is given.
 - **The UI's files are public.** They contain no secrets, and everything behind them needs a
   session. The `gate` guard still applies to them (banned addresses, the `Host` check).
 - **Headers on UI responses.**
-  - `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; base-uri 'none';
-    object-src 'none'; form-action 'self'`, tuned when the code is built. No inline scripts. The
-    E2E suite fails on any CSP violation.
+  - `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'
+    'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src
+    'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'` (`web.rs`). No inline
+    scripts; inline styles only as components set them. The E2E suite fails on any CSP
+    violation.
   - `X-Frame-Options: DENY`. Together with `frame-ancestors 'none'`, this is qBittorrent's
     clickjacking protection, always on here.
   - `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
 
 ### 5.2 Behind a reverse proxy
 
-The daemon speaks plain HTTP on `--api-listen` (loopback by default). Caddy terminates TLS and
-forwards requests to it:
+The daemon speaks plain HTTP on `--api-listen` (loopback by default), and a reverse proxy such as
+Caddy terminates TLS. The deployment notes, with a Caddyfile, are in `docs/settings.md` ("The web
+UI and reverse proxies") and `docs/install.md` ("HTTPS and remote access"). The rules:
 
-```
-torrents.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-
-A deployment must get the following right. The README documents it, with this Caddyfile, when
-the serving code lands.
-
-- **`api_trusted_proxies`** lists the addresses the proxy connects from (`["127.0.0.1",
-  "::1"]`). The daemon then sees the real client through `X-Forwarded-For` and
-  `X-Forwarded-Host`, for bans, `api_auth_whitelist` and the `Host` check. **Without this
-  setting, every client appears to come from the proxy's loopback address, and turning on
-  `api_bypass_local_auth` would let the whole internet in.** So the daemon never exempts a
-  request that carries forwarding headers from a peer that is not trusted, and logs a warning
-  the first time it sees one.
-- **`api_allowed_hosts`** includes the public name (`torrents.example.com`). The default is
-  `localhost` only. IP addresses always pass.
-- **CSRF protection keeps working.** It compares the authority of `Origin`
-  (`torrents.example.com`) with the forwarded `Host`, not the scheme, so TLS termination does
-  not affect it. Caddy passes `Host` through by default. A proxy that rewrites `Host` must send
+- **`api_trusted_proxies`** lists the addresses the proxy connects from. The daemon then takes
+  the client from `X-Forwarded-For` and the host from `X-Forwarded-Host`, for bans,
+  `api_auth_whitelist` and the `Host` check. Without it every client looks like the proxy's
+  loopback address, so the daemon never exempts a request that carries forwarding headers from
+  an untrusted peer, and logs a warning the first time it sees one.
+- **`api_allowed_hosts`** includes the public name. The default is `localhost` only. IP
+  addresses always pass.
+- **CSRF** compares the authority of `Origin` with the (forwarded) `Host`, not the scheme, so
+  TLS at the proxy does not affect it. A proxy that rewrites `Host` must send
   `X-Forwarded-Host` and be trusted.
-- **Secure cookie.** When a trusted proxy sends `X-Forwarded-Proto: https`, the
-  session cookie gets `Secure`. This is qBittorrent's `web_ui_secure_cookie_enabled`, automatic
-  here.
-- **The event stream** passes through Caddy unbuffered, because Caddy flushes
-  `text/event-stream` at once. The daemon's keep-alive comment every 15 s keeps idle streams
-  open through proxy timeouts. Other proxies may need buffering turned off (nginx:
-  `proxy_buffering off`).
+- **Secure cookie.** When a trusted proxy sends `X-Forwarded-Proto: https`, the session cookie
+  gets `Secure` (qBittorrent's `web_ui_secure_cookie_enabled`, automatic here).
+- **The event stream** must pass unbuffered. Caddy flushes `text/event-stream` at once, and the
+  daemon's keep-alive comment every 15 s outlasts proxy timeouts. nginx needs
+  `proxy_buffering off`.
 - **The UI is at the root of its host** (`/`, API at `/api/v1`; maintainer decision,
-  2026-09-24). Proxy the whole host to the daemon, using a subdomain such as
-  `torrents.example.com`. Mounting under a sub-path (`example.com/torrents/`) is not
-  supported.
+  2026-09-24). Proxy a whole host, such as `torrents.example.com`. A sub-path
+  (`example.com/torrents/`) is not supported.
 
 ### 5.3 CORS
 
@@ -373,7 +321,7 @@ The UI itself never needs CORS. It is same-origin in production (the daemon serv
 the proxy) and in development (Vite proxies `/api` to the daemon). The table lists what can still
 break and how each case is handled.
 
-| Situation | What happens today | Handling |
+| Situation | What goes wrong | Handling |
 |---|---|---|
 | The Vite dev proxy with `changeOrigin: true` | `Host` becomes the daemon's but `Origin` stays `localhost:5173`, so every POST gets `403 cross_origin`. | The dev proxy keeps `Host` (`changeOrigin: false`, Vite's default). `localhost` is in `api_allowed_hosts` by default. |
 | A browser app on another origin (a second UI, a dashboard, the dev server without its proxy) | The daemon sends no CORS headers, so the browser hides every response. Preflights get `401` because they carry no credentials. | The opt-in setting `api_cors_origins` (below). |
@@ -399,86 +347,26 @@ break and how each case is handled.
   origin, CSRF), plus one E2E spec that calls the API from a page on a second loopback origin,
   once from a listed origin and once from an unlisted one.
 
-When this lands, `docs/settings.md` changes as follows:
-
-- `alternative_webui_enabled` / `alternative_webui_path` become `--web-ui`.
-- `web_ui_clickjacking_protection_enabled` becomes fixed, always on.
-- `web_ui_secure_cookie_enabled` becomes automatic behind a trusted HTTPS proxy.
-- `web_ui_custom_http_headers` stays unsupported, with a new reason: CORS is `api_cors_origins`,
-  and other headers belong in the proxy.
-
 ## 6. Design
 
 ### 6.1 References
 
-The mockups are in `.design/` at the repository root. That folder is gitignored and exists only
-locally.
-
-- `Login-html.zip`: the sign-in screen.
-- `Torrents-html.zip`: the main screen.
-- `Add_torrent_dialog-html.zip`: the add dialog (`AddTorrent.dc.html`).
-- `Settings_Speed-html.zip`: Settings › Speed (`Settings.dc.html`). Its navigation, header,
-  restart banner, rows and save bar are the pattern for every settings section.
-- `Settings_Downloads-html.zip`: Settings › Downloads (`SettingsDownloads.dc.html`): path fields
-  with a Browse button, a value with its switch, segmented choices, chip lists, a table.
-- `Settings_Queue_share_limits-html.zip`: Settings › Queue & share limits
-  (`SettingsQueue.dc.html`): the queue's slots and order, share limits with progress bars.
-- `Settings_Connection-html.zip`, `Settings_BitTorrent-html.zip`,
-  `Settings_Banned_addresses-html.zip`: Settings › Connection (`SettingsConnection.dc.html`),
-  BitTorrent (`SettingsBitTorrent.dc.html`) and Banned addresses (`SettingsBans.dc.html`).
-- `Settings_Watch_folders-html.zip`, `Settings_RSS-html.zip`, `Settings_Webhooks-html.zip`:
-  Settings › Watch folders (`SettingsWatch.dc.html`), RSS (`SettingsRss.dc.html`) and
-  Webhooks (`SettingsWebhooks.dc.html`): expanding cards that edit one item each.
-- `RSS-html.zip`, `Log-html.zip`: the RSS screen (`Rss.dc.html`: feeds and rules in the
-  sidebar, articles by age, one article) and the Log screen (`Log.dc.html`: levels and topics
-  in the sidebar, the log by day, one entry with the last day by hour).
-- `Settings_Statistics_GeoIP-html.zip`, `Settings_Security_API-html.zip`,
-  `Settings_Engine-html.zip`, `Settings_About-html.zip`: Settings › Statistics & GeoIP
-  (`SettingsStats.dc.html`), Security & API (`SettingsSecurity.dc.html`), Engine
-  (`SettingsEngine.dc.html`) and About (`SettingsAbout.dc.html`): the daemon itself.
-- `Stats-html.zip`, `Stats___Trackers-html.zip`: Stats › Overview (`Stats.dc.html`: figures
-  against the range before, the transfer rate, rankings and breakdowns, idle seeds, the newest
-  events) and Stats › Trackers (`StatsTrackers.dc.html`: each host's traffic and announces,
-  traffic by tracker, announce problems). The Overview artboard has the older, roomier shell;
-  both are built at the Trackers artboard's density, which is the current shell's.
-- `Peers__geo-html.zip`, `Stats___Idle_seeds-html.zip`, `Timeline-html.zip`: Stats › Peers &
-  geo (`Peers.dc.html`: the world map with a curve to each place, the peers, by country, how
-  they connect), Idle seeds (`StatsIdle.dc.html`: size against value, the least valuable first
-  with a selection to stop, keep or remove) and Timeline (`Timeline.dc.html`: events by kind,
-  one lane per torrent, the feed by day, what needs attention).
-- `Detail___Files_tab-html.zip`, `Detail___Peers_tab-html.zip`, `Detail___Trackers_tab-html.zip`,
-  `Detail___History_tab-html.zip`, `Detail___Options_tab-html.zip`: the detail panel's tabs
-  (`MainFiles.dc.html` and the others, the Overview being `Torrents-html.zip`'s panel): the
-  file tree with priorities, the peers, trackers and web seeds, the seeding days and the last
-  day's traffic, and the options saved as one draft.
-- `Bulk_selection__context_menu-html.zip` (`MainBulk.dc.html`): several torrents chosen: the
-  panel that acts on all of them, the selection bar over the list, the rows' context menu with
-  its keys.
-- `Dialog___move_content-html.zip`, `Dialog___remove_torrents-html.zip`,
-  `Dialog___choose_folder-html.zip`, `Dialog___RSS_rule_editor-html.zip`: the move
-  (`DialogMove.dc.html`), remove (`DialogDelete.dc.html`), folder (`DialogDirectory.dc.html`)
-  and rule (`DialogRule.dc.html`) dialogs.
-- `API_key_shown_once-html.zip`, `Edit_category-html.zip`, `Add_feed-html.zip`: the new API
-  key (`DialogApiKey.dc.html`), a category (`DialogCategory.dc.html`) and a feed
-  (`DialogFeed.dc.html`) dialogs.
-- `Command_palette__K-html.zip` (`CommandPalette.dc.html`): the ⌘K palette over the torrents
-  screen: torrents, files across torrents and commands, with scopes.
-- `Color_tokens___dark__light-html.zip` (`Palette.dc.html`): every token in both themes, and
-  the torrents screen in light.
-- `Torrents___phone-html.zip`, `Torrent___phone-html.zip` (`MobileList.dc.html`,
-  `MobileDetail.dc.html`): the list and one torrent at 390×844, with the tab bar.
-
-They are exports from a design tool: `*.dc.html` artboards at 1440×900 (the phone ones at
-390×844), whose inline styles and
-`<helmet><style>` block carry the exact values. `support.js` and `vendor/` only render them. To
-view one, unzip it into a scratch directory outside the repository and serve it with
+The mockups are in `.design/` at the repository root, which is gitignored and exists only
+locally. There is one zip per screen or dialog, named after it (`Torrents-html.zip`,
+`Settings_Speed-html.zip`, `Dialog___move_content-html.zip`, ...). The artboard inside is the
+`*.dc.html` file, at 1440×900 (the phone ones at 390×844); its inline styles and
+`<helmet><style>` block carry the exact values, and `support.js` and `vendor/` only render it.
+To view one, unzip it into a scratch directory outside the repository and serve it with
 `python3 -m http.server`. Replicate the values in our components and never copy the markup.
 
-More mockups may arrive in `.design/`. Build a screen that has no design from the same tokens
-and primitives, at the same density. Never invent a new visual language.
+- Settings › Speed's navigation, header, restart banner, rows and save bar are the pattern for
+  every settings section.
+- The Stats Overview artboard has an older, roomier shell. Every Stats report is built at the
+  Trackers artboard's density, which is the current shell's.
 
-`.design/` is not in git, so section 6.2 records its values. Once `app.css` exists it becomes the
-source of truth, and 6.2 is kept in step with it.
+More mockups may arrive in `.design/`. Build a screen that has no design from the same tokens
+and primitives, at the same density, and list it in 6.5. Never invent a new visual language.
+`app.css` is the source of truth for the values, and 6.2 is kept in step with it.
 
 ### 6.2 Tokens
 
@@ -583,8 +471,8 @@ tuck in. `public/favicon.svg` draws the same, dark or light as the browser is.
     all), a bar floats over the list (start, stop, recheck, category, tags, queue, remove), and
     every row shows its box. The single torrent's panel stays mounted underneath, so its draft
     outlasts the multi-selection.
-- **Narrower screens.** The artboards are 1440×900 only, so the smaller layouts are ours to
-  design in the same language:
+- **Narrower screens.** Only the phone list and the phone torrent are designed; the rest is
+  ours, in the same language (6.5):
   - 1024–1279px: the detail panel becomes a sheet over the list.
   - Below 1024px: the sidebar becomes a sheet too.
   - Below 640px, a phone (`Torrents — phone`, `Torrent — phone`): the header is 52px (menu,
@@ -626,7 +514,8 @@ tuck in. `public/favicon.svg` draws the same, dark or light as the browser is.
 
 ### 6.4 The designs against the API
 
-These are the known differences. Resolve each as noted, never by faking.
+These are the known differences. Resolve each as noted, never by faking. Rows about something
+not designed say how it was built; 6.5 lists them all.
 
 | Mockup | API | Do |
 |---|---|---|
@@ -675,7 +564,7 @@ These are the known differences. Resolve each as noted, never by faking.
 | Settings › Watch folders: "Scan now" | The folders are read every 2 s and a file is taken once still for 3 s | Left out: it would change nothing. The flow says "3 to 5 s". |
 | Settings › Watch folders: category "Created if missing" | A folder's `category` is created by the add | A select of the categories there are (and the folder's own); new ones are made on Downloads. |
 | Settings › RSS: "torrents from rules, 30 days" | Rules keep `last_match` only, not a count | "rules that took something, 30 days". |
-| Settings › RSS: "A dry run is available per rule" | `GET /rss/rules/{name}/matches` exists; the RSS screen is W5 | Not said until the RSS screen offers it. |
+| Settings › RSS: "A dry run is available per rule" | `GET /rss/rules/{name}/matches`; the RSS screen shows a chosen rule's matches and the rule dialog's dry run | Not said on this page, which points to RSS in the sidebar for feeds and rules. |
 | Settings › RSS: the next hour of polling | The daemon's rule: a feed is due its interval after its last refresh (failed ones too), at once when never refreshed; the per-host delay can push one back a little | Drawn from the draft's interval and each feed's `last_refresh`; off draws nothing but a note. |
 | Settings › Webhooks: URLs in the list | Webhook URLs often carry a token (Discord, Sonarr's API key) | The list shows the origin and "/…"; the full URL only in its edit field (rule 6). |
 | Settings › Webhooks: "Redeliver", "Payload of the last finished" | Deliveries kept their result only; `GET /webhooks/{id}/deliveries/{delivery}` and `.../redeliver` (added for the UI) keep and resend the payload | Redeliver on failed rows (once, same delivery id); the payload of the newest delivery that is not a test, else the test. |
@@ -695,7 +584,7 @@ These are the known differences. Resolve each as noted, never by faking.
 | Settings › Security: cookie values "9f3c…e1" | `GET /app/cookies` has the values, often passkeys | Values longer than 6 characters are cut; the full value never shows once added. |
 | Settings › Statistics: "97% of peers located by GeoIP", "146 of 148 peers matched to an AS right now" | Live peers are per torrent (an N+1); `GET /stats/geo` has peer traffic by country | "of peer traffic located, last day" from the country rows; the ASN count is left out. |
 | Settings › Statistics: "112 torrents with history · 100 removed" | `removed` in `GET /stats` (added for the UI) | As shown. |
-| Settings › Statistics: removed history "Review", "21.9 MB of the database" | No size per torrent; the statistics screen is W6 | "Delete all" (`DELETE /stats/removed`, added for the UI); no size, and no Review until W6. |
+| Settings › Statistics: removed history "Review", "21.9 MB of the database" | No size per torrent | "Delete all" (`DELETE /stats/removed`, added for the UI); no size. Review is left out: no screen for it was built (a removed torrent's history opens from the palette, in Timeline). |
 | Settings › Statistics: GeoIP, no download in the design | `POST /app/geoip/download` (ADR 0009, maintainer decision 2026-09-27): DB-IP Lite's country and ASN files on request | A "DB-IP Lite" row with Download (Update once DB-IP's files are loaded; held while the page has unsaved changes, which a download's new settings would replace), and the same button in Stats › Peers & geo when nothing places peers. DB-IP's credit ("IP Geolocation by DB-IP", CC BY 4.0, both linked) wherever their data is shown: that row, the Peers tab, Stats › Peers & geo, About. |
 | Settings › Statistics: GeoIP "Reload now", "last read Sep 16 04:12" | Files are re-read when they change (checked every 2 s); `loaded` on each database (added for the UI) | No reload button (it would change nothing); "read" with its time. |
 | Settings › About: "up to date" | No update check (rule 5) | Left out. |
@@ -741,7 +630,7 @@ These are the known differences. Resolve each as noted, never by faking.
 | Stats › Trackers: "4 + DHT trackers doing work" | The `null` row is torrents with no working tracker, whatever found their peers | "4 + no tracker" when those moved data too. |
 | Stats › Trackers: "private · 4 torrents · passkey", "slow · 4.8 s", "6 min median announce interval" | `GET /torrents/trackers` (added for the UI): torrents on each host now, private ones, and the median `interval` and `response_time` of its trackers' latest replies (urtorrent 0.14) | "private · 4 torrents" (or public, or both); no passkey hint, since the UI never reads URLs here. "slow · 4.8 s" when a host takes 2 s or more to answer; the middle host's interval under "announces answered". The fifth figure is the hosts failing now. |
 | Stats › Trackers: "63 failed · 7 in a row", the error, "last try 08:05 · next in 22 min" | `GET /torrents/trackers` (added for the UI): the running torrents failing on a host, the latest error, the most failures in a row, since when, the last one; no next announce per host | As shown without the next announce, with "failing since" and the torrents named as links. URLs in an error show as their host (rule 6). |
-| Stats › Trackers: "Reannounce", "Edit URL", "Remove from torrent" | `POST /torrents/trackers/reannounce` (that host alone, urtorrent 0.14); `POST /torrents/trackers/remove` by host (added for the UI) | Reannounce, and Remove after a question. Edit URL is left out: a URL is per torrent (passkeys differ), and editing one is W3; the torrent's link opens its detail. |
+| Stats › Trackers: "Reannounce", "Edit URL", "Remove from torrent" | `POST /torrents/trackers/reannounce` (that host alone, urtorrent 0.14); `POST /torrents/trackers/remove` by host (added for the UI) | Reannounce, and Remove after a question. Edit URL is left out: a URL is per torrent (passkeys differ); the torrent's link opens its detail, whose Trackers tab edits it. |
 | Stats › Trackers: "6 torrents have no working tracker … Add trackers to 6 torrents" | `POST /torrents/trackers` (added for the UI); `add_trackers` and the fetched list in `GET /app` | Offered for the public ones only (rule 4), with the trackers meant for new public torrents; without any, a pointer to Settings › Downloads. The peer sources named are the ones switched on. |
 | Stats › Trackers: "Announces · 7 days", "GB per day", "Torrents" column | `/stats/trackers?series=true` (added for the UI): hours when kept for the range, else days | Per hour over a day or two, else per day of the viewer (hours grouped), or per UTC day when only days are kept. Torrents are those on the host now. |
 | Stats › Peers & geo: live peers of all torrents, "148 connected", "12 torrents · 163 connections" | `GET /transfer/peers` (added for the UI): the peers of the torrents moving data, as sampled every 10 s, or all of one torrent's now; the live store's `peers` for the count | The header counts every connection; the map, the list and the figures hold the sampled peers ("of 4 torrents moving data · sampled 7s ago"), or all of the torrent picked. |
@@ -807,18 +696,19 @@ These are the known differences. Resolve each as noted, never by faking.
 
 ### 6.5 Designs wanted
 
-What the UI has no mockup for; each was built in the same language (6.4 says how) and is worth
-a designer's look:
+The one list of what the UI has no mockup for. Each was built in the same language (6.4 says
+how) and is worth a designer's look:
 
 - **Tablets** (640–1279px): the detail panel and the sidebar as sheets over the list.
 - **Phones beyond the two designed screens**: Stats, RSS, Log, Settings and the dialogs only
   reflow (6.3).
 - **Built without a design:** the share limits dialog (the Options rows), managing categories
-  and tags from the sidebar, piece hashes, the connection bar, the page error card, the
-  first-run setup card, the instance menu (with the theme, accent, units and notifications),
-  the one-line prompt and confirm dialogs, the speed limits popover, the keyboard shortcuts,
-  the drop overlay, the add dialog's download path, a peer's menu, a tracker's endpoints, and
-  the DB-IP Lite download with DB-IP's credit.
+  and tags from the sidebar, the RSS sidebar's "+" and row menus, piece hashes, the connection
+  bar, the page error card, the first-run setup card, the instance menu (with the theme,
+  accent, units and notifications), the one-line prompt and confirm dialogs, the speed limits
+  popover, the keyboard shortcuts, the drop overlay, magnet links clicked in the browser, the
+  add dialog's download path, the tab's title, a peer's menu, a tracker's endpoints, and the
+  DB-IP Lite download with DB-IP's credit.
 
 ## 7. Testing
 
@@ -833,9 +723,10 @@ that breaks the UI fails here, in the daemon's own PR.
 ### 7.2 Unit tests
 
 Vitest, in Node. They cover the pure logic: the live-store reducer, filters, grouping, sorting,
-formatting and parsing of units, the state mapping and error handling. Fixtures are typed with
-`satisfies components["schemas"][...]`, so they cannot drift from the schema. Components get no
-tests under DOM emulation. Their behaviour is tested in the browser (7.4).
+formatting and parsing of units, the state mapping and error handling. Fixtures
+(`src/test/fixtures.ts`) are typed with `satisfies Schemas["..."]` (the alias in
+`api/client.ts`), so they cannot drift from the schema. Components get no tests under DOM
+emulation. Their behaviour is tested in the browser (7.4).
 
 ### 7.3 Coverage
 
@@ -847,35 +738,38 @@ the UI uses the event stream instead. This is the UI's version of charter rule 3
 
 Playwright, in `e2e/`.
 
-- **Real daemons.** `npm run e2e` first runs `cargo build -p urtorrentd` and `vite build`; the
-  harness (`e2e/daemon.ts`) builds nothing itself. Each test that asks for one gets its own
+- **Real daemons.** `npm run e2e` builds the UI and the daemon first (section 9); the harness
+  (`e2e/daemon.ts`) builds nothing itself. Each test that asks for one gets its own
   `urtorrentd` from `target/debug/`, with:
-  - a temporary data directory;
+  - `--data-dir <tmp>/data` in a temporary directory;
   - `--api-listen 127.0.0.1:<free port>`;
+  - `--initial-settings <file.json>` (next bullet);
   - `--web-ui dist`;
-  - first-start settings (next bullet).
+  - `--geoip-mirror`, pointing at a local stand-in for DB-IP's downloads.
 
-  The harness waits for `GET /auth/status` to answer, sets the credentials with
-  `POST /auth/setup` and talks to the API with an API key; at the end it stops the daemon with
-  SIGTERM (the shutdown endpoint's path; SIGKILL if it hangs). The browser opens the daemon's
-  own origin, so it gets the same files, headers, CSP and fallback as production.
-- **Offline.** The first-start settings listen on `127.0.0.<n>`, turn DHT and LSD off with no
-  bootstrap nodes, and save into the temporary directory, as `crates/urtorrentd/tests/common`
-  does. A fixture routes every browser request and fails the test on any host that is not
-  loopback.
-- **First-start settings.** The defaults turn the DHT on with public bootstrap nodes, so every
-  daemon starts with `--initial-settings <file.json>` (W0): settings for the first start of a
-  data directory, ignored once settings are stored. Never start a test daemon without it.
-- **Real transfers.** A second daemon (the seeder, on `127.0.0.<n+1>`) is driven only through
-  its API. The UI's daemon downloads from it, with the seeder's address given through
-  `POST /torrents/peers`, since there is no DHT or tracker. The assertions go through the UI:
-  progress reaches 100 %, the state becomes Seeding, the pieces chart is full, and the counters
-  equal the API's. `e2e/torrent.ts` generates the `.torrent` files (random data, bencode,
-  SHA-1). Tests never download anything from outside.
-- **Sign-in.** One spec drives first-run setup, sign-in, wrong passwords, bans and session
-  expiry through the UI. All other specs start signed in: the fixture calls `POST /auth/setup`
-  and hands the cookie to the browser context. Never use `api_bypass_local_auth` in UI tests,
-  because it hides auth bugs.
+  The harness waits for `GET /auth/status` to answer, then `Daemon.setup()` sets the
+  credentials with `POST /auth/setup` and creates an API key, which the harness's API calls
+  use. At the end it stops the daemon with SIGTERM (the shutdown endpoint's path; SIGKILL if it
+  hangs). The browser opens the daemon's own origin, so it gets the same files, headers, CSP
+  and fallback as production.
+- **First-start settings, offline.** The defaults turn the DHT on with public bootstrap nodes,
+  so every daemon starts with `--initial-settings` (W0): settings for the first start of a data
+  directory, ignored once settings are stored. Never start a test daemon without it. They
+  listen for peers on `127.0.<10 + worker % 200>.<counter % 250 + 2>` (the counter counts the
+  daemons the worker started), turn DHT and LSD off with no bootstrap nodes, and save into the
+  temporary directory, as `crates/urtorrentd/tests/common` does. A fixture routes every browser
+  request and fails the test on any host that is not loopback.
+- **Real transfers.** A second daemon (the `seeder` fixture, on the next peer address) is
+  driven only through its API. The UI's daemon downloads from it, with the seeder's address
+  given through `POST /torrents/peers`, since there is no DHT or tracker. The assertions go
+  through the UI: progress reaches 100 %, the state becomes Seeding, the pieces chart is full,
+  and the counters equal the API's. `e2e/torrent.ts` generates the `.torrent` files (random
+  data, bencode, SHA-1). Tests never download anything from outside.
+- **Sign-in.** One spec drives first-run setup (the `freshDaemon` fixture), sign-in, wrong
+  passwords, bans and session expiry through the UI. All other specs start signed in: the
+  `signedIn` fixture calls `POST /auth/login` through `page.request`, so the browser context
+  holds the session cookie. Never use `api_bypass_local_auth` in UI tests, because it hides
+  auth bugs.
 - **Assertions** use roles, labels and text (`getByRole`, `getByLabel`). Use `data-testid` only
   where nothing accessible fits, and never select on Tailwind classes. Use web-first assertions
   and `expect.poll` with timeouts that fit the work, never a fixed sleep.
@@ -883,27 +777,25 @@ Playwright, in `e2e/`.
 - **Themes and phones.** The browser prefers the dark scheme (`playwright.config.ts`), so the
   suite runs in the dark theme; the palette spec switches to light and runs axe on every kind
   of page, and the phone spec checks that no page is wider than 390px.
-- **Scale** (`e2e/scale.spec.ts`, tagged `@slow`, W7; runs only with `SLOW=1`). A real daemon
-  gets 10 000 torrents (`BENCH_N`) through the API: magnets that wait in `metadata` (no
-  trackers, DHT off) and `.torrent` files without content, a third stopped, in categories and
-  tags. The spec measures in the page, from the input to the frame that shows the result:
-  loading, scrolling, filters, sorting, search, one torrent, choosing all, the palette, the
-  idle cost of the live stream (main thread, events and bytes), memory and the bundle. It
-  writes `target/bench/web-<N>.json`. Run it against a release daemon. It asserts no budgets
-  yet.
+- **Scale** (`e2e/scale.spec.ts`, tagged `@slow`, W7; runs only with `SLOW=1`, section 9). A
+  real daemon gets 10 000 torrents (`BENCH_N`) through the API: magnets that wait in
+  `metadata` (no trackers, DHT off) and `.torrent` files without content, a third stopped, in
+  categories and tags. The spec measures in the page, from the input to the frame that shows the
+  result: loading, scrolling, filters, sorting, search, one torrent, choosing all, the palette,
+  the idle cost of the live stream (main thread, events and bytes), memory and the bundle. It
+  writes `target/bench/web-<N>.json`. Run it against a release daemon. It asserts no budgets yet.
 - **Serving.** Specs cover:
   - the fallback, the cache headers and the CSP (no violation reported on any screen);
   - the whole app behind a local forwarding proxy that acts like Caddy (it keeps `Host` and adds
     `X-Forwarded-*`);
   - CORS from a second loopback origin (5.3).
 - **Browsers.** Chromium runs on every CI run. Firefox and WebKit run in the full suite
-  (`npm run e2e:all`) before a release.
+  before a release (section 9).
 - **Menus hand focus back.** A Kobalte menu returns focus to its trigger when its closing
   animation ends. Before typing into something else, wait for the menu to be gone
   (`expect(page.getByRole("menu")).toHaveCount(0)`), or the keys land on the trigger.
 - **Needs.** io_uring (like the daemon's own tests), Rust, and Playwright's browsers, installed
-  once with `npx playwright install chromium`. That download happens at install time, never
-  during a test.
+  once (section 9). That download happens at install time, never during a test.
 
 ### 7.5 Daemon tests
 
@@ -946,15 +838,16 @@ like every other daemon feature.
   `http://127.0.0.1:8080`) and keeps `Host` (5.3).
 - `npm run generate`: generate the types from `../openapi.json`.
 - `npm run check`: generate, then `tsc`, eslint, `prettier --check`, vitest and `vite build`.
-- `npm run e2e`: `vite build`, `cargo build -p urtorrentd`, then Playwright in Chromium.
+- `npm run e2e`: `vite build`, `cargo build -q -p urtorrentd`, then Playwright in Chromium.
   `npm run e2e:all` runs Firefox and WebKit too. Install the browsers once with
   `npx playwright install chromium` (add `--with-deps` on a fresh machine).
-- The scale benchmark (7), after `npm run build` and `cargo build --release -p urtorrentd`:
+- The scale benchmark (7.4), after `npm run build` and `cargo build --release -p urtorrentd`:
   `URTORRENTD_BIN=../target/release/urtorrentd SLOW=1 npx playwright test --grep @slow
   --project=chromium` (`BENCH_N=1000` for fewer torrents).
 - From the repository root:
   - `cargo xtask web`: `npm ci` if needed, then check and e2e.
-  - `cargo xtask dist`: build the UI, then `cargo build --release --features web-ui`.
+  - `cargo xtask dist`: build the UI, then `cargo build --release -p urtorrentd --features
+    web-ui`.
 
   `cargo xtask check` stays free of Node.
 - CI: the `web` job (Node 22, the Rust toolchain, Playwright's Chromium; the library comes
@@ -972,87 +865,42 @@ like every other daemon feature.
 
 Each milestone ends with its end-to-end tests green.
 
-- **W0 Foundations** (done).
-  - Daemon: `--initial-settings`; serving the UI (5.1: `--web-ui`, the `web-ui` feature,
-    headers, fallback) with ADR 0008; `api_cors_origins`, and the `Secure` cookie behind a
-    trusted HTTPS proxy (5.2, 5.3); the settings rows updated; README deployment notes with a
-    Caddyfile.
-  - UI: the package, tokens, fonts, solid-ui primitives, generated types, the client, lint and
-    unit tests; the E2E harness with a first spec (the app loads from the daemon, offline); the
-    CI job and the xtask commands.
-- **W1 Sign-in and shell** (done). Setup, sign-in, sign-out, expiry and bans. The shell (sidebar,
-  navigation, footer, instance menu). The live store with its connection states.
-- **W2 Torrents** (done). The virtualized, grouped list. Filters with counts (status,
-  category, tag, tracker). Search. Selection and bulk actions. The detail panel as designed.
-  The add dialog as designed: links, `.torrent` files or a watch folder, the daemon's preview
-  of each source with per-file choices, and every option. Delete. Keyboard shortcuts.
-- **W3 One torrent in depth** (done). Files (tree, priorities, rename). Peers (with GeoIP).
-  Trackers and web seeds (edit). Pieces. Limits and share limits. Location and download path.
-  Managing categories and tags. Built: the detail panel's tabs as designed: Files (the tree with
-  priorities, renames, the pieces each file spans), Peers, Trackers and web seeds (editing,
-  the trackers new public torrents get), History and Options (name, comment, limits, share
-  limits, behaviour, category, tags, save and download paths, as one draft); several torrents
-  at once (the panel, the selection bar, the context menu and keys); the move, remove, share
-  limits and folder dialogs; piece hashes; categories and tags made, edited and removed from
-  the sidebar.
-- **W4 Settings.** Every settings group, security (credentials, API key), webhooks, watch
-  folders and the alternative-limits schedule. Transfer limits and the alternative-limits
-  switch. The main and peer logs. Done so far: the settings navigation and frame, the restart
-  banner (`POST /app/restart`), Downloads (locations with the path a new torrent takes,
-  category paths, add options, skipped file names, `.torrent` exports, trackers for new public
-  torrents with the fetched list), Speed (global and alternative limits, the switch, the
-  schedule with its week chart, the connection budget) and Queue & share limits (the limits
-  with the slots they hand out and the queue's order, reordered by dragging, share limits with
-  the seeding torrents closest to one), Connection (reachability, listening, interfaces,
-  transports), BitTorrent (discovery with the last day's traffic by source, bootstrap routers,
-  encryption, identity), Banned addresses (the list, bans per day, the peer log), Watch folders
-  (each folder's options and standing, the files picked up), RSS (polling with the next hour
-  planned, rules and feeds) and Webhooks (health, editing, deliveries with redelivery, the
-  payload), Statistics & GeoIP (recording and retention with what is on disk, the opt-in scrape,
-  removed torrents' history, the GeoIP files), Security & API (how a request is seen, the login
-  and the API key, sessions and sign-in bans, the HTTP layer, the cookie jar), Engine (the
-  machine, tuning beside what runs, restarting now or when idle) and About (the instance,
-  diagnostics, deleting statistics, shutting down) as designed.
-  The Log screen: the main log by day with its levels and topics, one entry with its torrent,
-  following, export.
-- **W5 RSS** (done). Folders, feeds, articles, and rules with their matches: the RSS screen as
-  designed, with feeds, folders and rules managed from its sidebar and a rule edited in the
-  designed dialog beside a dry run of the rule as typed.
-- **W6 Statistics.** Traffic over time, seeding days, rankings, the timeline, places,
-  breakdowns and idle seeds (uPlot). Done so far: the Overview (the range's traffic against
-  the one before, the transfer rate, top torrents, traffic by category, peers by client or
-  another breakdown, idle seeds with Reclaim, the newest events), Trackers (each host's
-  traffic and announces beside its torrents now, traffic by tracker, announce problems with
-  what can be done about them), Peers & geo (the world map from the daemon to its peers' countries,
-  now or over a day or a week; the peers to ban or add; by country or network; how peers
-  connect), Idle seeds (size against value; the least valuable first, to stop, keep or remove;
-  CSV) and Timeline (events by kind, lanes per torrent, the feed by day, what needs attention;
-  CSV) as designed. A torrent's own history (its seeding days and last day's traffic) is the
-  detail panel's History tab (W3).
-- **W7 Finish.** The ⌘K palette, small screens, the full browser matrix, and the 10 000-torrent
-  budgets. Done so far: the palette as designed (torrents, removed ones, files across torrents,
-  commands and their keys); the light theme; the phone list and torrent as designed with the
-  tab bar, and every other page fitted to a phone (6.3); the connection bar and the page error
-  card; the scale benchmark (7), whose first run (2026-09-27) made the daemon send clock-only
-  row changes once a minute. Left: the full browser matrix, and budgets asserted from the
-  benchmark's numbers.
+- **W0 Foundations** (done). Daemon: `--initial-settings`, serving the UI (5.1) with ADR 0008,
+  `api_cors_origins` and the `Secure` cookie (5.2, 5.3), the settings rows and deployment notes
+  (`docs/settings.md`). UI: the package, tokens, primitives, client, lint, unit tests, the E2E
+  harness, the CI job and the xtask commands.
+- **W1 Sign-in and shell** (done). Setup, sign-in, sign-out, expiry and bans; the shell; the
+  live store with its connection states.
+- **W2 Torrents** (done). The virtualized, grouped list with filters, counts and search;
+  selection and bulk actions; the detail panel; the add dialog with previews; delete; keys.
+- **W3 One torrent in depth** (done). The detail tabs (Files, Peers, Trackers, History,
+  Options), several torrents at once, the move, remove, share limits and folder dialogs, piece
+  hashes, and categories and tags managed from the sidebar.
+- **W4 Settings** (done). Every settings page (Downloads to About, the peer log under Banned
+  addresses), the restart banner, and the Log screen.
+- **W5 RSS** (done). The RSS screen: feeds, folders, articles, and rules with the rule dialog
+  and its dry run.
+- **W6 Statistics** (done). The Stats reports: Overview, Trackers, Peers & geo, Idle seeds and
+  Timeline (uPlot). A torrent's own history is the detail panel's History tab.
+- **W7 Finish.** Done: the ⌘K palette, the light theme, the phone screens with every other page
+  fitted to a phone (6.3), the connection bar and the page error card, and the scale benchmark
+  (7.4), whose first run (2026-09-27) made the daemon send clock-only row changes once a
+  minute. Left:
+  - the full browser matrix;
+  - the 10 000-torrent budgets, asserted from the benchmark's numbers.
 
 ## 11. Decisions and open questions
 
-### Decided by the maintainer (2026-09-24)
+### Decided
 
-- **Stack:** SolidJS, shadcn components, Tailwind, Lucide and Vite, with small libraries added
-  as needed (section 2).
-- **End-to-end tests are required** (section 7).
-- **The daemon serves the UI** with axum. Release builds embed it, and `--web-ui <dir>` serves
-  a directory instead. Caddy or another reverse proxy terminates TLS. The daemon handles CORS
-  (section 5).
-- **Paths:** the UI is at `/` and the API at `/api/v1`. Mounting under a sub-path is not
-  supported.
-- **Sign-in shows no name or version.** The sign-in and setup screens never show the instance
-  name or the daemon version, and `GET /auth/status` stays as it is.
+- **By the maintainer, 2026-09-24:** the stack (section 2), required end-to-end tests
+  (section 7), the daemon serving the UI behind a TLS proxy with CORS of its own (section 5),
+  and the UI at the root of its host (5.2).
+- **Sign-in shows no name or version** (maintainer, 2026-09-24). The sign-in and setup screens
+  never show the instance name or the daemon version, and `GET /auth/status` stays as it is.
+- **Theme.** Dark, light or the system's (the default), as the viewer picks (`lib/theme.ts`,
+  6.2).
 
 ### Still open (defaults assumed)
 
-- **Theme.** Dark and light are designed. Default: follow the system; the viewer can pick one.
 - **Solid 2.0.** Default: stay on 1.9 until its ecosystem moves.

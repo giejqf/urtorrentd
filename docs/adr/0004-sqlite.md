@@ -28,15 +28,20 @@ content is synced before the data is returned.
 - **Schema** (version in `PRAGMA user_version`, migrated on open):
   - `state (key, value)`: settings, credentials (hashes only), totals as
     JSON; the DHT state as the library's bytes.
-  - `categories (name, save_path, download_path)`, `tags (name)`.
+  - `categories (name, save_path, download_path)`, `tags (name)`; version
+    3 adds categories' `share_limits`.
+  - Version 2 adds RSS (`rss_folders`, `rss_feeds`, `rss_articles`,
+    `rss_rules`) and `client_data`.
   - `torrents (hash, record, metainfo, resume, added)`: the daemon's record
     as JSON (serde defaults make new fields cheap), the `.torrent`, the
     library's resume data (opaque; never parsed here), insertion order.
 - **Resume data is caller-held.** The daemon saves a torrent's resume data
   when the library says it changed, at most once a minute (the engine's own
-  cadence in file mode), at once after a check and when a download finishes,
-  and for every torrent at shutdown (a queue move changes other torrents'
-  positions without marking them). On restart it is passed back with
+  cadence in file mode), when its transfer counters moved (the library does
+  not mark those), at once after a check and when a download finishes, and at
+  shutdown for every torrent that changed since its last save (since urtorrent
+  0.13.2 a queue move marks every torrent it shifts). On restart it is passed
+  back with
   `AddTorrent::resume_data`.
 - **One transaction per change set.** Records are marked dirty in memory and
   written together: a bulk action over thousands of torrents is one commit;
@@ -58,5 +63,5 @@ content is synced before the data is returned.
 - After `kill -9` the last minute of resume data may be missing: the
   library then starts from the older data, which never claims more than is on
   disk (it may download a piece again), exactly as with its own files.
-- Planned features with structured state (RSS feeds and rules, watch
-  folders, client data) get tables in the same database.
+- Later features with structured state got tables in the same database
+  (RSS, client data); watch folders and webhooks are settings and state.

@@ -3,28 +3,24 @@
 `GET /api/v1/settings` returns every setting; `PATCH /api/v1/settings` changes
 the fields it names (`null` where a field allows it: unlimited, off, default).
 The schema documents each field (`Settings`, `SettingsPatch` in
-[`openapi.json`](../openapi.json)). Most apply at once; the engine-tuning ones
-(`dht_bootstrap_nodes`, `hash_threads`, `max_open_files`, `max_checking`,
-`piece_extent_affinity`, `max_concurrent_announces`, `disk_thread`,
-`zero_copy_send`) apply at the next start and are listed in
-`GET /api/v1/app` → `restart_required` until then; `POST /api/v1/app/restart`
-restarts the daemon in place to apply them.
+[`openapi.json`](../openapi.json)). Most apply at once. These apply at the next
+start: `dht_bootstrap_nodes`, `hash_threads`, `max_open_files`, `max_checking`,
+`piece_extent_affinity`, `max_concurrent_announces`, `disk_thread` and
+`zero_copy_send`. Until then they are listed in `GET /api/v1/app` →
+`restart_required`, and `POST /api/v1/app/restart` restarts the daemon in place
+to apply them. `random_port` picks a new `listen_port` at every start.
 
 Units are uniform: limits in **bytes per second** (qBittorrent's preferences
 use KiB/s), times in seconds, `null` for unlimited.
 
-The daemon's own start-up options are not settings: the data directory
-(`--data-dir`, `URTORRENTD_DATA_DIR`) and the API address (`--api-listen`,
-`URTORRENTD_API_LISTEN`, default `127.0.0.1:8080`).
-
-The web UI is a start-up option too: the build in the binary, `--web-ui
-<dir>` (`URTORRENTD_WEB_UI`) for another one, `--no-web-ui` for none (see
-[below](#the-web-ui-and-reverse-proxies)).
+The daemon's start-up options (data directory, API address, web UI) are not
+settings: see [install.md](install.md#run).
 
 `--initial-settings <file>` (`URTORRENTD_INITIAL_SETTINGS`) gives a new data
-directory its first settings: a JSON object of the fields above, applied over
+directory its first settings: a JSON object of `Settings` fields, applied over
 the defaults, so the daemon never starts once with the defaults (the DHT
-with public bootstrap nodes, for example). Unknown fields are errors. Once
+with public bootstrap nodes, for example). Without it, a new data directory
+gets the defaults and a random `listen_port` (20000 to 64999). Unknown fields are errors. Once
 the data directory has settings the file is ignored (it is still read, and a
 file that does not parse stops the start). For an offline test daemon:
 
@@ -85,11 +81,12 @@ PATCH /api/v1/settings
 {"alt_speed_schedule": {"from": "08:00", "to": "23:30", "days": ["mon", "tue", "wed", "thu", "fri"], "time_zone": "Europe/Berlin"}}
 ```
 
-Inside the window `alt_download_limit` / `alt_upload_limit` are in force.
+Inside the window `alt_download_limit` / `alt_upload_limit` are in force
+(`alt_speed_enabled` is `true`).
 The scheduler switches them at the window's start and end (and at the first
 look after a start or a schedule change); a switch by hand
 (`PUT /transfer/alt-speed`) holds until the next boundary, as in
-qBittorrent. A window that ends before it starts (`22:00` to `06:00`) runs
+qBittorrent (so does `PATCH /settings {"alt_speed_enabled": ...}`). A window that ends before it starts (`22:00` to `06:00`) runs
 past midnight and belongs to the day it starts on. Times are local to
 `time_zone` (an IANA name; `null` = the system's zone) and follow daylight
 saving.
@@ -111,16 +108,18 @@ Once added it is renamed to `<name>.added` (or deleted with
 `"after_add": "delete"`); a file that cannot be added is renamed to
 `<name>.rejected` and the reason is in the log. A torrent already in the
 session counts as added. Folders are looked at every 2 seconds; with
-`recursive`, subfolders up to 8 levels deep (hidden entries and symbolic
-links to folders are skipped).
+`recursive`, subfolders too, 7 levels below the folder (hidden entries and
+symbolic links to folders are skipped). At most 32 folders, each an absolute
+path, none twice.
 
 ## RSS
 
 - `rss_enabled` (`false`): refresh the feeds by themselves.
 - `rss_refresh_interval` (`1800`): seconds between refreshes of a feed
   without its own `refresh_interval` (at least 60).
-- `rss_fetch_delay` (`2`): seconds between two requests to one host.
-- `rss_max_articles` (`50`): articles kept per feed.
+- `rss_fetch_delay` (`2`): seconds between two requests to one host (at
+  most 3600).
+- `rss_max_articles` (`50`): articles kept per feed (1 to 5000).
 - `rss_auto_download` (`false`): run the download rules
   ([api.md](api.md#rss)).
 - `rss_download_repacks` (`true`): a smart filter takes a REPACK or PROPER
@@ -159,7 +158,9 @@ and, if it has no autonomous systems, `geoip_asn_database` at an ASN one:
 | [IPinfo Lite](https://ipinfo.io/lite) (free account) | `ipinfo_lite.mmdb` | `null` (it has both) | CC BY-SA 4.0 |
 
 A city database works too (only the country is read) but takes more memory.
-Paths are absolute and checked when set (`400` if the file cannot be read).
+Paths are absolute. A path changed through `PATCH /settings` is checked at
+once (`400` if the file cannot be read); at start, an unreadable file is a
+warning in the log.
 The file is re-read when it changes, so a monthly update is a replace
 (write a new file and rename it over the old one); a file that cannot be
 read keeps the database loaded before. `GET /app` → `geoip` shows each
@@ -196,8 +197,8 @@ and these settings:
 - `api_allowed_hosts`: the public name (`["torrents.example.com"]`).
 - `api_csrf_protection` needs nothing: it compares the `Origin`'s host and
   port with the request's, not the scheme, so TLS at the proxy is fine. It
-  applies to every state-changing request but those with the API key,
-  clients exempt from sign-in included.
+  applies to every state-changing request except those authenticated with
+  the API key; clients exempt from sign-in are checked too.
 - `POST /api/v1/auth/check` shows how the daemon sees a request through the
   proxy ([api.md](api.md#sign-in-and-security)).
 
@@ -217,10 +218,11 @@ with an API key.
 ## Coverage of qBittorrent 5.2.3's preferences
 
 Every key of the reference (`docs/reference/qbittorrent-5.2.3-preferences.txt`)
-has a row; `tests/coverage.rs` fails otherwise. **setting**: a field here.
-**fixed**: the library's behaviour, not configurable. **planned**: a daemon
-feature not built yet. **n/a**: a UI or platform concern with no meaning for
-an API daemon. **unsupported**: with the reason.
+has a row; `tests/coverage.rs` fails otherwise. **setting**: a field of
+`Settings`. **done**: offered another way (a start-up option, an endpoint).
+**fixed**: the library's behaviour, not configurable. **n/a**: a UI or
+platform concern with no meaning for an API daemon. **unsupported**: with
+the reason.
 
 | qBittorrent key | Status | Here / why not |
 |---|---|---|
@@ -237,12 +239,12 @@ an API daemon. **unsupported**: with the reason.
 | `alternative_webui_path` | done | `--web-ui <dir>` |
 | `announce_ip` | unsupported | not offered by the library (urtorrent quirks Q22) |
 | `announce_port` | unsupported | not offered by the library |
-| `announce_to_all_tiers` | fixed | all tiers, first working tracker per tier (urtorrent Q9) |
+| `announce_to_all_tiers` | fixed | all tiers, the first working tracker of each (qBittorrent's defaults) |
 | `announce_to_all_trackers` | fixed | as above |
 | `anonymous_mode` | unsupported | identity belongs to the profile: `identity` |
 | `app_instance_name` | setting | `instance_name` (shown in `GET /app`) |
 | `async_io_threads` | fixed | io_uring: one disk ring (`disk_thread`) |
-| `auto_delete_mode` | n/a | `.torrent` files arrive through the API; there is nothing to delete |
+| `auto_delete_mode` | setting | `watch_folders[].after_add` (`rename` to `.added`, or `delete`) |
 | `auto_tmm_enabled` | setting | `auto_management` |
 | `autorun_enabled` | done | webhooks: a webhook with the `finished` event ([ADR 0006](adr/0006-webhooks.md): no program is ever run) |
 | `autorun_on_torrent_added_enabled` | done | webhooks: a webhook with the `added` event |
@@ -260,7 +262,7 @@ an API daemon. **unsupported**: with the reason.
 | `checking_memory_use` | fixed | the page cache is the only cache |
 | `confirm_torrent_deletion` | n/a | a client UI concern |
 | `confirm_torrent_recheck` | n/a | a client UI concern |
-| `connection_speed` | fixed | library constant (10 dials at once) |
+| `connection_speed` | fixed | library constant (10 connection attempts at once per torrent) |
 | `current_interface_address` | setting | `listen_v4`, `listen_v6` |
 | `current_interface_name` | setting | `listen_interface` |
 | `current_network_interface` | setting | `listen_interface` (by name, `GET /app/interfaces`; followed as its addresses change, loopback only while it has none) |
@@ -376,7 +378,7 @@ an API daemon. **unsupported**: with the reason.
 | `recheck_completed_torrents` | setting | `recheck_on_completion` (after the move to the save path) |
 | `refresh_interval` | n/a | clients choose their polling interval |
 | `request_queue_size` | fixed | library |
-| `resolve_peer_countries` | setting | `geoip_database` (a database file you provide; countries on peers and in `/stats/geo`), `geoip_asn_database` |
+| `resolve_peer_countries` | setting | `geoip_database` (a database file, yours or DB-IP Lite's from `POST /app/geoip/download`; countries on peers and in `/stats/geo`), `geoip_asn_database` |
 | `resolve_peer_host_names` | unsupported | no reverse DNS for peers |
 | `resume_data_storage_type` | fixed | SQLite: resume data lives in the daemon's database (ADR 0004) |
 | `rss_auto_downloading_enabled` | setting | `rss_auto_download` |
@@ -388,7 +390,7 @@ an API daemon. **unsupported**: with the reason.
 | `rss_smart_episode_filters` | fixed | built-in episode patterns: `S01E02`, `S01E02-E03`, `1x02`, dates `2026-09-24` / `2026.09.24` |
 | `save_path` | setting | `save_path` |
 | `save_path_changed_tmm_enabled` | fixed | managed torrents follow the default save path |
-| `save_resume_data_interval` | fixed | the engine saves while torrents change and at shutdown |
+| `save_resume_data_interval` | fixed | the daemon saves a changed torrent's resume data at most once a minute, at once after a check or a finished download, and at shutdown |
 | `save_statistics_interval` | fixed | every minute and at shutdown |
 | `scan_dirs` | setting | `watch_folders` (each with its own add options; see [Watch folders](#watch-folders)) |
 | `schedule_from_hour` | setting | `alt_speed_schedule.from` (`HH:MM`) |
@@ -416,7 +418,7 @@ an API daemon. **unsupported**: with the reason.
 | `torrent_changed_tmm_enabled` | fixed | managed torrents move when their category changes |
 | `torrent_content_layout` | setting | `content_layout` (default of `options.content_layout`) |
 | `torrent_content_remove_option` | unsupported | removed content is deleted, not moved to a trash |
-| `torrent_file_size_limit` | fixed | 64 MiB for URL downloads |
+| `torrent_file_size_limit` | fixed | 64 MiB for URL downloads and watch folders; uploads through the API within the 96 MiB request body |
 | `torrent_stop_condition` | setting | `stop_condition` (default of `options.stop_condition`) |
 | `up_limit` | setting | `upload_limit` |
 | `upload_choking_algorithm` | fixed | one algorithm (library) |
@@ -428,8 +430,8 @@ an API daemon. **unsupported**: with the reason.
 | `use_unwanted_folder` | unsupported | skipped files' shared pieces go to the library's parts file |
 | `utp_tcp_mixed_mode` | fixed | the `transports` policy decides |
 | `validate_https_tracker_certificate` | fixed | always validated |
-| `web_ui_address` | setting | `--api-listen` |
-| `web_ui_api_key` | setting | `POST` / `DELETE /auth/api-key` |
+| `web_ui_address` | done | `--api-listen` |
+| `web_ui_api_key` | done | `POST` / `DELETE /auth/api-key` |
 | `web_ui_ban_duration` | setting | `api_ban_duration` |
 | `web_ui_clickjacking_protection_enabled` | fixed | always on: the UI's pages send `frame-ancestors 'none'` and `X-Frame-Options: DENY` |
 | `web_ui_csrf_protection_enabled` | setting | `api_csrf_protection` |
@@ -439,11 +441,11 @@ an API daemon. **unsupported**: with the reason.
 | `web_ui_https_cert_path` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy; the session cookie is `Secure` behind it |
 | `web_ui_https_key_path` | unsupported | no TLS in the daemon (maintainer decision 2026-09-24): terminate TLS in a reverse proxy; the session cookie is `Secure` behind it |
 | `web_ui_max_auth_fail_count` | setting | `api_max_auth_failures` |
-| `web_ui_port` | setting | `--api-listen` |
+| `web_ui_port` | done | `--api-listen` |
 | `web_ui_reverse_proxies_list` | setting | `api_trusted_proxies` (addresses or blocks) |
 | `web_ui_reverse_proxy_enabled` | setting | `api_trusted_proxies` not empty (`X-Forwarded-For`, `X-Forwarded-Host`, `X-Forwarded-Proto`) |
 | `web_ui_secure_cookie_enabled` | fixed | automatic: the session cookie is `Secure` when a trusted proxy says the client used HTTPS (`X-Forwarded-Proto: https`) |
 | `web_ui_session_timeout` | setting | `api_session_timeout` |
 | `web_ui_upnp` | unsupported | no port mapping |
 | `web_ui_use_custom_http_headers_enabled` | unsupported | as `web_ui_custom_http_headers` |
-| `web_ui_username` | setting | `PUT /auth/credentials` (first run: `POST /auth/setup`) |
+| `web_ui_username` | done | `PUT /auth/credentials` (first run: `POST /auth/setup`) |

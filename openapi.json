@@ -19276,7 +19276,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Reverse proxies (addresses or blocks, `10.0.0.0/8`) trusted to tell\nthe client's address (`X-Forwarded-For`) and host\n(`X-Forwarded-Host`); empty = none.",
+            "description": "Reverse proxies (addresses or blocks, `10.0.0.0/8`) trusted to tell\nthe client's address (`X-Forwarded-For`), host (`X-Forwarded-Host`)\nand scheme (`X-Forwarded-Proto`); empty = none.",
             "default": []
           },
           "api_allowed_hosts": {
@@ -19787,7 +19787,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Reverse proxies (addresses or blocks, `10.0.0.0/8`) trusted to tell\nthe client's address (`X-Forwarded-For`) and host\n(`X-Forwarded-Host`); empty = none."
+            "description": "Reverse proxies (addresses or blocks, `10.0.0.0/8`) trusted to tell\nthe client's address (`X-Forwarded-For`), host (`X-Forwarded-Host`)\nand scheme (`X-Forwarded-Proto`); empty = none."
           },
           "api_allowed_hosts": {
             "type": "array",
@@ -22142,7 +22142,7 @@
           },
           "recursive": {
             "type": "boolean",
-            "description": "Look in subfolders too (up to 8 levels; symbolic links to folders\nare not followed)."
+            "description": "Look in subfolders too (7 levels below the folder; symbolic links to\nfolders are not followed)."
           },
           "options": {
             "$ref": "#/components/schemas/AddOptions",

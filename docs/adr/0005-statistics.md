@@ -59,7 +59,7 @@ totals only), so there is no checklist entry to follow: the design is ours.
   `from`, `to` (bucket starts, inclusive) and `step`; without `step` the
   finest step kept for the whole range is used, capped at 10 000 buckets.
   Charts, and heatmaps binned in the viewer's time zone, are client work:
-  the daemon has no time-zone database and no UI (non-goal).
+  the bins depend on the viewer's zone, not the daemon's.
 - **Geolocation (0.6.0)**: `.mmdb` files the user provides (GeoLite2 or
   DB-IP Lite country and ASN databases, or IPinfo Lite with both), read into
   memory and re-read when the file changes; the daemon never downloads one

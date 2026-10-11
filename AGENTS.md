@@ -158,8 +158,11 @@ our endpoints are named in `docs/api.md`, which keeps the full, current table.
 Cargo.toml              workspace: crates/urtorrentd, xtask
 rust-toolchain.toml     the same pin as ../urtorrent (1.98.1, edition 2024)
 openapi.json            the generated API schema, committed (4.3, ADR 0003)
+crates/urtorrentd/
+  build.rs              embeds frontend/dist with the web-ui feature (ADR 0008)
 crates/urtorrentd/src/
   main.rs               CLI (run, passwd, openapi), tokio runtime, signals, shutdown order
+  lib.rs                the modules, for main.rs and the tests
   daemon/               the core: owns the urtorrent Session and the registry
     mod.rs              start / restore / shutdown, State and Entry, records, bulk selection
     add.rs              sources (base64, magnet, info-hash, URL) and the add pipeline
@@ -171,14 +174,15 @@ crates/urtorrentd/src/
     watched.rs          watch folders (scan_dirs)
     net.rs              cookie jar, tracker list from a URL, following listen_interface
     filesearch.rs       the file-path index behind the file search
+    suffix.rs           the incomplete-file suffix (4.7)
     events.rs           the single event pump (4.4)
     tick.rs             activity tracking, share limits, periodic flushes
   rss/                  RSS: feeds, articles, rules (mod.rs), SQL (db.rs), documents (parse.rs),
                         rule matching (rules.rs)
   api/                  axum handlers, one module per feature group; guard.rs = auth,
                         cors.rs = CORS for api_cors_origins
-  web.rs                the web UI's files at / (ADR 0008): built in (feature web-ui,
-                        build.rs embeds frontend/dist) or --web-ui <dir>
+  web.rs                the web UI's files at / (ADR 0008): built in (feature web-ui)
+                        or --web-ui <dir>
   model.rs              every request / response type (ToSchema)
   settings.rs           Settings / SettingsPatch from one field list, live apply
   store.rs              the SQLite database: schema, migrations, 0.1.0 import (ADR 0004)
@@ -192,7 +196,11 @@ crates/urtorrentd/src/
 crates/urtorrentd/tests/  API tests on real engines, restart / kill -9, statistics, schema, coverage
 sdk/typescript/         generates TypeScript types from openapi.json and type-checks a client
 frontend/               the web UI (SolidJS, Vite), a client of the API; its own AGENTS.md
-xtask/                  check, openapi, sdk
+xtask/                  check, openapi, sdk, web, dist, badges (section 7)
+README.md               short: what it is, quick start, links into docs/
+docs/install.md         requirements, options, first sign-in, data, systemd, HTTPS
+docs/development.md     commands, tests, changing the API, releases
+docs/badges/            the README's badges, made by badge-maker from the repository
 docs/api.md             our API: every endpoint, plus the checklist mapping (section 3)
 docs/settings.md        every qBittorrent preference key: our setting / fixed / unsupported
 docs/gaps.md            what the daemon needs from urtorrent and does not have yet
@@ -408,10 +416,11 @@ Everything persistent is in one SQLite database (recorded history is apart, in
   settings API has its own names and units (4.3). `Session::settings()` is the source of
   truth for library-side values.
 - Most library knobs change live (`set_listen`, `set_dht`, `set_profile`, limits, queue,
-  encryption, transports, PEX, LSD). The engine tuning row (`hash_threads`, `recv_ring`,
+  encryption, transports, PEX, LSD). The engine tuning row (`hash_threads`,
   `zero_copy_send`, `disk_thread`, `max_open_files`, `max_checking`,
-  `piece_extent_affinity`, `max_concurrent_announces`) is fixed per session. Persist it,
-  apply it at the next start, and say so in the API ("applies after restart").
+  `piece_extent_affinity`, `max_concurrent_announces`) and `dht_bootstrap_nodes` are fixed
+  per session (`settings::RESTART_FIELDS`). Persist them, apply them at the next start,
+  and say so in the API (`restart_required`).
 - Interface names are resolved by the daemon and passed as addresses (`listen_v4` /
   `listen_v6`). Port randomisation is picked by the daemon too (`docs/config.md`).
 - Settings the reference lacks are ours too, for example the identity profile (`native` /
@@ -540,7 +549,10 @@ second SQLite file: large, written every minute, disposable; `synchronous = NORM
    under it (`tests/rss.rs`); the scheduler and watch folders run on a real daemon
    (`tests/automation.rs`); search covers renames and removals (`tests/search.rs`);
    announces and web-seed requests leave from the listen address, before and after a
-   live change (`tests/binding.rs`).
+   live change (`tests/binding.rs`); the smaller settings and add options
+   (`tests/options.rs`); reannounces to one tracker or host (`tests/trackers.rs`); the
+   event stream over real TCP (`tests/events.rs`); serving the web UI, CORS and proxies
+   (`tests/web.rs`); DB-IP Lite downloads from a local mirror (`tests/geoip_download.rs`).
 4. **Schema** (`tests/openapi.rs`, `cargo xtask sdk`). The committed `openapi.json` is
    current, every `$ref` resolves, operation ids are unique, errors are typed; a
    TypeScript client generated from it type-checks, and wrong calls do not.
@@ -576,58 +588,22 @@ the lab passwordless `sudo`, `opentracker` and the cached oracle (run
 
 ## 6. Milestones
 
-Each milestone ends with its tests green. Status: **0.1.0 released (2026-09-23)** with D0 to
-D4 done except the alternative-limits scheduler, which moved to the later list. **0.2.0**
-moved persistence to SQLite and aligned with urtorrent 0.13 (error recovery, holding,
-piece priorities, address ranges, list-view fields). The "planned" rows of `docs/api.md`
-and `docs/settings.md` are the remaining work; `docs/gaps.md` has what is still open
-upstream. **0.3.0** added the incomplete-file suffix and verified staging downloads that
-move to their category's directory on completion. **0.4.0** pushes the sync diffs as
-server-sent events (4.6). **0.5.0** records statistics (4.11) and aligns with urtorrent
-0.13.2 (resume data saved when it changed, counters included). **0.6.0** locates peers
-(GeoIP) and records traffic by country and network. **0.7.0** breaks traffic down by
-peer client, source, transport, encryption, IP version and direction, and by category,
-tag and tracker; it adds tracker reliability, opt-in scrapes and the idle-seed report.
-**0.8.0** adds metadata previews and webhooks (run-on-completion as HTTP calls, ADR 0006).
-**0.9.0** adds the alternative-limits scheduler and watch folders, tested with urtorrent
-0.13.3. **0.10.0** adds RSS and the client data store. **0.11.0** does the remaining "planned"
-rows: every item of the checklist is now done or unsupported with its reason. **0.12.0**
-adds search: the list by name, category, tag, tracker host or info-hash prefix, and
-file names across torrents; it requires urtorrent 0.13.4, which closed the last open gap
-(HTTP trackers and web seeds leave from the listen address). **0.13.0** adds first-run
-setup: the first client chooses the credentials (ADR 0007). **0.14.0** adds the web UI
-(`frontend/`, ADR 0008), served by the daemon, with the API it needed; it requires urtorrent
-0.13.5 (the queue's slow flag in list rows, a queue position set in one call). **0.15.0**
-keeps sync small at 10 000 torrents: clock-only row changes once a minute, other changes in
-batches of 1000 (4.6), measured by the web UI's scale benchmark. **0.16.0** takes urtorrent
-from crates.io (0.14.2, which closed the last gaps: tracker reply intervals and response
-times, one tracker reannounced, check progress) and downloads DB-IP Lite when a client asks
-(ADR 0009), credited in the web UI.
+Each milestone ends with its tests green. Released: **0.1.0** (2026-09-23) to **0.16.0**
+(2026-09-27); `CHANGELOG.md` says what each one brought. Every item of the checklist is
+done or unsupported with its reason, and nothing in `docs/gaps.md` blocks it.
 
-- **D0 Foundations.** Workspace, CI, `xtask check`, the reference lists
-  (`docs/reference/`: endpoints and preference keys from the pinned build), the coverage
-  docs and their check, and ADR 0001 on API conventions (4.3).
-- **D1 Skeleton.** Config, `Session` lifecycle, signals and graceful shutdown, auth (login,
-  logout, sessions, API keys, bans, CSRF / Host), app info, persistence and restart of
-  torrents.
-- **D2 Torrents.** Add (file, magnet, URL), listing and detail (properties, files,
-  trackers, web seeds, piece states / hashes / availability, export), start, stop, force
-  start, delete, recheck, reannounce, file priorities, limits, queue moves, location,
-  renames, trackers, web seeds, peers, sequential.
-- **D3 Sync.** Incremental sync for torrents and peers, transfer info and limits, logs,
-  peer bans.
-- **D4 Frontend policies.** Categories, tags, automatic torrent management, share limits,
-  alternative limits, download path, stop conditions, content layout, auto-added trackers
-  (never on private torrents), settings coverage. **Released as 0.1.0.**
-- **Analytics** (4.11, the plan of 2026-09-23): 0.5.0 history and seeding days (done);
-  0.6.0 geolocation (country and ASN on live peers and in history; done); 0.7.0 breakdowns,
-  tracker reliability, idle-seed report, opt-in scrape for completed-download counts (done).
-  Later: data-usage caps (needs wire-level counters upstream), Prometheus `/metrics`.
-- **Web UI** (the plan of 2026-09-24): milestones W0 to W7 in `frontend/AGENTS.md`. W0
-  changed the daemon too: `--initial-settings` (for offline end-to-end tests), serving the
-  UI, and a CORS allowlist. Released in 0.14.0 with W0 to W6 done; W7 has the palette, the
-  light theme and phones, and still lacks the full browser matrix and the 10 000-torrent
-  budgets.
+- **Done.** D0 foundations (workspace, CI, the reference lists, the coverage docs and
+  their check, ADR 0001), D1 skeleton (config, `Session` lifecycle, shutdown, auth,
+  persistence), D2 torrents, D3 sync, D4 frontend policies: released as 0.1.0. Then
+  SQLite (0.2.0), the incomplete-file suffix (0.3.0), server-sent events (0.4.0),
+  statistics, GeoIP and breakdowns (0.5.0 to 0.7.0, ADR 0005), previews and webhooks
+  (0.8.0), the scheduler and watch folders (0.9.0), RSS and client data (0.10.0), the
+  last checklist items (0.11.0), search (0.12.0), first-run setup (0.13.0), the web UI
+  (0.14.0, ADR 0008), sync at 10 000 torrents (0.15.0), urtorrent from crates.io and
+  DB-IP Lite on request (0.16.0, ADR 0009).
+- **Next.** Web UI W7: the full browser matrix and the 10 000-torrent budgets
+  (`frontend/AGENTS.md` section 10). Lab scenarios (`xtask it`, 5.5). Prometheus
+  `/metrics`. Data-usage caps, which need wire-level counters upstream (`docs/gaps.md`).
 - **Not planned** (maintainer decision, 2026-09-24): e-mail notifications (webhooks
   notify) and HTTPS in the daemon (TLS belongs to a reverse proxy). What else the
   checklist marks unsupported stays so for the reasons given there.
@@ -638,15 +614,17 @@ times, one tracker reannounced, check progress) and downloads DB-IP Lite when a 
 - Rust stable, edition 2024, the same `rust-toolchain.toml` pin as `../urtorrent`.
   Workspace lints as in the library: `unsafe_code = "forbid"`, `missing_docs = "deny"` on
   library code, clippy `unwrap_used` / `expect_used` / `panic` denied (tests excepted).
-- Errors: one `ApiError` enum (`thiserror`) rendered as 4.3 says. `anyhow` only in `main`
-  bootstrap and `xtask`.
+- Errors: one `ApiError` enum (`thiserror`) rendered as 4.3 says. `anyhow` only in
+  `xtask`.
 - Logging via `tracing`, no `println!` (except the temporary-password line at startup).
   Daemon events go through `Logs::log`, which feeds `GET /log` and emits the same line
   through `tracing`.
 - Dependencies: keep the tree small and justify every new one in the PR. In use: `axum`,
   `tokio`, `utoipa` + `utoipa-axum` (the schema), `serde`, `serde_json`, `thiserror`,
   `tracing`, `tracing-subscriber`, `clap`, `reqwest` on rustls (URL adds), `argon2` and
-  `sha2` (credentials), `getrandom`, `base64`, `rustix` (free space, no `unsafe`),
+  `sha2` (credentials), `getrandom`, `base64`, `rustix` (free space, and `uname`, `sysinfo`, `getrlimit` for
+  `GET /app/system`, no `unsafe`), `flate2` on its pure-Rust backend (gzipped DB-IP Lite
+  downloads, ADR 0009; `miniz_oxide` is already in the tree through urtorrent),
   `rusqlite` with SQLite compiled in (persistence, ADR 0004), `futures-util` (the
   event stream; already in the tree through axum and tower), `maxminddb` (reading the
   user's GeoIP files; ISC), `hmac` (webhook signatures; RustCrypto, like `sha2`), `jiff`
@@ -654,8 +632,8 @@ times, one tracker reannounced, check progress) and downloads DB-IP Lite when a 
   zone database, with a bundled copy for containers without one), `quick-xml` (RSS and
   Atom documents), `regex` (RSS rules; already in the tree), `if-addrs` (network
   interfaces for `listen_interface`: `getifaddrs` without `unsafe` here).
-  `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with the library's licence
-  allow-list. It does **not** ban `mio` here (4.2).
+  `cargo-deny` bans `openssl`, `openssl-sys` and `native-tls`, with a permissive licence
+  allow-list (`deny.toml`). It does **not** ban `mio` here (4.2).
 - Commands (keep them working forever):
   - `cargo xtask check`: fmt, clippy `-D warnings`, all tests (unit, API on real
     engines, restart / `kill -9`, schema, coverage), docs, `cargo-deny`
@@ -665,7 +643,9 @@ times, one tracker reannounced, check progress) and downloads DB-IP Lite when a 
   - `cargo xtask web`: the web UI's checks and its end-to-end tests against real daemons
     (Node.js, Playwright's Chromium; `frontend/AGENTS.md` section 9)
   - `cargo xtask dist`: build the web UI, then a release binary with it built in
-  - `cargo xtask it [scenario]`: lab scenarios against the oracle (not built yet, 5.4)
+  - `cargo xtask badges`: regenerate the README's badges in `docs/badges` (badge-maker,
+    Node.js); run it after a release and commit the SVGs
+  - Planned: `cargo xtask it [scenario]`, lab scenarios against the oracle (5.5)
 - Definition of done for any change: `xtask check` and `xtask sdk` green, and `xtask web`
   green when the change touches `frontend/`, `openapi.json` or how the UI is served. `openapi.json`
   regenerated and committed. `docs/api.md` and `docs/settings.md` are current. A new
@@ -732,8 +712,7 @@ times, one tracker reannounced, check progress) and downloads DB-IP Lite when a 
 - **Identity profile.** Default: the library's default, `native`. The qbt profile is opt-in
   in the daemon config, for private trackers with client whitelists.
 - **Scope beyond the library.** Torrent creation (`torrentcreator/*`): unsupported by
-  default, even though the daemon could do it without the library. RSS and watch folders:
-  planned after 0.1.0 (section 6).
+  default, even though the daemon could do it without the library.
 - **Logs** go to stderr / journald and `GET /log`, not to files.
 - **API listen address.** Default `127.0.0.1:8080` (loopback only); exposing it is a
   deliberate `--api-listen`.

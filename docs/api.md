@@ -11,8 +11,9 @@ API.
 - Everything is under `/api/v1`. Bodies are JSON both ways; the one binary
   payload is a `.torrent`, sent base64 inside JSON and returned as
   `application/x-bittorrent` by the export endpoint.
-- Units: bytes, bytes per second, seconds, unix seconds. `null` means unknown
-  or unlimited; there are no magic numbers.
+- Units: bytes, bytes per second, seconds, unix seconds. `null` means unknown,
+  unlimited or "the default" (each field's schema says which); there are no
+  magic numbers.
 - Torrents are addressed by their lowercase hex v1 info-hash. Bulk actions
   take `{"hashes": [...]}` or `{"hashes": "all"}` and answer with
   `BulkResult` (`applied`, `not_found`, `failed`), so one bad hash never hides
@@ -140,9 +141,10 @@ magnet found through the DHT only).
 
 ## Share limits
 
-A torrent's share limits (`share_limits`: a ratio, a seeding time, an
-inactive seeding time, and the action once one is reached) are each
-`global`, `unlimited` or a `limit`. `global` defers to the torrent's
+A torrent's share limits (`share_limits`) are a ratio, a seeding time and an
+inactive seeding time, each `global`, `unlimited` or a `limit`, and the
+`action` once one is reached (`stop`, `remove`, `remove_with_files`, or
+`null` for the category's, else the global one). `global` defers to the torrent's
 category, when its category sets that limit (`share_limits` on
 `POST`/`PUT /categories`), and otherwise to the settings (`max_ratio`,
 `max_seeding_time`, `max_inactive_seeding_time`, `share_limit_action`). A
@@ -174,7 +176,7 @@ POST /api/v1/rss/feeds {"url": "https://indexer.example/rss?passkey=...", "folde
 GET  /api/v1/rss/feeds/1          # the feed and its articles: title, date, torrent_url, size, read, downloaded
 PUT  /api/v1/rss/rules/Show%201080p {"must_contain": "show 1080p", "must_not_contain": "cam",
      "episode_filter": "2x1-;", "smart_filter": true, "feeds": [1], "add_options": {"category": "tv"}}
-GET  /api/v1/rss/rules/Show%201080p/matches    # what it would take now
+GET  /api/v1/rss/rules/Show%201080p/matches    # what its filters take now (no history)
 POST /api/v1/rss/dry-run {"must_contain": "show 1080p", "feeds": [1]}   # a rule being edited: every article, verdict and reason
 POST /api/v1/rss/feeds/1/read {"articles": ["item-3"], "unread": true}
 POST /api/v1/rss/feeds/read {"feeds": "all"}   # every article of every feed read
@@ -214,8 +216,10 @@ without the URL (a feed URL can carry a passkey).
 
 ## Search
 
-Both searches take `search`: words that must all match (case ignored, `*`
-any text, `?` one character, everything else literal).
+`GET /torrents`, `GET /torrents/files` and `GET /stats/torrents` take
+`search`: words that must all match (case ignored, `*` any text, `?` one
+character, everything else literal; at most 16 words and 512 bytes, more is
+a 400).
 
 - `GET /torrents?search=ubuntu%20iso` filters the list. A word matches the
   name (a display-name override if set), the category, a tag or the host of
@@ -235,7 +239,8 @@ any text, `?` one character, everything else literal).
 {"total": 2, "files": [
   {"hash": "5a8e…", "torrent": "Show.S01.1080p", "index": 0,
    "path": "Show.S01.1080p/Show.S01E01.mkv", "size": 1468006400,
-   "progress": 1.0, "priority": 4}
+   "progress": 1.0, "priority": 4},
+  ...
 ]}
 ```
 
@@ -243,8 +248,7 @@ any text, `?` one character, everything else literal).
 and renames). The daemon keeps every torrent's file paths in memory,
 refreshed on renames, content layouts, the incomplete-file suffix and
 metadata arriving, so a search asks the engine only for the page it
-returns. A magnet has no files until its metadata arrives. At most 16
-words, 512 bytes; more is a 400.
+returns. A magnet has no files until its metadata arrives.
 
 ## Client data
 
@@ -263,8 +267,9 @@ POST /api/v1/webhooks {"url": "https://media.lan/hooks/torrents", "events": ["fi
 POST /api/v1/webhooks/1/test      # {"status": 200, "error": null, "attempts": 1, ...}
 ```
 
-Events: `added`, `metadata`, `finished`, `moved` (with a download path, the
-content reached its save path after `finished`), `error`, `removed`, and
+Events: `added`, `metadata`, `finished`, `moved` (the content moved: a new
+location, a download path reached its save path, a category change),
+`error`, `removed`, and
 `test`; `events: []` subscribes to all. Each is a `POST` of a
 `WebhookPayload`:
 
@@ -348,8 +353,9 @@ name but no size).
 With a GeoIP database configured (`geoip_database`, `geoip_asn_database`;
 [settings.md](settings.md#geolocation)), peers carry `country`, `asn` and
 `as_org`, and `/stats/geo` has the traffic by country or autonomous system.
-One request sets both up with DB-IP Lite ([ADR 0009](adr/0009-geoip-download.md)),
-and the same request updates them each month:
+One request sets both up with DB-IP Lite ([ADR 0009](adr/0009-geoip-download.md));
+sending it again, say monthly, updates them (the daemon never downloads on
+its own):
 
 ```sh
 POST /api/v1/app/geoip/download {"source": "dbip_lite"}
@@ -365,7 +371,7 @@ does while the loaded database's `database_type` starts with `DBIP`.
 
 
 ```sh
-# Where this torrent's upload went this week, with a daily series of the top 5
+# Where this torrent's upload went this week, with an hourly series of the top 5
 GET /api/v1/stats/geo?hash=<hash>&from=1789593600&dim=country&limit=5&series=true
 {"hash": "...", "step": "hour", "dim": "country", "located": true,
  "rows": [{"country": "DE", "asn": null, "as_org": null, "downloaded": 0, "uploaded": 734003200, "peers_max": 12}, ...],
@@ -410,8 +416,8 @@ GET /api/v1/stats/peers?dim=source&hash=<hash>   # tracker, dht, pex, lsd, incom
 GET /api/v1/stats/peers?dim=transport            # tcp, utp; also encryption, ip_version, direction
 ```
 
-and torrents' traffic by what they belong to (`PeerBreakdown` and `GroupStats`
-take `series=true` like `/stats/geo`):
+and torrents' traffic by what they belong to (`/stats/peers`, `/stats/groups`
+and `/stats/trackers` take `series=true` like `/stats/geo`):
 
 ```sh
 GET /api/v1/stats/groups?group=category&from=1787000000
@@ -432,7 +438,8 @@ them). Announces are counted per host as they are answered or fail.
 `GET /api/v1/stats/idle-seeds?days=30` lists the complete torrents with what
 each uploaded in the last `days` days, `value` = uploaded ÷ size, least
 first: the top of the list is what shares least for the disk it takes.
-`recorded_from` says when recording began if that was inside the window.
+`recorded_from` is where the window's data starts: `from`, or when recording
+began if that was later (`null` when nothing was recorded).
 
 With `stats_scrape_interval` set ([settings.md](settings.md#statistics)),
 the daemon scrapes the trackers of every torrent that often and the days
@@ -442,8 +449,10 @@ announces already report the swarm's seeds and leechers.
 A time-of-day pattern (an hour × weekday heatmap) is the hourly series
 binned in the viewer's time zone; `sdk/typescript/check.ts` shows it.
 Removed torrents keep their history (with `removed` set) until the retention
-expires or `DELETE /stats/torrents/{hash}` purges it. Peer maxima are
-sampled every 2 s, so a short connection may not show. If `stats.db` cannot
+expires or `DELETE /stats/torrents/{hash}` purges it. `peers_max` and
+`seeds_max` in traffic and days are sampled every 2 s, so a short
+connection may not show; in `/stats/geo` and `/stats/peers` they count the
+peers that moved data (sampled every 10 s). If `stats.db` cannot
 be opened, the daemon runs without statistics and `/stats` answers
 `503 unavailable`.
 
@@ -474,8 +483,8 @@ curl -s -X POST -H 'Authorization: Bearer urtd_...' https://torrents.example.com
 
 `proxy` is `untrusted` when forwarding headers come from an address not in
 `api_trusted_proxies` (they are ignored). The cross-origin check applies to
-every state-changing request but those with the API key, clients that need
-no login included; `csrf` says why this one passed. It is a POST so that a
+every state-changing request except those authenticated with the API key,
+clients that need no login included; `csrf` says why this one passed. It is a POST so that a
 browser sends its `Origin`; a request the checks refuse gets their error.
 
 ## Endpoints
@@ -498,7 +507,7 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | GET | `/app/system` | The machine: CPUs, kernel, memory, the open-file limit and how many are open, the default save path's file system (type, size, free) |
 | POST | `/app/shutdown` | Graceful shutdown |
 | POST, DELETE | `/app/restart` | Graceful shutdown, then the same binary starts again in the same process (settings in `restart_required` take effect); `?when=idle` waits until no torrent is checking, moving or receiving data; `DELETE` calls a waiting restart off |
-| POST | `/app/geoip/download` | Download DB-IP Lite's country and ASN databases now and use them ([ADR 0009](adr/0009-geoip-download.md)); 502 when the download is not a database of the right kind (the loaded one stays), 409 while another runs |
+| POST | `/app/geoip/download` | Download DB-IP Lite's country and ASN databases now and use them ([ADR 0009](adr/0009-geoip-download.md)); 502 when the download fails or is not a database of the right kind (the loaded one stays), 409 while another runs |
 | POST | `/app/fetched-trackers/refresh` | Fetch the `add_trackers_url` list now rather than at its daily turn (202; 409 when it is not set); `GET /app` → `fetched_trackers.fetching` while it runs |
 | GET, PATCH | `/settings` | All settings; change some ([settings.md](settings.md)) |
 | GET | `/fs/directory` | List a directory (for choosing paths): each entry with whether the daemon can write in it and how many entries it holds (up to 1 000) |
@@ -604,12 +613,31 @@ browser sends its `Origin`; a request the checks refuse gets their error.
 | `downloader` | not applicable: one built-in downloader; `options.cookie` sets the `Cookie` header |
 | (none) | `options.max_connections`, `options.max_uploads`, `options.preallocate` |
 
+## Other parameters
+
+Parameters of the reference whose counterpart is not plain (a `hash` or
+`hashes` parameter is always the path's `{hash}` or the body's `hashes`):
+
+| qBittorrent | Here |
+|---|---|
+| `app/getDirectoryContent` `mode` | `GET /fs/directory?mode=` |
+| `app/getDirectoryContent` `withMetadata` | unsupported: the listing is for choosing paths; entries carry `writable` and `entries` instead of sizes and dates |
+| `log/main` `normal`, `info`, `warning`, `critical` | `GET /log?levels=` (and `topics=`) |
+| `log/main`, `log/peers` `last_known_id` | `after` |
+| `rss/items` `withData` | `GET /rss/feeds` without articles; `GET /rss/feeds/{id}` and `GET /rss/articles` with them |
+| `sync/maindata` `rid` | `GET /sync?rev=` (or `Last-Event-ID` on `GET /events`) |
+| `sync/torrentPeers` `rid` | not needed: `GET /torrents/{hash}/peers` answers the full list (peer lists are small) |
+| `torrents/info` `includeFiles`, `includeTrackers` | `GET /torrents/files`, `GET /torrents/{hash}/trackers` |
+| `torrents/reannounce` `urls` | `POST /torrents/{hash}/trackers/reannounce` |
+| `torrents/removeTags` without `tags` | `POST /torrents/tags` with `"mode": "set", "tags": []` |
+| `torrents/createCategory`, `editCategory` `downloadPathEnabled` | unsupported (a daemon feature not built): a category's `download_path` is its own or, when `null`, the global one; it cannot turn the global one off |
+| `torrents/fetchMetadata` `downloader` | not applicable: one built-in downloader |
+
 ## Coverage of qBittorrent 5.2.3's WebAPI
 
 Every action of the reference (`docs/reference/qbittorrent-5.2.3-endpoints.txt`)
 has a row; `tests/coverage.rs` fails otherwise. **done**: offered here (the
-column names the endpoint). **planned**: a daemon feature not built yet.
-**unsupported**: with the reason.
+column names the endpoint). **unsupported**: with the reason.
 
 | qBittorrent | Status | Here / why not |
 |---|---|---|

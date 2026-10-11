@@ -6,7 +6,11 @@ the meantime (AGENTS.md rule 5: record, raise upstream, do not hack around).
 
 ## Open
 
-Nothing open.
+Nothing blocks a planned feature now.
+
+- **Wire-level transfer counters**, for data-usage caps (AGENTS.md section 6,
+  "Next"): the payload counters leave out protocol overhead, so a cap on
+  them would undercount. Raise upstream when the caps are started.
 
 ## Resolved upstream
 
@@ -45,6 +49,9 @@ Nothing open.
   the peer the metadata came from (it dials at once now, as after a pause);
   `tests/torrents.rs` (`magnets_are_held_for_stop_conditions_and_layouts`)
   expects the download within 30 s again.
+- 0.13.0: piece priorities (first and last piece first is supported now),
+  banned address ranges (`banned_ip_ranges` setting), per-endpoint tracker
+  rows and `updating` (in `GET /torrents/{hash}/trackers`), `FileCompleted`.
 - 0.12.0: errored torrents recover (`resume`, `force_resume`,
   `force_recheck`) and carry an `ErrorKind`; the daemon's `409` refusal is
   gone and `error_kind` is in the API.
@@ -57,9 +64,6 @@ Nothing open.
   `urtorrent::VERSION`; `remove_torrent` deletes its resume file. The
   daemon's tracker-summary and availability caches and its mirrored
   `sequential` flag and activity times are gone.
-- 0.13.0: piece priorities (first and last piece first is supported now),
-  banned address ranges (`banned_ip_ranges` setting), per-endpoint tracker
-  rows and `updating` (in `GET /torrents/{hash}/trackers`), `FileCompleted`.
 - 0.11.4: `rustls-pemfile` replaced (RUSTSEC-2025-0134).
 
 ## Considered, not needed
